@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "envoy-gateway-fleet chart values",
+  "description": "Strict everywhere the chart defines the shape (a typo fails the render instead of being silently ignored); deliberately open for verbatim passthroughs — filterOrder, extraSpec, NetworkPolicy rules, allowedRoutes, issuerRef, pod scheduling.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": { "type": "object" },
+    "controllerName": { "type": "string", "minLength": 1 },
+    "commonAnnotations": { "type": "object", "additionalProperties": { "type": "string" } },
+    "fleets": {
+      "type": "object",
+      "description": "One entry per fleet; the key is the GatewayClass name.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "namespace": { "type": "string", "minLength": 1 },
+          "gatewayClass": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          },
+          "envoyProxy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "name": { "type": "string" },
+              "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+              "mergeGateways": { "type": "boolean" },
+              "filterOrder": { "type": "array", "items": { "type": "object" } },
+              "service": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+                  "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+                }
+              },
+              "replicas": { "type": "integer", "minimum": 0 },
+              "podDisruptionBudget": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "minAvailable": { "type": ["integer", "null"] }
+                }
+              },
+              "pod": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "tolerations": { "type": "array", "items": { "type": "object" } },
+                  "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "affinity": { "type": "object" },
+                  "topologySpreadConstraints": { "type": "array", "items": { "type": "object" } }
+                }
+              },
+              "extraSpec": { "type": "object", "description": "Deep-merged over the generated EnvoyProxy spec, verbatim." }
+            }
+          },
+          "healthListener": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "name": { "type": "string" },
+              "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+              "listenerName": { "type": "string", "minLength": 1 },
+              "hostname": { "type": "string" },
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "protocol": { "enum": ["HTTP", "HTTPS"] },
+              "tls": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "secretName": { "type": "string" }
+                }
+              },
+              "certificate": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "issuerRef": { "type": "object" }
+                }
+              },
+              "allowedRoutes": { "type": "object" }
+            }
+          },
+          "networkPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "name": { "type": "string" },
+              "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+              "ingress": { "type": "array", "items": { "type": "object" } },
+              "xds": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "controllerPodLabels": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+                }
+              },
+              "egress": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

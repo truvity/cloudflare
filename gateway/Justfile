@@ -2,8 +2,13 @@
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
 # Lint every chart.
+# The schema is part of the lint: an unknown key — top level or inside a
+# fleet — must fail the render, not be silently ignored.
 lint:
     helm lint charts/envoy-gateway-fleet
+    ! helm template x charts/envoy-gateway-fleet --set bogusKey=1 >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.bogus=1 >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.envoyproxy.enabled=false >/dev/null 2>&1
 
 # Golden renders: render every test case and compare with tests/golden.
 test:
