@@ -1,0 +1,96 @@
+# envoy-gateway-fleet — the "fleet" half of an Envoy Gateway install.
+#
+# Upstream's gateway-helm chart installs the CONTROLLER. This chart
+# declares what the controller turns into running proxies: one fleet per
+# audience (say `internal` for employees, `customer` for end users), each
+# a GatewayClass whose EnvoyProxy has mergeGateways on — so every
+# per-service Gateway that names the class collapses into ONE Envoy
+# Deployment behind ONE stable Service. Whatever fronts the cluster (a
+# Cloudflare tunnel, a load balancer) targets that Service and never
+# changes when services come and go.
+#
+# Per-service Gateways and HTTPRoutes are NOT here: they live with the
+# service that owns them. This chart is the audience-level contract only.
+
+# The Envoy Gateway controller's name, as installed by gateway-helm.
+controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+# Annotations on every object this chart renders (an Argo CD sync-wave,
+# say). Each object also accepts its own `annotations`, merged on top.
+commonAnnotations: {}
+
+# One entry per fleet; the key is the GatewayClass name. Every field
+# below is shown with its default — a fleet needs only the ones it
+# changes. A GatewayClass with `envoyProxy.enabled: false` is declared
+# without parametersRef (a class reserved for later, or one whose
+# EnvoyProxy is managed elsewhere).
+fleets: {}
+#  internal:
+#    # Namespace for the EnvoyProxy, the health Gateway, its Certificate
+#    # and the NetworkPolicy — the controller's namespace, normally.
+#    namespace: envoy-gateway-system
+#    gatewayClass:
+#      enabled: true
+#      annotations: {}
+#    envoyProxy:
+#      enabled: true
+#      name: ""                      # default: <fleet>-config
+#      annotations: {}
+#      mergeGateways: true
+#      # HTTP filter ordering constraints, verbatim EnvoyProxy.spec.filterOrder.
+#      filterOrder: []
+#      service:
+#        name: ""                    # default: gateway-<fleet>  (the stable name)
+#        type: ClusterIP
+#        annotations: {}
+#      replicas: 2
+#      podDisruptionBudget:
+#        minAvailable: 1             # 0 / null: no PDB
+#      pod:
+#        tolerations: []
+#        nodeSelector: {}
+#        affinity: {}
+#        topologySpreadConstraints: []
+#      # Merged over the generated spec last (deep merge) — for any
+#      # EnvoyProxy field not modelled above.
+#      extraSpec: {}
+#    # A catch-all Gateway so the merged fleet always has ≥ 1 listener
+#    # (an empty merged fleet has no Deployment at all). Give it a
+#    # SPECIFIC hostname: a wildcard here conflicts with any wildcard
+#    # listener a per-service Gateway brings (HostnameConflict).
+#    healthListener:
+#      enabled: false
+#      name: ""                      # Gateway name; default: <fleet>
+#      annotations: {}
+#      listenerName: http
+#      hostname: ""                  # required when enabled
+#      port: 443
+#      protocol: HTTPS               # HTTP: no tls block
+#      tls:
+#        secretName: ""              # default: <gateway>-health-tls
+#      # cert-manager Certificate for that Secret.
+#      certificate:
+#        enabled: true
+#        annotations: {}
+#        issuerRef:
+#          name: internal-ca
+#          kind: ClusterIssuer
+#          group: cert-manager.io
+#      allowedRoutes:
+#        namespaces:
+#          from: All
+#    # The fleet's own NetworkPolicy: who may reach the proxies, and what
+#    # the proxies may reach. Rules are verbatim networking.k8s.io/v1
+#    # NetworkPolicy ingress/egress rules — the chart adds only the xDS
+#    # egress to the controller, because that one is structural.
+#    networkPolicy:
+#      enabled: false
+#      name: ""                      # default: envoy-<fleet>
+#      annotations: {}
+#      ingress: []
+#      xds:
+#        enabled: true
+#        controllerPodLabels:
+#          control-plane: envoy-gateway
+#        port: 18000
+#      egress: []

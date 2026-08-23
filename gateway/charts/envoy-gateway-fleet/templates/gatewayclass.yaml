@@ -1,0 +1,23 @@
+{{- range $name, $spec := .Values.fleets }}
+{{- $f := include "fleet.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $f.gatewayClass.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ $name }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $f.gatewayClass.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  controllerName: {{ $.Values.controllerName }}
+  {{- if $f.envoyProxy.enabled }}
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: {{ $f.envoyProxy.name }}
+    namespace: {{ $f.namespace }}
+  {{- end }}
+{{- end }}
+{{- end }}

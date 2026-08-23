@@ -1,0 +1,43 @@
+{{- range $name, $spec := .Values.fleets }}
+{{- $f := include "fleet.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $f.networkPolicy.enabled }}
+{{- $np := $f.networkPolicy }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $np.name }}
+  namespace: {{ $f.namespace }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $np.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "fleet.podLabels" (dict "name" $name) | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- with $np.ingress }}
+  ingress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if or $np.xds.enabled $np.egress }}
+  egress:
+    {{- if $np.xds.enabled }}
+    # xDS to the controller (same namespace).
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $np.xds.controllerPodLabels | nindent 14 }}
+      ports:
+        - port: {{ $np.xds.port }}
+          protocol: TCP
+    {{- end }}
+    {{- with $np.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

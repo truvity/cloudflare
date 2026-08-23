@@ -1,0 +1,170 @@
+---
+# Source: envoy-gateway-fleet/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-fleet
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy
+      gateway.envoyproxy.io/owning-gatewayclass: internal
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: cloudflare-system
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: cloudflared
+      ports:
+      - port: 10443
+        protocol: TCP
+  egress:
+    # xDS to the controller (same namespace).
+    - to:
+        - podSelector:
+            matchLabels:
+              control-plane: envoy-gateway
+      ports:
+        - port: 18000
+          protocol: TCP
+    - ports:
+      - port: 8081
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: hubble-ui
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 172.20.0.0/16
+
+---
+# Source: envoy-gateway-fleet/templates/health-gateway.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gateway-health-tls
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "64"
+spec:
+  secretName: gateway-health-tls
+  dnsNames:
+    - gateway-health.example.com
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: internal-ca
+
+---
+# Source: envoy-gateway-fleet/templates/envoyproxy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: internal-config
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  filterOrder:
+  - before: envoy.filters.http.jwt_authn
+    name: envoy.filters.http.ext_authz
+  logging:
+    level:
+      default: warn
+  mergeGateways: true
+  provider:
+    kubernetes:
+      envoyDeployment:
+        pod:
+          tolerations:
+          - key: arch
+            operator: Exists
+          topologySpreadConstraints:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: envoy
+                gateway.envoyproxy.io/owning-gatewayclass: internal
+            maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+        replicas: 2
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        name: gateway-internal
+        type: ClusterIP
+    type: Kubernetes
+
+---
+# Source: envoy-gateway-fleet/templates/health-gateway.yaml
+# Catch-all listener: the merged fleet always has ≥ 1 listener, so the
+# proxies exist before the first per-service Gateway arrives.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: internal
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  gatewayClassName: internal
+  listeners:
+    - name: http
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          # group is server-defaulted to "" — set explicitly, or a GitOps
+          # controller diffs forever.
+          - group: ""
+            kind: Secret
+            name: gateway-health-tls
+      hostname: "gateway-health.example.com"
+      allowedRoutes:
+        namespaces:
+          from: All
+
+---
+# Source: envoy-gateway-fleet/templates/gatewayclass.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: customer
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+---
+# Source: envoy-gateway-fleet/templates/gatewayclass.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: internal
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: internal-config
+    namespace: envoy-gateway-system

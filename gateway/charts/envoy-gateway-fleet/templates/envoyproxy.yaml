@@ -1,0 +1,33 @@
+{{- range $name, $spec := .Values.fleets }}
+{{- $f := include "fleet.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $f.envoyProxy.enabled }}
+{{- $ep := $f.envoyProxy }}
+{{- /* Build the spec as a dict so extraSpec can deep-merge without duplicate keys. */}}
+{{- $svc := dict "name" $ep.service.name "type" $ep.service.type }}
+{{- with $ep.service.annotations }}{{ $_ := set $svc "annotations" . }}{{ end }}
+{{- $pod := dict }}
+{{- with $ep.pod.tolerations }}{{ $_ := set $pod "tolerations" . }}{{ end }}
+{{- with $ep.pod.nodeSelector }}{{ $_ := set $pod "nodeSelector" . }}{{ end }}
+{{- with $ep.pod.affinity }}{{ $_ := set $pod "affinity" . }}{{ end }}
+{{- with $ep.pod.topologySpreadConstraints }}{{ $_ := set $pod "topologySpreadConstraints" . }}{{ end }}
+{{- $deploy := dict "replicas" $ep.replicas }}
+{{- if $pod }}{{ $_ := set $deploy "pod" $pod }}{{ end }}
+{{- $k8s := dict "envoyService" $svc "envoyDeployment" $deploy }}
+{{- if $ep.podDisruptionBudget.minAvailable }}{{ $_ := set $k8s "envoyPDB" (dict "minAvailable" $ep.podDisruptionBudget.minAvailable) }}{{ end }}
+{{- $s := dict "mergeGateways" $ep.mergeGateways "provider" (dict "type" "Kubernetes" "kubernetes" $k8s) }}
+{{- with $ep.filterOrder }}{{ $_ := set $s "filterOrder" . }}{{ end }}
+{{- $s = mergeOverwrite $s ($ep.extraSpec | default dict) }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ $ep.name }}
+  namespace: {{ $f.namespace }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $ep.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml $s | nindent 2 }}
+{{- end }}
+{{- end }}
