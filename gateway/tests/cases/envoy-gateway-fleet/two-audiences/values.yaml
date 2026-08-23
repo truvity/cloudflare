@@ -1,0 +1,70 @@
+# Two audiences: an employee fleet with every feature on, and a customer
+# class reserved for later (no EnvoyProxy yet).
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "65"
+fleets:
+  internal:
+    envoyProxy:
+      filterOrder:
+        - name: envoy.filters.http.ext_authz
+          before: envoy.filters.http.jwt_authn
+      pod:
+        tolerations:
+          - key: arch
+            operator: Exists
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: envoy
+                gateway.envoyproxy.io/owning-gatewayclass: internal
+      extraSpec:
+        logging:
+          level:
+            default: warn
+    healthListener:
+      enabled: true
+      hostname: gateway-health.example.com
+      tls:
+        secretName: gateway-health-tls
+      certificate:
+        annotations:
+          argocd.argoproj.io/sync-wave: "64"
+    networkPolicy:
+      enabled: true
+      name: envoy-fleet
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: cloudflare-system
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: cloudflared
+          ports:
+            - port: 10443
+              protocol: TCP
+      egress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+              podSelector:
+                matchLabels:
+                  k8s-app: hubble-ui
+          ports:
+            - port: 8081
+              protocol: TCP
+        - to:
+            - ipBlock:
+                cidr: 172.20.0.0/16
+          ports:
+            - port: 53
+              protocol: UDP
+            - port: 53
+              protocol: TCP
+  customer:
+    envoyProxy:
+      enabled: false

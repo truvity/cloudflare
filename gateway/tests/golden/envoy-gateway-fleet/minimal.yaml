@@ -1,0 +1,33 @@
+---
+# Source: envoy-gateway-fleet/templates/envoyproxy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: internal-config
+  namespace: envoy-gateway-system
+spec:
+  mergeGateways: true
+  provider:
+    kubernetes:
+      envoyDeployment:
+        replicas: 2
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        name: gateway-internal
+        type: ClusterIP
+    type: Kubernetes
+
+---
+# Source: envoy-gateway-fleet/templates/gatewayclass.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: internal
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: internal-config
+    namespace: envoy-gateway-system

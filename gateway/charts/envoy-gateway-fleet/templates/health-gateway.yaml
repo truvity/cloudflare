@@ -1,0 +1,56 @@
+{{- range $name, $spec := .Values.fleets }}
+{{- $f := include "fleet.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $f.healthListener.enabled }}
+{{- $h := $f.healthListener }}
+{{- $host := required (printf "fleets.%s.healthListener.hostname is required" $name) $h.hostname }}
+---
+# Catch-all listener: the merged fleet always has ≥ 1 listener, so the
+# proxies exist before the first per-service Gateway arrives.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $h.name }}
+  namespace: {{ $f.namespace }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $h.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ $name }}
+  listeners:
+    - name: {{ $h.listenerName }}
+      protocol: {{ $h.protocol }}
+      port: {{ $h.port }}
+      {{- if eq $h.protocol "HTTPS" }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          # group is server-defaulted to "" — set explicitly, or a GitOps
+          # controller diffs forever.
+          - group: ""
+            kind: Secret
+            name: {{ $h.tls.secretName }}
+      {{- end }}
+      hostname: {{ $host | quote }}
+      allowedRoutes:
+        {{- toYaml $h.allowedRoutes | nindent 8 }}
+{{- if and (eq $h.protocol "HTTPS") $h.certificate.enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $h.tls.secretName }}
+  namespace: {{ $f.namespace }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $h.certificate.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  secretName: {{ $h.tls.secretName }}
+  dnsNames:
+    - {{ $host }}
+  issuerRef:
+    {{- toYaml $h.certificate.issuerRef | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
