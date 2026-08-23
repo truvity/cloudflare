@@ -1,0 +1,60 @@
+# cloudflared — the in-cluster end of a Cloudflare Tunnel.
+#
+# Scope: Deployment + ServiceAccount, nothing else. The tunnel itself, its
+# ingress rules and the token are the control plane's business (the
+# Cloudflare dashboard, or the Pulumi component in this repository); the
+# Secret holding the token is created by whatever owns secrets in your
+# estate (External Secrets, SOPS, kubectl). NetworkPolicies are yours too:
+# the pod only needs egress to Cloudflare's edge and to the origins the
+# tunnel routes to.
+#
+# Traffic: Cloudflare edge → cloudflared → whatever the remote tunnel
+# config names as the origin (typically a Gateway API fleet Service).
+
+replicaCount: 2
+
+image:
+  repository: cloudflare/cloudflared
+  tag: "2026.8.2"
+  pullPolicy: IfNotPresent
+
+# Secret holding the tunnel token (`cloudflared tunnel token <id>`), read
+# with --token-file so it never appears in the pod spec or in `ps`.
+secretName: cloudflared-tunnel-token
+secretKey: tunnel-token
+
+# Optional: a Secret (key `ca.pem`) with the CA that signed your origins'
+# certificates. Mounted at /etc/cloudflared/certs/ca.pem — point the
+# remote tunnel config's originRequest.caPool there and cloudflared
+# VERIFIES origin certificates instead of noTLSVerify. Empty: no mount.
+caSecretName: ""
+
+# Extra arguments appended to `cloudflared tunnel ... run`.
+extraArgs: []
+
+serviceAccount:
+  create: true
+  name: cloudflared
+  annotations: {}
+
+terminationGracePeriodSeconds: 30
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+# A PDB keeps the tunnel up across node drains when replicaCount > 1.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
