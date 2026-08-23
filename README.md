@@ -5,7 +5,7 @@ Cloudflare for Kubernetes estates, as reusable mechanism:
 | Artifact | What | Status |
 | --- | --- | --- |
 | `charts/cloudflared` | The in-cluster end of a Cloudflare Tunnel — `cloudflared` as a plain Deployment, token from any Secret | shipped |
-| `pkg/tunnel` | Pulumi Go component: tunnel + DNS records + ingress rules from a config struct | planned |
+| `pkg/tunnel` | Pulumi Go component: tunnel + DNS records + ingress rules (+ opt-in certificate packs) from a config struct | shipped |
 
 Published to `oci://ghcr.io/truvity/charts/cloudflared` on every tag; the
 Go module is `github.com/truvity/cloudflare`.
@@ -22,6 +22,44 @@ The same rule shapes the planned Go component: credentials come in as a
 provider, secrets (the tunnel token) go out as Pulumi `Output`s and the
 **caller** decides where they live. No secret store, no cloud SDK, no
 zone-level configuration — plenty of Cloudflare plans have none.
+
+## pkg/tunnel
+
+```go
+import (
+    "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
+    "github.com/pulumi/pulumi-random/sdk/v4/go/random"
+    "github.com/truvity/cloudflare/pkg/tunnel"
+)
+
+provider, _ := cloudflare.NewProvider(ctx, "cf", &cloudflare.ProviderArgs{ApiToken: token})
+secret, _ := random.NewRandomBytes(ctx, "tunnel-secret", &random.RandomBytesArgs{Length: pulumi.Int(32)})
+
+tun, err := tunnel.New(ctx, "mycluster", tunnel.Args{
+    AccountID: accountID,
+    Name:      "mycluster",
+    Ingress: []tunnel.Ingress{
+        // Exact hosts before wildcards; deeper wildcards before broader
+        // ones — cloudflared's `*` spans dots and first match wins.
+        {Hostname: "app.example.com", Service: "https://gateway-internal.envoy-gateway-system.svc:443",
+         CAPool: "/etc/cloudflared/certs/ca.pem"},
+    },
+    DNS: &tunnel.DNS{ZoneID: zoneID, Names: []string{"app.example.com"}},
+    // Certificates: opt-in Advanced Certificate packs — off by default,
+    // because plenty of plans have no zone-level features.
+}, secret.Base64, pulumi.Provider(provider))
+
+// tun.Token is a secret Output — store it wherever YOUR estate keeps
+// secrets (a Kubernetes Secret for charts/cloudflared, SSM, SOPS...).
+```
+
+The contract, in one line each: `Args` is plain yaml-taggable data (a
+consumer unmarshals its own config file into it, `Validate()` checks it);
+the tunnel secret is a caller input, never derived; the token comes back
+as a secret Output for the caller to store; no zone settings are ever
+touched. Child resources are deterministically named (`tunnel-<name>`,
+`ingress-<name>`, `cname-<name>-<slug>`, `acm-<name>-<slug>`) so an
+estate migrating existing top-level resources can alias onto them.
 
 ## charts/cloudflared
 
