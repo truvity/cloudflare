@@ -1,9 +1,11 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-# Lint every chart and the Go module.
+# Lint every chart and the Go module. The schema is part of the lint:
+# an unknown key must fail the render, not be silently ignored.
 lint:
     helm lint charts/cloudflared
+    ! helm template cloudflared charts/cloudflared --set bogusKey=1 >/dev/null 2>&1
     golangci-lint config verify
     golangci-lint run ./...
 
