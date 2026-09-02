@@ -2,6 +2,8 @@ module github.com/truvity/cloudflare
 
 go 1.27.0
 
+toolchain go1.27.1
+
 require (
 	github.com/pulumi/pulumi-cloudflare/sdk/v6 v6.19.0
 	github.com/pulumi/pulumi/sdk/v3 v3.260.0
