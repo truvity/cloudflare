@@ -1,0 +1,24 @@
+# Renovate cannot approve its own PRs, so a green non-major update sits
+# unmergeable behind this repo's review requirement (cloudflare#14 was
+# stuck exactly that way). The shared workflow approves renovate's
+# non-major PRs — never anything labelled `major` — so their automerge
+# can fire. GitHub still holds the merge until every required check
+# passes.
+name: auto-approve
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  approve:
+    # Guarded: no App credentials, no approvals.
+    if: vars.CI_AUTOMATION_APP_ID != ''
+    uses: truvity/ci-workflows/.github/workflows/auto-approve.yaml@eb317bdb3240d43404665cc943d1c00e8946f733 # v2.18.0
+    with:
+      app-id: ${{ vars.CI_AUTOMATION_APP_ID }}
+    secrets:
+      CI_AUTOMATION_PRIVATE_KEY: ${{ secrets.CI_AUTOMATION_PRIVATE_KEY }}
