@@ -15,7 +15,7 @@ replicaCount: 2
 
 image:
   repository: cloudflare/cloudflared
-  tag: "2026.8.3"
+  tag: "2026.9.1"
   pullPolicy: IfNotPresent
 
 # Secret holding the tunnel token (`cloudflared tunnel token <id>`), read
