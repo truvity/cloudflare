@@ -4,7 +4,9 @@ Cloudflare for Kubernetes estates, as reusable mechanism:
 
 | Artifact | What | Status |
 | --- | --- | --- |
-| `charts/cloudflared` | The in-cluster end of a Cloudflare Tunnel — `cloudflared` as a plain Deployment, token from any Secret | shipped |
+| `charts/cloudflared` | The in-cluster end of a Cloudflare Tunnel — `cloudflared` as a plain Deployment, token from any Secret, one install per account | shipped |
+| `pkg/account` | One API token bound to one account, as a provider to pass to everything created there | shipped |
+| `pkg/zone` | Zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
 | `pkg/tunnel` | Pulumi Go component: tunnel + DNS records + ingress rules (+ opt-in certificate packs) from a config struct | shipped |
 
 Published to `oci://ghcr.io/truvity/charts/cloudflared` on every tag; the
@@ -18,10 +20,79 @@ default, and the consuming estate supplies it from its own (private)
 repository. `hack/leak-canary.sh` enforces this in CI, and public history
 cannot be unpublished — so the rule is mechanical, not remembered.
 
-The same rule shapes the planned Go component: credentials come in as a
-provider, secrets (the tunnel token) go out as Pulumi `Output`s and the
-**caller** decides where they live. No secret store, no cloud SDK, no
-zone-level configuration — plenty of Cloudflare plans have none.
+The same rule shapes the Go packages: credentials come in as an API token,
+secrets (the tunnel token) go out as Pulumi `Output`s and the **caller**
+decides where they live. No secret store and no cloud SDK. Zone settings
+are their own package, opted into per zone, because plenty of Cloudflare
+plans have none and an estate should not acquire them by accident.
+
+## Accounts and zones
+
+A Cloudflare API token is scoped to one account, and a tunnel cannot cross
+accounts. So for an estate whose domains live in more than one account,
+"which account" is a property of every resource rather than a global:
+
+- **the zone is the unit** — a domain belongs to a zone, and a zone belongs
+  to exactly one account;
+- **the account is its attribute** — one `pkg/account` per account, and
+  every zone, tunnel and DNS record is created with that account's
+  provider;
+- **one cloudflared per account** — because its tunnel is in that account.
+  The chart carries the release name in every object name and in the pod
+  selector, so several installs share a namespace.
+
+```go
+platform, _ := account.New(ctx, "platform", account.Args{AccountID: acctID}, token)
+
+zone.New(ctx, "example-com", zone.Args{
+    ZoneID:        zoneID,
+    SSL:           "strict",
+    MinTLSVersion: "1.2",
+    TotalTLS:      &zone.TotalTLS{Enabled: true},
+}, platform.Use())
+
+tunnel.New(ctx, "edge", tunnelArgs, secret, platform.Use())
+```
+
+## pkg/account
+
+```go
+acct, err := account.New(ctx, "platform", account.Args{
+    AccountID: "...",   // from the caller's own registry
+}, apiToken)            // a pulumi.StringInput from wherever secrets live
+```
+
+The contract, in one line each: the token is a caller input and is marked
+secret, so it never reaches plain state; `Use()` is the resource option
+that binds a component to this account, so a caller never has to remember
+which of several providers a zone or tunnel belongs to; the provider child
+is named `provider-<name>`; nothing else is read, created or changed.
+
+## pkg/zone
+
+```go
+zone.New(ctx, "example-com", zone.Args{
+    ZoneID:        "...",
+    SSL:           "strict",           // off | flexible | full | strict
+    MinTLSVersion: "1.2",              // 1.0 | 1.1 | 1.2 | 1.3
+    TotalTLS:      &zone.TotalTLS{Enabled: true, CertificateAuthority: "google"},
+}, acct.Use())
+```
+
+**Total TLS is the reason this package exists.** Without it, every proxied
+hostname needs its own Advanced Certificate pack, so adding a hostname
+means creating a certificate resource and waiting for validation. With it,
+the zone issues per-hostname certificates itself and adding a hostname is a
+DNS record and nothing else. It needs Advanced Certificate Manager on the
+zone's plan, which is why it is opt-in rather than a default.
+
+The contract, in one line each: an unset field is a setting this estate
+does not manage, so a zone keeps whatever it has; `Validate()` rejects a
+zone that would manage nothing at all; children are named
+`setting-<name>-ssl`, `setting-<name>-min-tls-version` and
+`total-tls-<name>`. Only three settings are here on purpose — a Cloudflare
+zone has scores, and the rest are defaults nobody should be managing from
+a deployment tool.
 
 ## pkg/tunnel
 
@@ -77,6 +148,7 @@ tunnel-token=…`.
 
 | Value | Default | Notes |
 | --- | --- | --- |
+| `nameOverride` / `fullnameOverride` | `""` | object names and the pod selector carry the release name, so two installs coexist in one namespace |
 | `replicaCount` | `2` | two replicas = two tunnel connections; set `podDisruptionBudget.enabled` for drains |
 | `image.repository` / `image.tag` | `cloudflare/cloudflared` / pinned | Renovate bumps the tag here |
 | `secretName` / `secretKey` | `cloudflared-tunnel-token` / `tunnel-token` | mounted at `/secrets/<key>`, read with `--token-file` |
@@ -84,6 +156,16 @@ tunnel-token=…`.
 | `extraArgs` | `[]` | appended to `cloudflared tunnel … run` |
 | `nodeSelector`, `tolerations`, `affinity`, `topologySpreadConstraints`, `priorityClassName`, `podAnnotations`, `podLabels` | empty | scheduling is the estate's |
 | `resources` | 50m / 64Mi, limit 256Mi | |
+
+Running two installs in one namespace is one `helm install` per account
+with different release names:
+
+```sh
+helm install cloudflared-platform oci://ghcr.io/truvity/charts/cloudflared \
+  --namespace cloudflare-system --set secretName=cloudflared-platform-token
+helm install cloudflared-partner  oci://ghcr.io/truvity/charts/cloudflared \
+  --namespace cloudflare-system --set secretName=cloudflared-partner-token
+```
 
 Network policies are deliberately not in the chart: the pod needs egress
 to Cloudflare's edge (7844/udp+tcp, 443/tcp) and to the origins the tunnel

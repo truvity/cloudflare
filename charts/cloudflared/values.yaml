@@ -11,6 +11,14 @@
 # Traffic: Cloudflare edge → cloudflared → whatever the remote tunnel
 # config names as the origin (typically a Gateway API fleet Service).
 
+# One cluster can need more than one install: a tunnel cannot cross
+# Cloudflare accounts, so an estate whose zones live in several accounts
+# runs one cloudflared per account. Object names and the pod selector carry
+# the release name, so two installs coexist in one namespace. Override only
+# if you need a name the release name cannot give you.
+nameOverride: ""
+fullnameOverride: ""
+
 replicaCount: 2
 
 image:
@@ -34,7 +42,8 @@ extraArgs: []
 
 serviceAccount:
   create: true
-  name: cloudflared
+  # Empty: named after the release, like every other object.
+  name: ""
   annotations: {}
 
 terminationGracePeriodSeconds: 30

@@ -16,9 +16,11 @@
 //     is returned as a secret Output and the CALLER decides where it
 //     lives (a Kubernetes Secret, SSM, SOPS — not this package's
 //     business).
-//   - No zone-level configuration. Plenty of Cloudflare plans have none:
-//     zone settings are never touched, and Advanced Certificate packs
-//     are an opt-in block that is off by default.
+//   - No zone-level configuration HERE. Plenty of Cloudflare plans have
+//     none, so this package touches no zone setting and Advanced
+//     Certificate packs are an opt-in block that is off by default. An
+//     estate that does manage zone settings uses pkg/zone, where the
+//     decision is explicit and reviewed on its own.
 //
 // The in-cluster half is charts/cloudflared in this repository: the
 // remote tunnel config built here routes hostnames to origins, the chart

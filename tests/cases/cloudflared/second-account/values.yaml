@@ -1,0 +1,8 @@
+# A second install in the same namespace as the first: a tunnel cannot
+# cross Cloudflare accounts, so an estate whose zones live in two accounts
+# runs two. Every name and the pod selector carry the release, so the two
+# never claim each other's pods.
+secretName: cloudflared-partner-token
+caSecretName: cloudflared-partner-origin-ca
+podDisruptionBudget:
+  enabled: true

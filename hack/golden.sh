@@ -18,7 +18,12 @@ for values in "$root"/tests/cases/*/*/values.yaml; do
   chart="$(basename "$(dirname "$case_dir")")"
   golden="$root/tests/golden/$chart/$case_name.yaml"
 
-  rendered="$(helm template "$chart" "$root/charts/$chart" \
+  # A case may pin its release name (tests/cases/<chart>/<case>/release) as
+  # well as its namespace: object names and selectors that carry the release
+  # are exactly what a second install in one namespace depends on.
+  release="$(cat "$case_dir/release" 2>/dev/null || echo "$chart")"
+
+  rendered="$(helm template "$release" "$root/charts/$chart" \
       --namespace "$(cat "$case_dir/namespace" 2>/dev/null || echo default)" \
       -f "$values")"
 

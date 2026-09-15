@@ -7,7 +7,10 @@ metadata:
   namespace: cloudflare-system
   labels:
     app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/instance: cloudflared
     app.kubernetes.io/component: tunnel
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
 
 ---
 # Source: cloudflared/templates/deployment.yaml
@@ -18,17 +21,22 @@ metadata:
   namespace: cloudflare-system
   labels:
     app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/instance: cloudflared
     app.kubernetes.io/component: tunnel
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudflared
+      app.kubernetes.io/instance: cloudflared
       app.kubernetes.io/component: tunnel
   template:
     metadata:
       labels:
         app.kubernetes.io/name: cloudflared
+        app.kubernetes.io/instance: cloudflared
         app.kubernetes.io/component: tunnel
     spec:
       serviceAccountName: cloudflared

@@ -2,15 +2,13 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: cloudflared
+  name: {{ include "cloudflared.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: cloudflared
-    app.kubernetes.io/component: tunnel
+    {{- include "cloudflared.labels" . | nindent 4 }}
 spec:
   minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: cloudflared
-      app.kubernetes.io/component: tunnel
+      {{- include "cloudflared.selectorLabels" . | nindent 6 }}
 {{- end }}
