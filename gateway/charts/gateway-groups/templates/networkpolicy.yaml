@@ -1,0 +1,52 @@
+{{- range $name, $spec := .Values.groups }}
+{{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
+{{- if and $g.enabled $g.networkPolicy.enabled }}
+{{- $np := $g.networkPolicy }}
+{{- if eq (len $np.namespaces) 0 }}
+{{- fail (printf "groups.%s.networkPolicy.namespaces is empty — name the namespaces whose workloads the gateway must reach" $name) }}
+{{- end }}
+{{- if eq (len $np.ports) 0 }}
+{{- fail (printf "groups.%s.networkPolicy.ports is empty — an allow with no port is an allow to everything the pod listens on" $name) }}
+{{- end }}
+{{- if eq (len $np.from.podLabels) 0 }}
+{{- fail (printf "groups.%s.networkPolicy.from.podLabels is empty — name the gateway's pods, or this admits every pod of the namespace" $name) }}
+{{- end }}
+{{- if not $np.from.namespace }}
+{{- fail (printf "groups.%s.networkPolicy.from.namespace is required — the namespace the gateway's pods run in" $name) }}
+{{- end }}
+{{- range $ns := $np.namespaces }}
+---
+{{- /* The other half of the grant: the namespace label lets the route
+       attach, this lets the packet arrive. Both are the platform's to
+       give, which is why they are derived from one row. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $np.name }}
+  namespace: {{ $ns }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $np.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    {{- if $np.podSelector }}
+    {{- toYaml $np.podSelector | nindent 4 }}
+    {{- else }}
+    {}
+    {{- end }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.from.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.from.podLabels | nindent 14 }}
+      ports:
+        {{- toYaml $np.ports | nindent 8 }}
+{{- end }}
+{{- end }}
+{{- end }}

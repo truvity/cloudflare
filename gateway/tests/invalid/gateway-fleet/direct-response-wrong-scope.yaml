@@ -1,0 +1,18 @@
+# The chart's own health route lives in the exposure's namespace, so the
+# listener must admit routes from it.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: h.example.com
+      certificate: {issuerRef: {name: ca}}
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              example.com/grant: "true"
+      directResponse:
+        enabled: true

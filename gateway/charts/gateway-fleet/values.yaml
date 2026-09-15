@@ -1,0 +1,178 @@
+# gateway-fleet — the vendor half of an Envoy Gateway install.
+#
+# Upstream's gateway-helm chart installs the CONTROLLER. This chart owns the
+# plane the controller manages:
+#
+#   classes.<name>     a GatewayClass and its EnvoyProxy.
+#   exposures.<name>   a Gateway — one entry point, such as public or private —
+#                      with its health listener, the rule for which ListenerSets
+#                      may attach, its baseline ClientTrafficPolicy, its
+#                      NetworkPolicy, and (on a split class) its own EnvoyProxy,
+#                      which is what gives that exposure its own Service, its
+#                      own address and its own failure domain.
+#
+# Hostnames other than the health endpoint do not belong here: a project group
+# attaches to an exposure as a ListenerSet, rendered by the gateway-groups
+# chart from the same catalogue row. This chart therefore never grows a list of
+# the estate's domains.
+#
+# Everything particular — issuers, cloud annotations, load-balancer classes,
+# source ranges, addresses, DNS — is an input with a neutral default. The
+# consuming estate supplies it from its own repository.
+
+# The Envoy Gateway controller's name, as installed by gateway-helm.
+controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+# Annotations on every object this chart renders. An object's own annotations
+# override matching keys.
+commonAnnotations: {}
+
+# ---------------------------------------------------------------------------
+# Classes: one GatewayClass, one EnvoyProxy.
+# ---------------------------------------------------------------------------
+classes: {}
+#  internal:
+#    enabled: true
+#    namespace: envoy-gateway-system
+#    annotations: {}
+#
+#    # false (the default): every Gateway of this class gets its own Envoy
+#    # Deployment and Service, so one exposure can carry a pinned address or a
+#    # load balancer without the others. true: every Gateway collapses onto one
+#    # Deployment and one Service — cheaper, but the exposures then share an
+#    # address and a failure domain, and none may set its own proxy.
+#    mergeGateways: false
+#
+#    # The class proxy. On a merged class it is the only proxy. On a split
+#    # class it is the fallback for any Gateway with no proxy of its own.
+#    proxy:
+#      enabled: true
+#      name: ""                     # default: <class>-config
+#      annotations: {}
+#      filterOrder: []              # verbatim EnvoyProxy.spec.filterOrder
+#      replicas: 2
+#      podDisruptionBudget:
+#        minAvailable: 1            # 0 or null: no PDB
+#      pod:
+#        tolerations: []
+#        nodeSelector: {}
+#        affinity: {}
+#        topologySpreadConstraints: []
+#      service:
+#        name: ""                   # default: gateway-<class>
+#        type: ClusterIP
+#        clusterIP: ""              # pin an address; "None" for headless
+#        annotations: {}
+#        labels: {}
+#        loadBalancerClass: ""
+#        loadBalancerSourceRanges: []
+#        externalTrafficPolicy: ""
+#        patch: {}                  # {type, value}, merged over the above
+#      useListenerPortAsContainerPort: false
+#      shutdown:
+#        drainTimeout: ""
+#        minDrainDuration: ""
+#        # Fail the readiness probe this long before draining starts, so a
+#        # load balancer removes the endpoint before it stops accepting.
+#        healthCheckFailureDelay: ""
+#      backendTLS:
+#        # The client certificate Envoy presents to a backend that asks for
+#        # one. Pairs with a BackendTLSPolicy on the route's backend.
+#        clientCertificateRef:
+#          name: ""
+#          namespace: ""
+#      extraSpec: {}                # deep-merged over the generated spec last
+
+# ---------------------------------------------------------------------------
+# Exposures: one Gateway each.
+# ---------------------------------------------------------------------------
+exposures: {}
+#  public:
+#    enabled: true
+#    class: internal                # required; must name an enabled class
+#    namespace: ""                  # default: the class namespace
+#    gatewayName: ""                # default: the map key
+#    annotations: {}
+#    labels: {}
+#
+#    # Which ListenerSets may attach. The default admits only the exposure's
+#    # own namespace, so a project cannot open a listener by creating an
+#    # object in its own namespace.
+#    allowedListeners:
+#      namespaces:
+#        from: Same                 # None | Same | All | Selector
+#        # selector:
+#        #   matchLabels: {}
+#
+#    # The exposure's own listener. It exists so the Gateway is never empty:
+#    # a Gateway with no listener has no proxies, and the exposure would be
+#    # dark until the first group attached.
+#    health:
+#      listenerName: ""             # default: https or http, from protocol
+#      hostname: ""                 # required; exact, never a wildcard
+#      port: 443
+#      protocol: HTTPS
+#      tls:
+#        secretName: ""             # default: <gateway>-health-tls
+#      certificate:
+#        enabled: true
+#        name: ""                   # default: the Secret name
+#        annotations: {}
+#        labels: {}
+#        duration: ""
+#        renewBefore: ""
+#        privateKey: {}
+#        usages: []
+#        issuerRef: {}              # name required when enabled
+#      allowedRoutes:
+#        namespaces:
+#          from: Same
+#        kinds:
+#          - group: gateway.networking.k8s.io
+#            kind: HTTPRoute
+#      # An answer with no backend behind it, so the exposure can be probed
+#      # even when every workload behind it is down.
+#      directResponse:
+#        enabled: false
+#        routeName: ""              # default: <gateway>-health
+#        filterName: ""             # default: <gateway>-health
+#        annotations: {}
+#        labels: {}
+#        path: /healthz
+#        statusCode: 200
+#        contentType: text/plain
+#        body: ok
+#
+#    # The TLS floor for everything this exposure terminates. It targets the
+#    # Gateway, so an attached ListenerSet inherits it.
+#    clientTrafficPolicy:
+#      enabled: false
+#      name: ""                     # default: <gateway>-tls
+#      annotations: {}
+#      labels: {}
+#      tls:
+#        minVersion: "1.3"
+#        maxVersion: "1.3"
+#        # Client certificates. This is what turns an exposure into one that
+#        # only a holder of a certificate from the named CA can reach.
+#        clientValidation:
+#          enabled: false
+#          optional: false
+#          allowExpiredCertificate: false
+#          caCertificateRefs: []    # [{kind: ConfigMap|Secret, name: ...}]
+#
+#    # This exposure's own proxy. Only a split class (mergeGateways: false)
+#    # can have one; the shape is the same as classes.<name>.proxy.
+#    proxy: {}
+#
+#    networkPolicy:
+#      enabled: false
+#      name: ""                     # default: envoy-<exposure>
+#      annotations: {}
+#      ingress: []
+#      xds:
+#        enabled: true
+#        controllerPodLabels:
+#          control-plane: envoy-gateway
+#        port: 18000
+#      egress: []

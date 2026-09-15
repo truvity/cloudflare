@@ -1,3 +1,0 @@
-# One fleet, everything defaulted: GatewayClass + EnvoyProxy only.
-fleets:
-  internal: {}

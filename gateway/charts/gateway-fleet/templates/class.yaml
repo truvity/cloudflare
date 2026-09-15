@@ -1,0 +1,40 @@
+{{- range $name, $spec := .Values.classes }}
+{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $c.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ $name }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $c.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  controllerName: {{ $.Values.controllerName }}
+  {{- if $c.proxy.enabled }}
+  {{- /* A merged class parameterises every Gateway from here. A split class
+         still names a class proxy: it is the fallback for any Gateway that
+         does not carry its own infrastructure.parametersRef. */}}
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: {{ $c.proxy.name }}
+    namespace: {{ $c.namespace }}
+  {{- end }}
+{{- if $c.proxy.enabled }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ $c.proxy.name }}
+  namespace: {{ $c.namespace }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $c.proxy.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- include "gateway.proxy.spec" (dict "proxy" $c.proxy "merge" $c.mergeGateways "renderMerge" true) | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- end }}

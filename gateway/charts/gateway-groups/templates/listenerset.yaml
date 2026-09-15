@@ -1,0 +1,74 @@
+{{- $objects := dict }}
+{{- $hosts := dict }}
+{{- range $name, $spec := .Values.groups }}
+{{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
+{{- if $g.enabled }}
+{{- $by := printf "groups.%s" $name }}
+{{- if not $g.parent.name }}
+{{- fail (printf "groups.%s.parent.name is required — a ListenerSet attaches to exactly one Gateway" $name) }}
+{{- end }}
+{{- if eq (len $g.domains) 0 }}
+{{- fail (printf "groups.%s.domains is empty — omit the group instead of declaring one that serves nothing" $name) }}
+{{- end }}
+{{- $allowedRoutes := include "groups.allowedRoutes.resolve" $g.allowedRoutes | fromYaml }}
+{{- $routeFrom := $allowedRoutes.namespaces.from }}
+{{- if eq $routeFrom "Selector" }}
+{{- $sel := $allowedRoutes.namespaces.selector | default dict }}
+{{- if and (eq (len ($sel.matchLabels | default dict)) 0) (eq (len ($sel.matchExpressions | default list)) 0) }}
+{{- fail (printf "groups.%s.allowedRoutes.namespaces.selector needs at least one matchLabels entry or matchExpressions item — an empty selector matches every namespace, which is the opposite of what a grant means" $name) }}
+{{- end }}
+{{- end }}
+{{- include "groups.claim" (dict "registry" $objects "kind" "ListenerSet" "namespace" $g.namespace "name" $g.listenerSetName "by" $by) }}
+{{- $listeners := list }}
+{{- range $entry := $g.domains }}
+{{- $d := include "groups.domain.resolve" (dict "entry" $entry "group" $g) | fromYaml }}
+{{- if not $d.host }}
+{{- fail (printf "groups.%s.domains has an entry with no host" $name) }}
+{{- end }}
+{{- if not (regexMatch "^([*][.])?[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" $d.host) }}
+{{- fail (printf "groups.%s domain %q is not a hostname (one leading \"*.\" is allowed)" $name $d.host) }}
+{{- end }}
+{{- /* Hostnames are global to the data plane, not to the group: two groups
+       claiming one host is a listener conflict that takes both down. */}}
+{{- include "groups.claim" (dict "registry" $hosts "kind" "Hostname" "namespace" (printf "%s:%d" $g.parent.name (int $g.port)) "name" (lower $d.host) "by" $by) }}
+{{- include "groups.claim" (dict "registry" $objects "kind" "Secret" "namespace" $g.namespace "name" $d.secretName "by" $by) }}
+{{- $listener := dict
+      "name" $d.listenerName
+      "protocol" $g.protocol
+      "port" (int $g.port)
+      "hostname" $d.host
+      "allowedRoutes" $allowedRoutes }}
+{{- if eq $g.protocol "HTTPS" }}
+{{- $_ := set $listener "tls" (dict
+      "mode" "Terminate"
+      "certificateRefs" (list (dict "group" "" "kind" "Secret" "name" $d.secretName))) }}
+{{- end }}
+{{- $listeners = append $listeners $listener }}
+{{- end }}
+---
+{{- /* One ListenerSet per group: the listeners a project owns, attached to
+       an exposure the platform owns. The Gateway's allowedListeners decides
+       whether this is admitted at all. */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: {{ $g.listenerSetName }}
+  namespace: {{ $g.namespace }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $g.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $g.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ $g.parent.name }}
+    namespace: {{ $g.parent.namespace }}
+  listeners:
+    {{- toYaml $listeners | nindent 4 }}
+{{- end }}
+{{- end }}

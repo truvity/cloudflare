@@ -1,0 +1,92 @@
+# Three shapes at once: a rename in flight (two domains, one group), a
+# wildcard group for an environment that shares one host suffix, and a
+# group whose backend is re-encrypted and firewalled.
+commonAnnotations:
+  example.com/sync-wave: "70"
+
+defaults:
+  namespace: envoy-gateway-system
+  parent:
+    name: public
+  certificate:
+    issuerRef:
+      name: example-ca
+      kind: ClusterIssuer
+      group: cert-manager.io
+    duration: 720h
+    renewBefore: 240h
+
+groups:
+  # The old host stays a second domain of the same group until the soak is
+  # over, then the entry is deleted and its listener, Certificate and Secret
+  # go with it.
+  argocd:
+    domains:
+      - argocd.example.com
+      - host: argocd.old.example.com
+        listenerName: legacy
+        secretName: argocd-legacy-tls
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            gateway.example.com/route-grant-argocd: "true"
+
+  # One wildcard listener for every tenant of a development environment.
+  shared:
+    domains:
+      - "*.dev.example.com"
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            example.com/tenant: "true"
+
+  # A private group: the gateway re-encrypts to the backend and is the only
+  # thing allowed to reach it.
+  store:
+    parent:
+      name: private
+    domains:
+      - store.internal.example
+    certificate:
+      issuerRef:
+        name: example-private-ca
+        kind: ClusterIssuer
+        group: cert-manager.io
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            gateway.example.com/route-grant-store: "true"
+    backendTLS:
+      enabled: true
+      targetRefs:
+        - group: ""
+          kind: Service
+          name: store
+          sectionName: https
+      validation:
+        hostname: store.example-store.svc
+        caCertificateRefs:
+          - group: ""
+            kind: ConfigMap
+            name: example-trust-bundle
+    networkPolicy:
+      enabled: true
+      namespaces:
+        - example-store
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: store
+      from:
+        namespace: envoy-gateway-system
+        podLabels:
+          app.kubernetes.io/name: envoy
+          gateway.envoyproxy.io/owning-gateway-name: private
+      ports:
+        - port: 8200
+          protocol: TCP

@@ -1,0 +1,14 @@
+# Selector with nothing selected matches every namespace — the opposite of
+# what a grant means.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    allowedListeners:
+      namespaces:
+        from: Selector
+        selector: {}
+    health:
+      hostname: h.example.com
+      certificate: {issuerRef: {name: ca}}

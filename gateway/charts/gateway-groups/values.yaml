@@ -1,0 +1,104 @@
+# gateway-groups — the standard-API half of an Envoy Gateway install.
+#
+# A group is one project's claim on an exposure: the hostnames it serves and
+# the namespaces whose routes may attach to them. Each group renders as a
+# ListenerSet parented to an exposure's Gateway (gateway-fleet chart), one
+# listener and one cert-manager Certificate per domain, and optionally a
+# BackendTLSPolicy and the ingress rule that lets the gateway reach the
+# group's workloads.
+#
+# Nothing here is vendor-specific: Gateway API, cert-manager and core
+# Kubernetes only. A change of gateway implementation rewrites the fleet
+# chart and leaves this one alone.
+#
+# The platform owns these values, not the project: which hostnames exist and
+# which namespaces may attach to them is exactly the grant. A project owns
+# its HTTPRoutes, which name a ListenerSet as their parent.
+
+# Annotations on every object this chart renders. An object's own
+# annotations override matching keys.
+commonAnnotations: {}
+
+# Applied under every group, so a shared issuer or exposure is stated once.
+defaults:
+  # Where the ListenerSets and Certificates live. This is the exposure's
+  # namespace, not the project's: a listener is platform-owned.
+  namespace: envoy-gateway-system
+
+  # The exposure this group attaches to.
+  parent:
+    name: ""
+    namespace: ""              # default: the group's namespace
+
+  port: 443
+  protocol: HTTPS
+
+  certificate:
+    enabled: true
+    annotations: {}
+    labels: {}
+    duration: ""
+    renewBefore: ""
+    privateKey: {}
+    usages: []
+    issuerRef: {}              # name required; the issuer is the estate's
+
+  # Which namespaces' routes may attach to this group's listeners. A
+  # selector naming a label the platform writes is how a grant is expressed:
+  # a project cannot attach by labelling its own namespace.
+  allowedRoutes:
+    namespaces:
+      from: Same               # All | Same | Selector
+      # selector:
+      #   matchLabels: {}
+    kinds:
+      - group: gateway.networking.k8s.io
+        kind: HTTPRoute
+
+groups: {}
+#  argocd:
+#    enabled: true
+#    namespace: ""             # default: defaults.namespace
+#    listenerSetName: ""       # default: the map key
+#    parent:
+#      name: public
+#      namespace: ""
+#    annotations: {}
+#    labels: {}
+#
+#    # A string is the common case. An object gives one domain its own names,
+#    # which is what a rename needs: the old and the new host share a group
+#    # through the overlap, then the old entry is deleted and everything
+#    # derived from it goes with it.
+#    domains:
+#      - argocd.example.com
+#      - host: argocd.old.example.com
+#        listenerName: legacy
+#        secretName: argocd-legacy-tls
+#
+#    port: 443
+#    protocol: HTTPS
+#    certificate: {}           # merged over defaults.certificate
+#    allowedRoutes: {}         # merged over defaults.allowedRoutes
+#
+#    # Re-encrypt to this group's backend.
+#    backendTLS:
+#      enabled: false
+#      name: ""                # default: the ListenerSet name
+#      annotations: {}
+#      labels: {}
+#      targetRefs: []          # [{group: "", kind: Service, name: ..., sectionName: ...}]
+#      validation: {}          # {caCertificateRefs: [...], hostname: ...}
+#
+#    # The other half of the grant: the namespace label lets the route
+#    # attach, this lets the packet arrive.
+#    networkPolicy:
+#      enabled: false
+#      name: ""                # default: allow-gateway-<group>
+#      annotations: {}
+#      namespaces: []          # where to render, usually the group's routeNamespaces
+#      podSelector: {}         # {} selects every pod of the namespace
+#      from:
+#        namespace: ""         # the namespace the gateway's pods run in
+#        podLabels: {}         # the gateway's pod labels
+#      ports: []               # [{port: 8080, protocol: TCP}]

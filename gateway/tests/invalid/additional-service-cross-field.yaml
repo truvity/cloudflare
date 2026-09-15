@@ -1,7 +1,0 @@
-fleets:
-  internal:
-    additionalServices:
-      invalid:
-        type: ClusterIP
-        loadBalancerClass: example.com/network-load-balancer
-        ports: [{port: 443, targetPort: 10443}]

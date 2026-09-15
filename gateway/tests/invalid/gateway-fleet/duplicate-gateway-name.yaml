@@ -1,0 +1,16 @@
+# Two exposures claiming one Gateway name.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    gatewayName: shared
+    health:
+      hostname: a.example.com
+      certificate: {issuerRef: {name: ca}}
+  private:
+    class: internal
+    gatewayName: shared
+    health:
+      hostname: b.example.com
+      certificate: {issuerRef: {name: ca}}

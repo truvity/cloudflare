@@ -1,0 +1,10 @@
+# A wildcard health listener would shadow every group's listener.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: "*.example.com"
+      certificate:
+        issuerRef: {name: ca}

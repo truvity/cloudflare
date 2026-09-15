@@ -1,0 +1,11 @@
+# An exposure names a class that does not exist: the Gateway would be
+# orphaned and no proxy would ever serve it.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: customer
+    health:
+      hostname: h.example.com
+      certificate:
+        issuerRef: {name: ca}

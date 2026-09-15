@@ -1,0 +1,14 @@
+# An allow with no port is an allow to everything the pod listens on.
+defaults:
+  parent: {name: public}
+  certificate: {issuerRef: {name: ca}}
+groups:
+  store:
+    domains: [a.example.com]
+    networkPolicy:
+      enabled: true
+      namespaces: [example-store]
+      from:
+        namespace: envoy-gateway-system
+        podLabels: {app.kubernetes.io/name: envoy}
+      ports: []

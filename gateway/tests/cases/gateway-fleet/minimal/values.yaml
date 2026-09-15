@@ -1,0 +1,15 @@
+# One class, one exposure, everything defaulted: the smallest install that
+# has a data plane at all.
+classes:
+  internal: {}
+
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io

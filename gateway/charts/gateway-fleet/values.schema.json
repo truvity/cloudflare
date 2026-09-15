@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gateway-fleet values",
+  "description": "An unknown key is an error, not a silent no-op: a typo in a fleet's values would otherwise render a gateway that quietly does something else.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object",
+      "description": "Helm's shared values. Unused by this chart; allowed so a parent chart can set it."
+    },
+    "controllerName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commonAnnotations": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "classes": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/class" }
+    },
+    "exposures": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/exposure" }
+    }
+  },
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "labelSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchLabels": { "$ref": "#/definitions/stringMap" },
+        "matchExpressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "operator"],
+            "properties": {
+              "key": { "type": "string" },
+              "operator": { "type": "string", "enum": ["In", "NotIn", "Exists", "DoesNotExist"] },
+              "values": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "group": { "type": "string" },
+        "kind": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" }
+      }
+    },
+    "allowedRoutes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespaces": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "string", "enum": ["All", "Same", "Selector"] },
+            "selector": { "$ref": "#/definitions/labelSelector" }
+          }
+        },
+        "kinds": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+              "group": { "type": "string" },
+              "kind": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "proxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "filterOrder": { "type": "array", "items": { "type": "object" } },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "podDisruptionBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minAvailable": { "type": ["integer", "string", "null"] }
+          }
+        },
+        "pod": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tolerations": { "type": "array", "items": { "type": "object" } },
+            "nodeSelector": { "$ref": "#/definitions/stringMap" },
+            "affinity": { "type": "object" },
+            "topologySpreadConstraints": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+            "clusterIP": { "type": "string" },
+            "annotations": { "$ref": "#/definitions/stringMap" },
+            "labels": { "$ref": "#/definitions/stringMap" },
+            "loadBalancerClass": { "type": "string" },
+            "loadBalancerSourceRanges": { "type": "array", "items": { "type": "string" } },
+            "externalTrafficPolicy": { "type": "string", "enum": ["", "Cluster", "Local"] },
+            "patch": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["StrategicMerge", "JSONMerge"] },
+                "value": { "type": "object" }
+              }
+            }
+          }
+        },
+        "useListenerPortAsContainerPort": { "type": "boolean" },
+        "shutdown": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "drainTimeout": { "type": "string" },
+            "minDrainDuration": { "type": "string" },
+            "healthCheckFailureDelay": { "type": "string" }
+          }
+        },
+        "backendTLS": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "clientCertificateRef": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "namespace": { "type": "string" }
+              }
+            }
+          }
+        },
+        "extraSpec": { "type": "object" }
+      }
+    },
+    "class": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "namespace": { "type": "string", "minLength": 1 },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "mergeGateways": { "type": "boolean" },
+        "proxy": { "$ref": "#/definitions/proxy" }
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "class": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "gatewayName": { "type": "string" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "labels": { "$ref": "#/definitions/stringMap" },
+        "allowedListeners": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "namespaces": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "from": { "type": "string", "enum": ["None", "All", "Same", "Selector"] },
+                "selector": { "$ref": "#/definitions/labelSelector" }
+              }
+            }
+          }
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "listenerName": { "type": "string" },
+            "hostname": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "protocol": { "type": "string", "enum": ["HTTP", "HTTPS"] },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "secretName": { "type": "string" } }
+            },
+            "certificate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "name": { "type": "string" },
+                "annotations": { "$ref": "#/definitions/stringMap" },
+                "labels": { "$ref": "#/definitions/stringMap" },
+                "duration": { "type": "string" },
+                "renewBefore": { "type": "string" },
+                "privateKey": { "type": "object" },
+                "usages": { "type": "array", "items": { "type": "string" } },
+                "issuerRef": { "type": "object" }
+              }
+            },
+            "allowedRoutes": { "$ref": "#/definitions/allowedRoutes" },
+            "directResponse": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "routeName": { "type": "string" },
+                "filterName": { "type": "string" },
+                "annotations": { "$ref": "#/definitions/stringMap" },
+                "labels": { "$ref": "#/definitions/stringMap" },
+                "path": { "type": "string", "pattern": "^/" },
+                "statusCode": { "type": "integer", "minimum": 100, "maximum": 599 },
+                "contentType": { "type": "string" },
+                "body": { "type": "string" }
+              }
+            }
+          }
+        },
+        "clientTrafficPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "name": { "type": "string" },
+            "annotations": { "$ref": "#/definitions/stringMap" },
+            "labels": { "$ref": "#/definitions/stringMap" },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "minVersion": { "type": "string", "enum": ["1.0", "1.1", "1.2", "1.3"] },
+                "maxVersion": { "type": "string", "enum": ["1.0", "1.1", "1.2", "1.3"] },
+                "clientValidation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "optional": { "type": "boolean" },
+                    "allowExpiredCertificate": { "type": "boolean" },
+                    "caCertificateRefs": {
+                      "type": "array",
+                      "items": { "$ref": "#/definitions/objectRef" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "proxy": { "$ref": "#/definitions/proxy" },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "name": { "type": "string" },
+            "annotations": { "$ref": "#/definitions/stringMap" },
+            "ingress": { "type": "array", "items": { "type": "object" } },
+            "egress": { "type": "array", "items": { "type": "object" } },
+            "xds": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "controllerPodLabels": { "$ref": "#/definitions/stringMap" },
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

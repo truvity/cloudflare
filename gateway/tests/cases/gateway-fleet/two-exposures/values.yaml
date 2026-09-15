@@ -1,0 +1,109 @@
+# A split class with two exposures: one reached through a tunnel on a
+# ClusterIP, one reached inside the network on a pinned address that a load
+# balancer also fronts. Each has its own proxy, so neither shares the
+# other's address or failure domain.
+commonAnnotations:
+  example.com/sync-wave: "65"
+
+classes:
+  internal:
+    namespace: envoy-gateway-system
+    mergeGateways: false
+
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      directResponse:
+        enabled: true
+      certificate:
+        issuerRef:
+          name: example-origin-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+    allowedListeners:
+      namespaces:
+        from: Same
+    clientTrafficPolicy:
+      enabled: true
+    proxy:
+      replicas: 3
+      filterOrder:
+        - name: envoy.filters.http.ext_authz
+          before: envoy.filters.http.jwt_authn
+      shutdown:
+        healthCheckFailureDelay: 5s
+        minDrainDuration: 10s
+      service:
+        name: gateway-public
+      pod:
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: envoy
+    networkPolicy:
+      enabled: true
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: tunnel-system
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: tunnel-client
+          ports:
+            - port: 10443
+              protocol: TCP
+
+  private:
+    class: internal
+    health:
+      hostname: gateway-health.internal.example
+      directResponse:
+        enabled: true
+      certificate:
+        issuerRef:
+          name: example-private-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+    clientTrafficPolicy:
+      enabled: true
+      tls:
+        minVersion: "1.3"
+        maxVersion: "1.3"
+    proxy:
+      service:
+        name: gateway-private
+        type: LoadBalancer
+        clusterIP: 10.0.0.60
+        loadBalancerClass: example.com/network-load-balancer
+        loadBalancerSourceRanges:
+          - 10.0.0.0/14
+        annotations:
+          example.com/load-balancer-scheme: internal
+      shutdown:
+        healthCheckFailureDelay: 5s
+      backendTLS:
+        clientCertificateRef:
+          name: gateway-client-cert
+    networkPolicy:
+      enabled: true
+      ingress:
+        - from:
+            - ipBlock:
+                cidr: 10.0.0.0/14
+          ports:
+            - port: 10443
+              protocol: TCP
+      egress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: example-store
+          ports:
+            - port: 8200
+              protocol: TCP

@@ -1,0 +1,5 @@
+# A ListenerSet with no Gateway to attach to.
+groups:
+  argocd:
+    domains: [a.example.com]
+    certificate: {issuerRef: {name: ca}}
