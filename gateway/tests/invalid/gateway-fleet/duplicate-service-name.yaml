@@ -1,0 +1,18 @@
+# Two exposures whose proxies would create one Service.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    proxy:
+      service: {name: gateway}
+    health:
+      hostname: a.example.com
+      certificate: {issuerRef: {name: ca}}
+  private:
+    class: internal
+    proxy:
+      service: {name: gateway}
+    health:
+      hostname: b.example.com
+      certificate: {issuerRef: {name: ca}}

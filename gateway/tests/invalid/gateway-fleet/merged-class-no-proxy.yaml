@@ -1,0 +1,7 @@
+# A merged class with no proxy: nothing would create the one proxy every
+# Gateway of the class needs.
+classes:
+  internal:
+    mergeGateways: true
+    proxy:
+      enabled: false

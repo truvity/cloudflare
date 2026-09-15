@@ -1,0 +1,130 @@
+{{- /*
+Render-time validation. This file emits no objects; it fails the render
+when two entries would collide or when a value cannot mean what it says.
+
+A Helm schema can check one value at a time. The mistakes that actually
+break an estate are relational — two exposures claiming one Service name,
+an exposure asking for its own proxy on a merged class, a Certificate
+writing another one's Secret — so they are checked here, once, against
+registries built across the whole release.
+*/ -}}
+
+{{- $classes := dict -}}
+{{- range $name, $spec := .Values.classes }}
+{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $c.enabled }}
+{{- $_ := set $classes $name $c }}
+{{- if and $c.mergeGateways (not $c.proxy.enabled) }}
+{{- fail (printf "classes.%s: mergeGateways needs proxy.enabled — a merged class has exactly one proxy and nothing else would create it" $name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /* Registries: identity → first claimant, for every kind this chart owns. */ -}}
+{{- $objects := dict -}}
+{{- $services := dict -}}
+{{- $claim := dict -}}
+
+{{- range $name, $spec := .Values.classes }}
+{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if and $c.enabled $c.proxy.enabled }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "EnvoyProxy" "namespace" $c.namespace "name" $c.proxy.name "by" (printf "classes.%s" $name)) }}
+{{- include "gateway.claim" (dict "registry" $services "kind" "Service" "namespace" $c.namespace "name" $c.proxy.service.name "by" (printf "classes.%s" $name)) }}
+{{- if $c.proxy.service.clusterIP }}
+{{- if not (regexMatch "^(None|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})$" $c.proxy.service.clusterIP) }}
+{{- fail (printf "classes.%s.proxy.service.clusterIP %q is not an IPv4 address or None" $name $c.proxy.service.clusterIP) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- range $name, $spec := .Values.exposures }}
+{{- $raw := $spec | default dict }}
+{{- $className := $raw.class | default "" }}
+{{- if not $className }}
+{{- fail (printf "exposures.%s.class is required — an exposure is a Gateway of exactly one class" $name) }}
+{{- end }}
+{{- if not (hasKey $classes $className) }}
+{{- fail (printf "exposures.%s.class %q is not an enabled entry of classes" $name $className) }}
+{{- end }}
+{{- $c := get $classes $className }}
+{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- if $e.enabled }}
+
+{{- /* A merged class collapses every Gateway onto the class proxy, so a
+       per-exposure proxy block would be silently dropped. Say so instead. */ -}}
+{{- if and $c.mergeGateways ($raw.proxy | default dict) }}
+{{- fail (printf "exposures.%s sets proxy, but classes.%s has mergeGateways: true — a merged class has one proxy for every exposure; move the settings to classes.%s.proxy or turn mergeGateways off" $name $className $className) }}
+{{- end }}
+
+{{- $host := $e.health.hostname }}
+{{- if not $host }}
+{{- fail (printf "exposures.%s.health.hostname is required — a Gateway with no listener has no proxies" $name) }}
+{{- end }}
+{{- if hasPrefix "*" $host }}
+{{- fail (printf "exposures.%s.health.hostname %q is a wildcard — the health listener is an exact host so it can never shadow a group's listener" $name $host) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" $host) }}
+{{- fail (printf "exposures.%s.health.hostname %q is not a DNS name" $name $host) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $e.gatewayName) }}
+{{- fail (printf "exposures.%s.gatewayName %q is not a DNS label" $name $e.gatewayName) }}
+{{- end }}
+
+{{- $from := $e.allowedListeners.namespaces.from }}
+{{- if not (has $from (list "None" "Same" "All" "Selector")) }}
+{{- fail (printf "exposures.%s.allowedListeners.namespaces.from %q must be None, Same, All or Selector" $name $from) }}
+{{- end }}
+{{- if eq $from "Selector" }}
+{{- $sel := $e.allowedListeners.namespaces.selector | default dict }}
+{{- if and (eq (len ($sel.matchLabels | default dict)) 0) (eq (len ($sel.matchExpressions | default list)) 0) }}
+{{- fail (printf "exposures.%s.allowedListeners.namespaces.selector needs at least one matchLabels entry or matchExpressions item" $name) }}
+{{- end }}
+{{- end }}
+
+{{- $routeFrom := $e.health.allowedRoutes.namespaces.from }}
+{{- if eq $routeFrom "Selector" }}
+{{- $sel := $e.health.allowedRoutes.namespaces.selector | default dict }}
+{{- if and (eq (len ($sel.matchLabels | default dict)) 0) (eq (len ($sel.matchExpressions | default list)) 0) }}
+{{- fail (printf "exposures.%s.health.allowedRoutes.namespaces.selector needs at least one matchLabels entry or matchExpressions item" $name) }}
+{{- end }}
+{{- end }}
+{{- range $kind := $e.health.allowedRoutes.kinds }}
+{{- if and (eq ($kind.group | default "gateway.networking.k8s.io") "gateway.networking.k8s.io") (has $kind.kind (list "TCPRoute" "TLSRoute" "UDPRoute")) }}
+{{- fail (printf "exposures.%s.health.allowedRoutes kind %s cannot attach to protocol %s" $name $kind.kind $e.health.protocol) }}
+{{- end }}
+{{- end }}
+{{- if $e.health.directResponse.enabled }}
+{{- if not (has $routeFrom (list "Same" "All")) }}
+{{- fail (printf "exposures.%s.health.directResponse needs health.allowedRoutes.namespaces.from Same or All — the route the chart owns lives in %s" $name $e.namespace) }}
+{{- end }}
+{{- end }}
+{{- if and (eq $e.health.protocol "HTTPS") $e.health.certificate.enabled }}
+{{- if not ($e.health.certificate.issuerRef.name | default "") }}
+{{- fail (printf "exposures.%s.health.certificate.issuerRef.name is required — the issuer is the estate's, never the chart's" $name) }}
+{{- end }}
+{{- end }}
+
+{{- $by := printf "exposures.%s" $name }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "Gateway" "namespace" $e.namespace "name" $e.gatewayName "by" $by) }}
+{{- if and (eq $e.health.protocol "HTTPS") $e.health.certificate.enabled }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "Certificate" "namespace" $e.namespace "name" $e.health.certificate.name "by" $by) }}
+{{- include "gateway.claim" (dict "registry" $claim "kind" "Secret" "namespace" $e.namespace "name" $e.health.tls.secretName "by" $by) }}
+{{- end }}
+{{- if $e.clientTrafficPolicy.enabled }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "ClientTrafficPolicy" "namespace" $e.namespace "name" $e.clientTrafficPolicy.name "by" $by) }}
+{{- end }}
+{{- if $e.networkPolicy.enabled }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "NetworkPolicy" "namespace" $e.namespace "name" $e.networkPolicy.name "by" $by) }}
+{{- end }}
+{{- if include "gateway.exposure.ownProxy" (dict "class" $c "exposure" $e) }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "EnvoyProxy" "namespace" $e.namespace "name" $e.proxy.name "by" $by) }}
+{{- include "gateway.claim" (dict "registry" $services "kind" "Service" "namespace" $e.namespace "name" $e.proxy.service.name "by" $by) }}
+{{- if $e.proxy.service.clusterIP }}
+{{- if not (regexMatch "^(None|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})$" $e.proxy.service.clusterIP) }}
+{{- fail (printf "exposures.%s.proxy.service.clusterIP %q is not an IPv4 address or None" $name $e.proxy.service.clusterIP) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

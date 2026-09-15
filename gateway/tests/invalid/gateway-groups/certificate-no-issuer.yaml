@@ -1,0 +1,6 @@
+# A Certificate with no issuer never becomes a Secret.
+defaults:
+  parent: {name: public}
+groups:
+  argocd:
+    domains: [a.example.com]

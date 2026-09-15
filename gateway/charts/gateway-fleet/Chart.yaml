@@ -1,0 +1,25 @@
+apiVersion: v2
+name: gateway-fleet
+description: >-
+  Envoy Gateway, the vendor half: a GatewayClass and EnvoyProxy per class,
+  and one Gateway per exposure (public, private, …) with its health
+  listener, the rule for which ListenerSets may attach, a baseline
+  ClientTrafficPolicy and a NetworkPolicy. On a split class each exposure
+  brings its own proxy, so it has its own Service and failure domain. The
+  controller itself is upstream's chart; project hostnames are ListenerSets
+  from the gateway-groups chart.
+type: application
+# Placeholder: the git tag is the sole version authority. The release
+# workflow stamps both fields from the tag (truvity/ci-workflows
+# release-public.yaml).
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/truvity/envoy-gateway-fleet
+sources:
+  - https://github.com/truvity/envoy-gateway-fleet
+keywords:
+  - envoy-gateway
+  - gateway-api
+maintainers:
+  - name: Truvity
+    url: https://github.com/truvity

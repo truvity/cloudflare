@@ -1,7 +1,0 @@
-fleets:
-  internal:
-    listeners:
-      wildcard:
-        hostname: "*.com"
-        allowWildcard: true
-        certificate: {enabled: false}

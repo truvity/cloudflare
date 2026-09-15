@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gateway-groups values",
+  "description": "An unknown key is an error, not a silent no-op: a typo in a group's values would otherwise render a listener that quietly serves something else.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object",
+      "description": "Helm's shared values. Unused by this chart; allowed so a parent chart can set it."
+    },
+    "commonAnnotations": { "$ref": "#/definitions/stringMap" },
+    "defaults": { "$ref": "#/definitions/groupCommon" },
+    "groups": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/group" }
+    }
+  },
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "labelSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchLabels": { "$ref": "#/definitions/stringMap" },
+        "matchExpressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "operator"],
+            "properties": {
+              "key": { "type": "string" },
+              "operator": { "type": "string", "enum": ["In", "NotIn", "Exists", "DoesNotExist"] },
+              "values": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "labels": { "$ref": "#/definitions/stringMap" },
+        "duration": { "type": "string" },
+        "renewBefore": { "type": "string" },
+        "privateKey": { "type": "object" },
+        "usages": { "type": "array", "items": { "type": "string" } },
+        "issuerRef": { "type": "object" }
+      }
+    },
+    "allowedRoutes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespaces": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "string", "enum": ["All", "Same", "Selector"] },
+            "selector": { "$ref": "#/definitions/labelSelector" }
+          }
+        },
+        "kinds": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+              "group": { "type": "string" },
+              "kind": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "parent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "namespace": { "type": "string" }
+      }
+    },
+    "groupCommon": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": { "type": "string" },
+        "parent": { "$ref": "#/definitions/parent" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "protocol": { "type": "string", "enum": ["HTTP", "HTTPS"] },
+        "certificate": { "$ref": "#/definitions/certificate" },
+        "allowedRoutes": { "$ref": "#/definitions/allowedRoutes" }
+      }
+    },
+    "domain": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host"],
+          "properties": {
+            "host": { "type": "string", "minLength": 1 },
+            "listenerName": { "type": "string" },
+            "secretName": { "type": "string" },
+            "certificateName": { "type": "string" },
+            "certificate": { "$ref": "#/definitions/certificate" }
+          }
+        }
+      ]
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "namespace": { "type": "string" },
+        "listenerSetName": { "type": "string" },
+        "parent": { "$ref": "#/definitions/parent" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "labels": { "$ref": "#/definitions/stringMap" },
+        "domains": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/domain" }
+        },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "protocol": { "type": "string", "enum": ["HTTP", "HTTPS"] },
+        "certificate": { "$ref": "#/definitions/certificate" },
+        "allowedRoutes": { "$ref": "#/definitions/allowedRoutes" },
+        "backendTLS": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "name": { "type": "string" },
+            "annotations": { "$ref": "#/definitions/stringMap" },
+            "labels": { "$ref": "#/definitions/stringMap" },
+            "targetRefs": { "type": "array", "items": { "type": "object" } },
+            "validation": { "type": "object" }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "name": { "type": "string" },
+            "annotations": { "$ref": "#/definitions/stringMap" },
+            "namespaces": { "type": "array", "items": { "type": "string" } },
+            "podSelector": { "type": "object" },
+            "from": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "namespace": { "type": "string" },
+                "podLabels": { "$ref": "#/definitions/stringMap" }
+              }
+            },
+            "ports": { "type": "array", "items": { "type": "object" } }
+          }
+        }
+      }
+    }
+  }
+}

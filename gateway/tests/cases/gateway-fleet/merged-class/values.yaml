@@ -1,0 +1,37 @@
+# A merged class: both exposures collapse onto one Deployment and one
+# Service. Cheaper, and the right shape when the exposures do not need
+# separate addresses — neither may then carry its own proxy.
+classes:
+  internal:
+    mergeGateways: true
+    proxy:
+      replicas: 2
+      service:
+        name: gateway-internal
+  customer:
+    # Declared for later: a class with no proxy yet takes no parametersRef.
+    mergeGateways: false
+    proxy:
+      enabled: false
+
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+    networkPolicy:
+      enabled: true
+  private:
+    class: internal
+    health:
+      hostname: gateway-health.internal.example
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io

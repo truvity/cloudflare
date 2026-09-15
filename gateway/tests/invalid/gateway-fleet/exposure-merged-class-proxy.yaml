@@ -1,0 +1,13 @@
+# A per-exposure proxy on a merged class would be silently dropped.
+classes:
+  internal:
+    mergeGateways: true
+exposures:
+  public:
+    class: internal
+    proxy:
+      replicas: 3
+    health:
+      hostname: h.example.com
+      certificate:
+        issuerRef: {name: ca}

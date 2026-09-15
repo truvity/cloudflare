@@ -1,0 +1,6 @@
+# A group that serves nothing should not be declared.
+defaults:
+  parent: {name: public}
+groups:
+  argocd:
+    domains: []

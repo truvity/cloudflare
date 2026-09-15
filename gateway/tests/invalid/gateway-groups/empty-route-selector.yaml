@@ -1,0 +1,11 @@
+# Selector with nothing selected matches every namespace.
+defaults:
+  parent: {name: public}
+  certificate: {issuerRef: {name: ca}}
+groups:
+  argocd:
+    domains: [a.example.com]
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector: {}

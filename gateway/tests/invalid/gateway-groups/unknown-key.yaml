@@ -1,0 +1,6 @@
+# A typo inside a group must fail the render, not be ignored.
+defaults:
+  parent: {name: public}
+groups:
+  argocd:
+    domain: [a.example.com]

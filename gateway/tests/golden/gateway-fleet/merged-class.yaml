@@ -1,0 +1,160 @@
+---
+# Source: gateway-fleet/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-public
+  namespace: envoy-gateway-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy
+      gateway.envoyproxy.io/owning-gatewayclass: internal
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    # xDS to the controller. Structural: without it the proxies never receive
+    # a configuration and the exposure is dark, whatever else is allowed.
+    - to:
+        - podSelector:
+            matchLabels:
+              control-plane: envoy-gateway
+      ports:
+        - port: 18000
+          protocol: TCP
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: private-health-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: private-health-tls
+  dnsNames:
+    - "gateway-health.internal.example"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: public-health-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: public-health-tls
+  dnsNames:
+    - "gateway-health.example.com"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-fleet/templates/class.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: internal-config
+  namespace: envoy-gateway-system
+spec:
+  mergeGateways: true
+  provider:
+    kubernetes:
+      envoyDeployment:
+        replicas: 2
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        name: gateway-internal
+        type: ClusterIP
+    type: Kubernetes
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: private
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: internal
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "gateway-health.internal.example"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: private-health-tls
+      allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: internal
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "gateway-health.example.com"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: public-health-tls
+      allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+
+---
+# Source: gateway-fleet/templates/class.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: customer
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+---
+# Source: gateway-fleet/templates/class.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: internal
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: internal-config
+    namespace: envoy-gateway-system

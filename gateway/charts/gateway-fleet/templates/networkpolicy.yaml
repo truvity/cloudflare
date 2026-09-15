@@ -1,0 +1,50 @@
+{{- range $name, $spec := .Values.exposures }}
+{{- $raw := $spec | default dict }}
+{{- $c := include "gateway.class.resolve" (dict "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- if and $e.enabled $c.enabled $e.networkPolicy.enabled }}
+{{- $np := $e.networkPolicy }}
+---
+{{- /* The pod selector follows the class's merge mode: Envoy Gateway labels a
+       merged fleet by owning-gatewayclass and a split one by owning-gateway.
+       On a merged class two exposures select the same pods, and the policies
+       union — which is correct, because those pods serve both. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $np.name }}
+  namespace: {{ $e.namespace }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $np.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "gateway.podSelector" (dict "class" $c "exposure" $e) | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- with $np.ingress }}
+  ingress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if or $np.xds.enabled $np.egress }}
+  egress:
+    {{- if $np.xds.enabled }}
+    # xDS to the controller. Structural: without it the proxies never receive
+    # a configuration and the exposure is dark, whatever else is allowed.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $np.xds.controllerPodLabels | nindent 14 }}
+      ports:
+        - port: {{ $np.xds.port }}
+          protocol: TCP
+    {{- end }}
+    {{- with $np.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

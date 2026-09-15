@@ -1,0 +1,6 @@
+# A Gateway with no listener has no proxies.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal

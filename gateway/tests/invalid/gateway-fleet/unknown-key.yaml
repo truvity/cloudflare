@@ -1,0 +1,8 @@
+# A typo inside an exposure must fail the render, not be ignored.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    helth:
+      hostname: h.example.com

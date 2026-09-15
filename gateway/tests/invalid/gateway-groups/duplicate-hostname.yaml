@@ -1,0 +1,10 @@
+# Two groups claiming one hostname on one exposure: a listener conflict
+# that takes both down.
+defaults:
+  parent: {name: public}
+  certificate: {issuerRef: {name: ca}}
+groups:
+  one:
+    domains: [shared.example.com]
+  two:
+    domains: [shared.example.com]

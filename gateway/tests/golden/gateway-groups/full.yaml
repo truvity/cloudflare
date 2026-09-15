@@ -1,0 +1,256 @@
+---
+# Source: gateway-groups/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-store
+  namespace: example-store
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: store
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: envoy
+              gateway.envoyproxy.io/owning-gateway-name: private
+      ports:
+        - port: 8200
+          protocol: TCP
+
+---
+# Source: gateway-groups/templates/backendtlspolicy.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: store
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: store
+      sectionName: https
+  validation:
+    caCertificateRefs:
+    - group: ""
+      kind: ConfigMap
+      name: example-trust-bundle
+    hostname: store.example-store.svc
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-example-com-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  secretName: argocd-example-com-tls
+  dnsNames:
+    - "argocd.example.com"
+  duration: 720h
+  renewBefore: 240h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-legacy-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  secretName: argocd-legacy-tls
+  dnsNames:
+    - "argocd.old.example.com"
+  duration: 720h
+  renewBefore: 240h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-dev-example-com-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  secretName: wildcard-dev-example-com-tls
+  dnsNames:
+    - "*.dev.example.com"
+  duration: 720h
+  renewBefore: 240h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: store-internal-example-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  secretName: store-internal-example-tls
+  dnsNames:
+    - "store.internal.example"
+  duration: 720h
+  renewBefore: 240h
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-private-ca
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: argocd
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant-argocd: "true"
+      hostname: argocd.example.com
+      name: argocd-example-com
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: argocd-example-com-tls
+        mode: Terminate
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant-argocd: "true"
+      hostname: argocd.old.example.com
+      name: legacy
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: argocd-legacy-tls
+        mode: Terminate
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: shared
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              example.com/tenant: "true"
+      hostname: '*.dev.example.com'
+      name: wildcard-dev-example-com
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: wildcard-dev-example-com-tls
+        mode: Terminate
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: store
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: private
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant-store: "true"
+      hostname: store.internal.example
+      name: store-internal-example
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: store-internal-example-tls
+        mode: Terminate

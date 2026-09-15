@@ -1,29 +1,32 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
+charts := "gateway-fleet gateway-groups"
+
 # Lint every chart.
-# The schema is part of the lint: an unknown key — top level or inside a
-# fleet — must fail the render, not be silently ignored.
+#
+# The schema is part of the lint: an unknown key must fail the render, not
+# be silently ignored. Everything relational — two exposures claiming one
+# name, a group claiming another group's hostname — is checked by the
+# chart's own render-time validation, and every rule has a fixture under
+# tests/invalid/<chart>/ that must fail.
 lint:
-    helm lint charts/envoy-gateway-fleet
-    ! helm template x charts/envoy-gateway-fleet --set bogusKey=1 >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.bogus=1 >/dev/null 2>&1
-    helm template x charts/envoy-gateway-fleet --set fleets.internal.envoyProxy.enabled=false >/dev/null
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=gateway.example.com --set fleets.internal.listeners.test.bogus=1 >/dev/null 2>&1
-    for values in tests/invalid/*.yaml; do ! helm template invalid charts/envoy-gateway-fleet -f "$values" >/dev/null 2>&1 || exit 1; done
-    ! helm template x charts/envoy-gateway-fleet --set-string 'fleets.internal.listeners.test.hostname=*.example.com' >/dev/null 2>&1
-    helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.paused.enabled=false >/dev/null
-    helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.single.hostname=gateway --set fleets.internal.listeners.single.certificate.enabled=false >/dev/null
-    helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.explicit-default.hostname=gateway.example.com --set-string fleets.internal.listeners.explicit-default.listenerName= --set fleets.internal.listeners.explicit-default.certificate.enabled=false >/dev/null
-    helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.healthListener.tls.secretName=gateway.tls >/dev/null
-    helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.healthListener.allowedRoutes.kinds[0].kind=HTTPRoute >/dev/null
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname='not a hostname' >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.gatewayName=Invalid_Name >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.gatewayName=internal --set fleets.internal.listeners.test.certificate.enabled=false >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=same.example.com --set fleets.internal.listeners.test.hostname=same.example.com --set fleets.internal.listeners.test.certificate.enabled=false >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.one.hostname=same.example.com --set fleets.internal.listeners.one.certificate.enabled=false --set fleets.internal.listeners.two.hostname=same.example.com --set fleets.internal.listeners.two.certificate.enabled=false >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.one.hostname=one.example.com --set fleets.internal.listeners.one.gatewayName=shared --set fleets.internal.listeners.one.certificate.enabled=false --set fleets.customer.listeners.two.hostname=two.example.com --set fleets.customer.listeners.two.gatewayName=shared --set fleets.customer.listeners.two.certificate.enabled=false >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.clientTrafficPolicy.enabled=true --set-string fleets.internal.listeners.test.clientTrafficPolicy.tls.minVersion=1.3 --set-string fleets.internal.listeners.test.clientTrafficPolicy.tls.maxVersion=1.2 >/dev/null 2>&1
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for chart in {{ charts }}; do
+      helm lint "charts/$chart"
+      # An unknown key at the top level and inside an entry.
+      ! helm template x "charts/$chart" --set bogusKey=1 >/dev/null 2>&1
+      # Every negative fixture must fail; one that renders is a hole in the
+      # validation, which is exactly the kind of hole nobody notices.
+      for values in tests/invalid/"$chart"/*.yaml; do
+        if helm template invalid "charts/$chart" -f "$values" >/dev/null 2>&1; then
+          echo "RENDERED BUT SHOULD HAVE FAILED: $values" >&2
+          exit 1
+        fi
+      done
+      echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
+    done
 
 # Golden renders: render every test case and compare with tests/golden.
 test:
@@ -39,7 +42,9 @@ leak-canary:
 
 # Package every chart locally (the release workflow stamps the version from the tag).
 package:
-    helm package charts/envoy-gateway-fleet --destination dist/
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for chart in {{ charts }}; do helm package "charts/$chart" --destination dist/; done
 
 # Everything CI runs on a pull request.
 check: lint test leak-canary

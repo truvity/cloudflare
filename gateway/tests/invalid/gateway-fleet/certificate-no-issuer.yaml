@@ -1,0 +1,8 @@
+# A Certificate with no issuer never becomes a Secret.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: h.example.com

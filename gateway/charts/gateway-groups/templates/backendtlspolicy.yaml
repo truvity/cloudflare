@@ -1,0 +1,34 @@
+{{- range $name, $spec := .Values.groups }}
+{{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
+{{- if and $g.enabled $g.backendTLS.enabled }}
+{{- $b := $g.backendTLS }}
+{{- if eq (len $b.targetRefs) 0 }}
+{{- fail (printf "groups.%s.backendTLS.targetRefs is empty — a policy that targets nothing re-encrypts nothing" $name) }}
+{{- end }}
+{{- if eq (len ($b.validation | default dict)) 0 }}
+{{- fail (printf "groups.%s.backendTLS.validation is required — TLS to a backend that is never verified is not re-encryption" $name) }}
+{{- end }}
+---
+{{- /* Re-encrypt from the gateway to this group's backend. The gateway
+       presents its own client certificate only if the fleet's proxy was
+       given one (gateway-fleet: proxy.backendTLS.clientCertificateRef). */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: {{ $b.name }}
+  namespace: {{ $g.namespace }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $b.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $b.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    {{- toYaml $b.targetRefs | nindent 4 }}
+  validation:
+    {{- toYaml $b.validation | nindent 4 }}
+{{- end }}
+{{- end }}

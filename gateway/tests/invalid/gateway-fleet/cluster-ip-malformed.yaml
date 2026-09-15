@@ -1,0 +1,12 @@
+# A pinned address that is not an address.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    proxy:
+      service:
+        clusterIP: not-an-address
+    health:
+      hostname: h.example.com
+      certificate: {issuerRef: {name: ca}}

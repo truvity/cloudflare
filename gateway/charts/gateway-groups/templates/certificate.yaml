@@ -1,0 +1,49 @@
+{{- range $name, $spec := .Values.groups }}
+{{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
+{{- if and $g.enabled (eq $g.protocol "HTTPS") }}
+{{- range $entry := $g.domains }}
+{{- $d := include "groups.domain.resolve" (dict "entry" $entry "group" $g) | fromYaml }}
+{{- if $d.certificate.enabled }}
+{{- if not ($d.certificate.issuerRef.name | default "") }}
+{{- fail (printf "groups.%s domain %q has no certificate.issuerRef.name — set defaults.certificate.issuerRef once, or the domain's own; the issuer is the estate's, never the chart's" $name $d.host) }}
+{{- end }}
+---
+{{- /* One certificate per domain, not one per group: a group's domains can
+       be renamed or retired one at a time, and a SAN list cannot. */}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $d.certificateName }}
+  namespace: {{ $g.namespace }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $d.certificate.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $d.certificate.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  secretName: {{ $d.secretName }}
+  dnsNames:
+    - {{ $d.host | quote }}
+  {{- with $d.certificate.duration }}
+  duration: {{ . }}
+  {{- end }}
+  {{- with $d.certificate.renewBefore }}
+  renewBefore: {{ . }}
+  {{- end }}
+  {{- with $d.certificate.privateKey }}
+  privateKey:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $d.certificate.usages }}
+  usages:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  issuerRef:
+    {{- toYaml $d.certificate.issuerRef | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
