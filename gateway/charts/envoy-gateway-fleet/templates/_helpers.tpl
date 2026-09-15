@@ -47,7 +47,11 @@ healthListener:
   allowedRoutes:
     namespaces:
       from: All
+    kinds:
+      - group: gateway.networking.k8s.io
+        kind: HTTPRoute
 listeners: {}
+additionalServices: {}
 networkPolicy:
   enabled: false
   name: ""
@@ -61,6 +65,19 @@ networkPolicy:
   egress: []
 {{- end -}}
 
+{{/* Normalize RouteGroupKind defaults so accepted legacy input renders explicitly. */}}
+{{- define "fleet.allowedRoutes.resolve" -}}
+{{- $routes := deepCopy . -}}
+{{- $kinds := list -}}
+{{- range $kind := $routes.kinds -}}
+{{- $normalized := deepCopy $kind -}}
+{{- if not (hasKey $normalized "group") }}{{- $_ := set $normalized "group" "gateway.networking.k8s.io" }}{{- end -}}
+{{- $kinds = append $kinds $normalized -}}
+{{- end -}}
+{{- $_ := set $routes "kinds" $kinds -}}
+{{- toYaml $routes -}}
+{{- end -}}
+
 {{/*
 Resolve one fleet: defaults ← values. Usage:
   {{- $f := include "fleet.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
@@ -68,6 +85,7 @@ Resolve one fleet: defaults ← values. Usage:
 {{- define "fleet.resolve" -}}
 {{- $d := include "fleet.defaults" . | fromYaml -}}
 {{- $f := mergeOverwrite $d (.spec | default dict) -}}
+{{- $_ := set $f.healthListener "allowedRoutes" (include "fleet.allowedRoutes.resolve" $f.healthListener.allowedRoutes | fromYaml) -}}
 {{- $_ := set $f "name" .name -}}
 {{- if not $f.envoyProxy.name }}{{- $_ := set $f.envoyProxy "name" (printf "%s-config" .name) }}{{- end -}}
 {{- if not $f.envoyProxy.service.name }}{{- $_ := set $f.envoyProxy.service "name" (printf "gateway-%s" .name) }}{{- end -}}
@@ -90,6 +108,7 @@ shared with the consumer registry and supplies deterministic object names.
   "labels" dict
   "listenerName" ""
   "hostname" ""
+  "allowWildcard" false
   "port" 443
   "protocol" "HTTPS"
   "tls" (dict "secretName" "")
@@ -102,20 +121,65 @@ shared with the consumer registry and supplies deterministic object names.
     "privateKey" dict
     "usages" list
     "issuerRef" dict)
-  "allowedRoutes" (dict "namespaces" (dict "from" "Same"))
+  "allowedRoutes" (dict
+    "namespaces" (dict "from" "Same")
+    "kinds" (list (dict "group" "gateway.networking.k8s.io" "kind" "HTTPRoute")))
   "clientTrafficPolicy" (dict
     "enabled" false
     "name" ""
     "annotations" dict
     "labels" dict
-    "tls" (dict "minVersion" "1.3" "maxVersion" "1.3")) -}}
+    "tls" (dict "minVersion" "1.3" "maxVersion" "1.3"))
+  "infraHealth" (dict
+    "enabled" false
+    "routeName" ""
+    "filterName" ""
+    "annotations" dict
+    "labels" dict
+    "path" "/healthz"
+    "statusCode" 200
+    "contentType" "text/plain"
+    "body" "ok") -}}
 {{- $l := mergeOverwrite $d (.spec | default dict) -}}
+{{- $_ := set $l "allowedRoutes" (include "fleet.allowedRoutes.resolve" $l.allowedRoutes | fromYaml) -}}
 {{- if not $l.namespace }}{{- $_ := set $l "namespace" .fleet.namespace }}{{- end -}}
 {{- if not $l.gatewayName }}{{- $_ := set $l "gatewayName" (printf "%s-%s" .fleet.name .name) }}{{- end -}}
 {{- if not $l.listenerName }}{{- $_ := set $l "listenerName" (lower $l.protocol) }}{{- end -}}
 {{- if not $l.tls.secretName }}{{- $_ := set $l.tls "secretName" (printf "%s-tls" $l.gatewayName) }}{{- end -}}
 {{- if not $l.clientTrafficPolicy.name }}{{- $_ := set $l.clientTrafficPolicy "name" (printf "%s-tls" $l.gatewayName) }}{{- end -}}
+{{- $healthName := printf "%s-health" $l.gatewayName | trunc 63 | trimSuffix "-" -}}
+{{- if not $l.infraHealth.routeName }}{{- $_ := set $l.infraHealth "routeName" $healthName }}{{- end -}}
+{{- if not $l.infraHealth.filterName }}{{- $_ := set $l.infraHealth "filterName" $healthName }}{{- end -}}
 {{- toYaml $l -}}
+{{- end -}}
+
+{{/*
+Resolve one chart-owned additional exposure Service. The map key supplies the
+stable default name; the selector is intentionally not configurable.
+*/}}
+{{- define "fleet.additionalService.resolve" -}}
+{{- $d := dict
+  "enabled" true
+  "name" ""
+  "type" "ClusterIP"
+  "loadBalancerClass" ""
+  "annotations" dict
+  "labels" dict
+  "loadBalancerSourceRanges" list
+  "ports" list
+  "externalTrafficPolicy" ""
+  "internalTrafficPolicy" ""
+  "sessionAffinity" ""
+  "sessionAffinityConfig" dict
+  "ipFamilyPolicy" ""
+  "ipFamilies" list
+  "externalIPs" list
+  "loadBalancerIP" ""
+  "healthCheckNodePort" 0
+  "trafficDistribution" "" -}}
+{{- $s := mergeOverwrite $d (.spec | default dict) -}}
+{{- if not $s.name }}{{- $_ := set $s "name" .name }}{{- end -}}
+{{- toYaml $s -}}
 {{- end -}}
 
 {{/*

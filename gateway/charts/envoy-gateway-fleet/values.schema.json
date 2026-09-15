@@ -1,9 +1,113 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "envoy-gateway-fleet chart values",
-  "description": "Strict everywhere the chart defines the shape (a typo fails the render instead of being silently ignored); deliberately open for verbatim passthroughs — filterOrder, extraSpec, NetworkPolicy rules, allowedRoutes, issuerRef, pod scheduling.",
+  "description": "Strict everywhere the chart defines the shape; deliberately open only for documented Kubernetes and controller passthroughs.",
   "type": "object",
   "additionalProperties": false,
+  "definitions": {
+    "labelKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 317,
+      "pattern": "^(([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/)?[A-Za-z0-9]([-.A-Za-z0-9_]{0,61}[A-Za-z0-9])?$"
+    },
+    "labelValue": {
+      "type": "string",
+      "maxLength": 63,
+      "pattern": "^$|^[A-Za-z0-9]([-.A-Za-z0-9_]{0,61}[A-Za-z0-9])?$"
+    },
+    "dnsSubdomain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "pattern": "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$"
+    },
+    "qualifiedName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 317,
+      "pattern": "^(([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/)?[A-Za-z0-9]([-.A-Za-z0-9_]{0,61}[A-Za-z0-9])?$"
+    },
+    "labelSelectorRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "operator"],
+      "properties": {
+        "key": { "$ref": "#/definitions/labelKey" },
+        "operator": { "enum": ["In", "NotIn", "Exists", "DoesNotExist"] },
+        "values": { "type": "array", "items": { "$ref": "#/definitions/labelValue" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "operator": { "enum": ["In", "NotIn"] } } },
+          "then": { "required": ["values"], "properties": { "values": { "minItems": 1 } } },
+          "else": { "properties": { "values": { "maxItems": 0 } } }
+        }
+      ]
+    },
+    "labelSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchLabels": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/definitions/labelKey" },
+          "additionalProperties": { "$ref": "#/definitions/labelValue" }
+        },
+        "matchExpressions": { "type": "array", "items": { "$ref": "#/definitions/labelSelectorRequirement" } }
+      }
+    },
+    "routeKind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "group": { "$ref": "#/definitions/dnsSubdomain" },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 63, "pattern": "^[A-Za-z][A-Za-z0-9]*$" }
+      }
+    },
+    "allowedRoutes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespaces": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from"],
+          "properties": {
+            "from": { "enum": ["Same", "All", "Selector"] },
+            "selector": { "$ref": "#/definitions/labelSelector" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "from": { "const": "Selector" } } },
+              "then": { "required": ["selector"] },
+              "else": { "not": { "required": ["selector"] } }
+            }
+          ]
+        },
+        "kinds": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/routeKind" } }
+      }
+    },
+    "servicePort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 15, "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$" },
+        "protocol": { "enum": ["TCP", "UDP", "SCTP"] },
+        "appProtocol": { "$ref": "#/definitions/qualifiedName" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "targetPort": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1, "maximum": 65535 },
+            { "type": "string", "minLength": 1, "maxLength": 15, "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$" }
+          ]
+        },
+        "nodePort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    }
+  },
   "properties": {
     "global": { "type": "object" },
     "controllerName": { "type": "string", "minLength": 1 },
@@ -90,7 +194,7 @@
                   "issuerRef": { "type": "object" }
                 }
               },
-              "allowedRoutes": { "type": "object" }
+              "allowedRoutes": { "$ref": "#/definitions/allowedRoutes" }
             }
           },
           "listeners": {
@@ -111,6 +215,16 @@
                   },
                   "then": {},
                   "else": { "required": ["hostname"] }
+                },
+                {
+                  "if": {
+                    "required": ["hostname"],
+                    "properties": { "hostname": { "pattern": "^\\*\\." } }
+                  },
+                  "then": {
+                    "required": ["allowWildcard"],
+                    "properties": { "allowWildcard": { "const": true } }
+                  }
                 }
               ],
               "properties": {
@@ -124,8 +238,9 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 253,
-                  "pattern": "^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
+                  "pattern": "^(\\*\\.)?([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
                 },
+                "allowWildcard": { "type": "boolean" },
                 "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
                 "protocol": { "enum": ["HTTP", "HTTPS"] },
                 "tls": {
@@ -149,7 +264,7 @@
                     "issuerRef": { "type": "object" }
                   }
                 },
-                "allowedRoutes": { "type": "object" },
+                "allowedRoutes": { "$ref": "#/definitions/allowedRoutes" },
                 "clientTrafficPolicy": {
                   "type": "object",
                   "additionalProperties": false,
@@ -167,7 +282,70 @@
                       }
                     }
                   }
+                },
+                "infraHealth": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "routeName": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                    "filterName": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                    "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "path": { "type": "string", "minLength": 1, "pattern": "^/[^?#]*$" },
+                    "statusCode": { "type": "integer", "minimum": 100, "maximum": 599 },
+                    "contentType": { "type": "string", "minLength": 1 },
+                    "body": { "type": "string", "maxLength": 4096 }
+                  }
                 }
+              }
+            }
+          },
+          "additionalServices": {
+            "type": "object",
+            "description": "Chart-owned additional exposure Services selecting the fleet Envoy pods; provider settings come entirely from values.",
+            "propertyNames": { "maxLength": 63, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": { "required": ["enabled"], "properties": { "enabled": { "const": false } } },
+                  "then": {},
+                  "else": { "required": ["ports"] }
+                }
+              ],
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "name": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+                "loadBalancerClass": { "$ref": "#/definitions/qualifiedName" },
+                "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+                "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                "loadBalancerSourceRanges": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "ports": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/servicePort" } },
+                "externalTrafficPolicy": { "enum": ["Cluster", "Local"] },
+                "internalTrafficPolicy": { "enum": ["Cluster", "Local"] },
+                "allocateLoadBalancerNodePorts": { "type": "boolean" },
+                "publishNotReadyAddresses": { "type": "boolean" },
+                "sessionAffinity": { "enum": ["None", "ClientIP"] },
+                "sessionAffinityConfig": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "clientIP": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": { "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 } }
+                    }
+                  }
+                },
+                "ipFamilyPolicy": { "enum": ["SingleStack", "PreferDualStack", "RequireDualStack"] },
+                "ipFamilies": { "type": "array", "items": { "enum": ["IPv4", "IPv6"] }, "maxItems": 2, "uniqueItems": true },
+                "externalIPs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "loadBalancerIP": { "type": "string", "minLength": 1 },
+                "healthCheckNodePort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "trafficDistribution": { "enum": ["PreferClose", "PreferSameZone", "PreferSameNode"] }
               }
             }
           },

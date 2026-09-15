@@ -1,33 +1,30 @@
 # envoy-gateway-fleet — the "fleet" half of an Envoy Gateway install.
 #
-# Upstream's gateway-helm chart installs the CONTROLLER. This chart
-# declares what the controller turns into running proxies: one fleet per
-# audience (say `internal` for employees, `customer` for end users), each
-# a GatewayClass whose EnvoyProxy has mergeGateways on — so every
-# per-service Gateway that names the class collapses into ONE Envoy
-# Deployment behind ONE stable Service. Whatever fronts the cluster (a
-# Cloudflare tunnel, a load balancer) targets that Service and never
-# changes when services come and go.
+# Upstream's gateway-helm chart installs the CONTROLLER. This chart owns the
+# central fleet contract: GatewayClass, EnvoyProxy, central Gateways/listeners,
+# Certificates, ClientTrafficPolicies, fleet NetworkPolicies, optional
+# additional exposure Services, and optional infra direct-response health.
+# GitOps supplies values and owns issuer/trust/approval, DNS, and Cloudflare or
+# provider configuration. Project charts own business Routes, Services, and
+# backend policies.
 #
-# Per-service Gateways and HTTPRoutes are NOT here: they live with the
-# service that owns them. This chart is the audience-level contract only.
+# Each fleet is one GatewayClass whose EnvoyProxy has mergeGateways on, so all
+# Gateways naming that class collapse into one Envoy Deployment. The controller
+# creates the stable primary Service; additionalServices can expose the same
+# chart-selected fleet pods without embedding cloud-specific behavior here.
 
 # The Envoy Gateway controller's name, as installed by gateway-helm.
 controllerName: gateway.envoyproxy.io/gatewayclass-controller
 
-# Annotations on every object this chart renders (an Argo CD sync-wave,
-# say). Each object also accepts its own `annotations`, merged on top.
+# Annotations on every object this chart renders. Object annotations override
+# matching common keys.
 commonAnnotations: {}
 
-# One entry per fleet; the key is the GatewayClass name. Every field
-# below is shown with its default — a fleet needs only the ones it
-# changes. A GatewayClass with `envoyProxy.enabled: false` is declared
-# without parametersRef (a class reserved for later, or one whose
-# EnvoyProxy is managed elsewhere).
+# One entry per fleet; the key is the GatewayClass name. Every field below is
+# shown with its default. A GatewayClass with envoyProxy.enabled: false is
+# declared without parametersRef for backward compatibility.
 fleets: {}
 #  internal:
-#    # Namespace for the EnvoyProxy, the health Gateway, its Certificate
-#    # and the NetworkPolicy — the controller's namespace, normally.
 #    namespace: envoy-gateway-system
 #    gatewayClass:
 #      enabled: true
@@ -37,10 +34,9 @@ fleets: {}
 #      name: ""                      # default: <fleet>-config
 #      annotations: {}
 #      mergeGateways: true
-#      # HTTP filter ordering constraints, verbatim EnvoyProxy.spec.filterOrder.
-#      filterOrder: []
+#      filterOrder: []                # verbatim EnvoyProxy.spec.filterOrder
 #      service:
-#        name: ""                    # default: gateway-<fleet>  (the stable name)
+#        name: ""                    # default: gateway-<fleet>
 #        type: ClusterIP
 #        annotations: {}
 #      replicas: 2
@@ -51,24 +47,20 @@ fleets: {}
 #        nodeSelector: {}
 #        affinity: {}
 #        topologySpreadConstraints: []
-#      # Merged over the generated spec last (deep merge) — for any
-#      # EnvoyProxy field not modelled above.
-#      extraSpec: {}
-#    # A catch-all Gateway so the merged fleet always has ≥ 1 listener
-#    # (an empty merged fleet has no Deployment at all). Give it a
-#    # SPECIFIC hostname: a wildcard here conflicts with any wildcard
-#    # listener a per-service Gateway brings (HostnameConflict).
+#      extraSpec: {}                  # deep-merged over generated spec last
+#
+#    # Compatibility bootstrap Gateway: preserves the original API and keeps a
+#    # merged fleet alive with at least one listener. Prefer a specific hostname.
 #    healthListener:
 #      enabled: false
-#      name: ""                      # Gateway name; default: <fleet>
+#      name: ""                      # default: <fleet>
 #      annotations: {}
 #      listenerName: http
 #      hostname: ""                  # required when enabled
 #      port: 443
-#      protocol: HTTPS               # HTTP: no tls block
+#      protocol: HTTPS
 #      tls:
 #        secretName: ""              # default: <gateway>-health-tls
-#      # cert-manager Certificate for that Secret.
 #      certificate:
 #        enabled: true
 #        annotations: {}
@@ -79,11 +71,13 @@ fleets: {}
 #      allowedRoutes:
 #        namespaces:
 #          from: All
-#    # Optional named listener registrations attached to this merged fleet.
-#    # Unlike healthListener, these may use a different namespace and are
-#    # intended for exact consumer-supplied hostnames. The chart creates only
-#    # Gateway/Certificate/ClientTrafficPolicy resources; issuers, trust,
-#    # routes, backends and load balancers remain consumer-owned.
+#        kinds:
+#          - group: gateway.networking.k8s.io
+#            kind: HTTPRoute
+#
+#    # Named central listeners. Exact hostnames are the default. A hostname with
+#    # exactly one leading "*." requires allowWildcard: true; overlapping exact
+#    # and wildcard claims on the same fleet/port are rejected.
 #    listeners: {}
 #    #  private-entrypoint:
 #    #    enabled: true
@@ -92,7 +86,8 @@ fleets: {}
 #    #    annotations: {}
 #    #    labels: {}
 #    #    listenerName: ""            # default: http or https from protocol
-#    #    hostname: ""                # required; exact hostnames only
+#    #    hostname: ""                # required
+#    #    allowWildcard: false
 #    #    port: 443
 #    #    protocol: HTTPS
 #    #    tls:
@@ -103,12 +98,19 @@ fleets: {}
 #    #      labels: {}
 #    #      duration: ""
 #    #      renewBefore: ""
-#    #      privateKey: {}             # verbatim cert-manager privateKey
-#    #      usages: []                 # verbatim cert-manager usages
+#    #      privateKey: {}
+#    #      usages: []
 #    #      issuerRef: {}              # name required when enabled
+#    #    # Strict Gateway API subset. kinds is always explicit after defaults.
 #    #    allowedRoutes:
 #    #      namespaces:
-#    #        from: Same
+#    #        from: Same               # Same | All | Selector
+#    #        # selector:
+#    #        #   matchLabels: {}
+#    #        #   matchExpressions: []
+#    #      kinds:
+#    #        - group: gateway.networking.k8s.io
+#    #          kind: HTTPRoute
 #    #    clientTrafficPolicy:
 #    #      enabled: false
 #    #      name: ""                   # default: <gateway>-tls
@@ -117,10 +119,51 @@ fleets: {}
 #    #      tls:
 #    #        minVersion: "1.3"
 #    #        maxVersion: "1.3"
-#    # The fleet's own NetworkPolicy: who may reach the proxies, and what
-#    # the proxies may reach. Rules are verbatim networking.k8s.io/v1
-#    # NetworkPolicy ingress/egress rules — the chart adds only the xDS
-#    # egress to the controller, because that one is structural.
+#    #    # Optional chart-owned infra health endpoint. This is deliberately
+#    #    # separate from business routes and uses the same listener parentRef.
+#    #    # Requires allowedRoutes.namespaces.from Same or All.
+#    #    infraHealth:
+#    #      enabled: false
+#    #      routeName: ""              # default: <gateway>-health (stable/truncated)
+#    #      filterName: ""             # default: <gateway>-health (stable/truncated)
+#    #      annotations: {}
+#    #      labels: {}
+#    #      path: /healthz             # HTTPRoute Exact match
+#    #      statusCode: 200
+#    #      contentType: text/plain
+#    #      body: ok
+#
+#    # Optional chart-owned Services selecting the same fleet Envoy pods. The
+#    # selector is structural and cannot be overridden; every cloud/provider
+#    # annotation and loadBalancerClass is supplied through values by GitOps.
+#    # The default type is ClusterIP; choose LoadBalancer explicitly.
+#    additionalServices: {}
+#    #  private-load-balancer:
+#    #    enabled: true
+#    #    name: ""                    # default: map key
+#    #    type: LoadBalancer
+#    #    loadBalancerClass: example.com/network-load-balancer
+#    #    annotations: {}
+#    #    labels: {}
+#    #    loadBalancerSourceRanges: []
+#    #    ports:
+#    #      - name: https
+#    #        port: 443
+#    #        protocol: TCP
+#    #        targetPort: 10443
+#    #    externalTrafficPolicy: Local
+#    #    internalTrafficPolicy: Cluster
+#    #    allocateLoadBalancerNodePorts: true
+#    #    publishNotReadyAddresses: false
+#    #    sessionAffinity: None
+#    #    sessionAffinityConfig: {}
+#    #    ipFamilyPolicy: SingleStack
+#    #    ipFamilies: [IPv4]
+#    #    externalIPs: []
+#    #    loadBalancerIP: ""
+#    #    healthCheckNodePort: 32000
+#    #    trafficDistribution: PreferClose
+#
 #    networkPolicy:
 #      enabled: false
 #      name: ""                      # default: envoy-<fleet>

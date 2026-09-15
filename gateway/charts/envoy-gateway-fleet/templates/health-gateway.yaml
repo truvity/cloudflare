@@ -3,6 +3,11 @@
 {{- if $f.healthListener.enabled }}
 {{- $h := $f.healthListener }}
 {{- $host := required (printf "fleets.%s.healthListener.hostname is required" $name) $h.hostname }}
+{{- range $kind := $h.allowedRoutes.kinds }}
+{{- if and (eq $kind.group "gateway.networking.k8s.io") (has $kind.kind (list "TCPRoute" "TLSRoute" "UDPRoute")) }}
+{{- fail (printf "fleets.%s.healthListener.allowedRoutes kind %s is incompatible with protocol %s" $name $kind.kind $h.protocol) }}
+{{- end }}
+{{- end }}
 ---
 # Catch-all listener: the merged fleet always has ≥ 1 listener, so the
 # proxies exist before the first per-service Gateway arrives.

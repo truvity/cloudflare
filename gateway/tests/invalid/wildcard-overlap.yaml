@@ -1,0 +1,10 @@
+fleets:
+  internal:
+    listeners:
+      wildcard:
+        hostname: "*.example.com"
+        allowWildcard: true
+        certificate: {enabled: false}
+      exact:
+        hostname: api.example.com
+        certificate: {enabled: false}

@@ -1,0 +1,14 @@
+fleets:
+  internal:
+    listeners:
+      test:
+        hostname: api.example.com
+        certificate: {enabled: false}
+        allowedRoutes:
+          namespaces:
+            from: Selector
+            selector:
+              matchExpressions:
+                - key: example.com/disabled
+                  operator: DoesNotExist
+                  values: [not-allowed]

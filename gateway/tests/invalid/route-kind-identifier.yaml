@@ -1,0 +1,10 @@
+fleets:
+  internal:
+    listeners:
+      test:
+        hostname: api.example.com
+        certificate: {enabled: false}
+        allowedRoutes:
+          kinds:
+            - group: "not a group"
+              kind: "Not A Kind"

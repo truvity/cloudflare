@@ -139,6 +139,9 @@ spec:
             name: gateway-health-tls
       hostname: "gateway-health.example.com"
       allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
         namespaces:
           from: All
 

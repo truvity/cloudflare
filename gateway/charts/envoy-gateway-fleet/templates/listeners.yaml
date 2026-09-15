@@ -1,6 +1,7 @@
 {{- $identities := dict -}}
 {{- $claims := dict -}}
-{{- $hostnamePattern := `^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` -}}
+{{- $exactHostnamePattern := `^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` -}}
+{{- $wildcardHostnamePattern := `^\*\.([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` -}}
 
 {{/* Reserve identities and claims owned by the compatibility health listener. */}}
 {{- range $fleetName, $fleetSpec := .Values.fleets -}}
@@ -35,8 +36,30 @@
 {{- end }}
 {{- if and (eq $l.protocol "HTTPS") (or (gt (len $l.tls.secretName) 63) (not (regexMatch $dnsLabelPattern $l.tls.secretName))) }}{{- fail (printf "%s.tls.secretName must be a valid DNS label no longer than 63 characters" $path) }}{{- end }}
 {{- if and $l.clientTrafficPolicy.enabled (or (gt (len $l.clientTrafficPolicy.name) 63) (not (regexMatch $dnsLabelPattern $l.clientTrafficPolicy.name))) }}{{- fail (printf "%s.clientTrafficPolicy.name must be a valid DNS label no longer than 63 characters" $path) }}{{- end }}
+{{- if $l.infraHealth.enabled }}
+{{- range $field, $value := dict "routeName" $l.infraHealth.routeName "filterName" $l.infraHealth.filterName }}
+{{- if or (gt (len $value) 63) (not (regexMatch $dnsLabelPattern $value)) }}{{- fail (printf "%s.infraHealth.%s must be a valid DNS label no longer than 63 characters" $path $field) }}{{- end }}
+{{- end }}
+{{- end }}
+
 {{- $host := required (printf "%s.hostname is required" $path) $l.hostname }}
-{{- if not (regexMatch $hostnamePattern $host) }}{{- fail (printf "%s.hostname must be an exact lowercase DNS hostname" $path) }}{{- end }}
+{{- $isWildcard := hasPrefix "*." $host }}
+{{- if $isWildcard }}
+{{- if not $l.allowWildcard }}{{- fail (printf "%s.hostname uses a wildcard but allowWildcard is not true" $path) }}{{- end }}
+{{- if not (regexMatch $wildcardHostnamePattern $host) }}{{- fail (printf "%s.hostname must contain exactly one leading wildcard followed by a specific lowercase DNS suffix" $path) }}{{- end }}
+{{- else if not (regexMatch $exactHostnamePattern $host) }}
+{{- fail (printf "%s.hostname must be an exact lowercase DNS hostname or an explicitly allowed leading wildcard" $path) }}
+{{- end }}
+
+{{- $allowsHTTPRoute := false }}
+{{- range $kind := $l.allowedRoutes.kinds }}
+{{- if and (eq $kind.group "gateway.networking.k8s.io") (eq $kind.kind "HTTPRoute") }}{{- $allowsHTTPRoute = true }}{{- end }}
+{{- if and (eq $kind.group "gateway.networking.k8s.io") (has $kind.kind (list "TCPRoute" "TLSRoute" "UDPRoute")) }}
+{{- fail (printf "%s.allowedRoutes kind %s is incompatible with protocol %s" $path $kind.kind $l.protocol) }}
+{{- end }}
+{{- end }}
+{{- if and $l.infraHealth.enabled (not $allowsHTTPRoute) }}{{- fail (printf "%s.infraHealth requires allowedRoutes to include gateway.networking.k8s.io/HTTPRoute" $path) }}{{- end }}
+{{- if and $l.infraHealth.enabled (eq $l.allowedRoutes.namespaces.from "Selector") }}{{- fail (printf "%s.infraHealth requires allowedRoutes.namespaces.from Same or All so the chart-owned route is guaranteed to attach" $path) }}{{- end }}
 {{- if and (ne $l.protocol "HTTPS") $l.clientTrafficPolicy.enabled }}{{- fail (printf "%s.clientTrafficPolicy requires protocol HTTPS" $path) }}{{- end }}
 {{- $tlsVersions := dict "1.0" 10 "1.1" 11 "1.2" 12 "1.3" 13 }}
 {{- if and $l.clientTrafficPolicy.enabled (gt (index $tlsVersions $l.clientTrafficPolicy.tls.minVersion) (index $tlsVersions $l.clientTrafficPolicy.tls.maxVersion)) }}
@@ -46,9 +69,20 @@
 {{- $gatewayIdentity := printf "Gateway/%s/%s" $l.namespace $l.gatewayName }}
 {{- if hasKey $identities $gatewayIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $gatewayIdentity (index $identities $gatewayIdentity) $path) }}{{- end }}
 {{- $_ := set $identities $gatewayIdentity $path }}
-{{- $claim := printf "%s|%s|%v" $fleetName (lower $host) $l.port }}
-{{- if hasKey $claims $claim }}{{- fail (printf "duplicate listener claim for fleet %s hostname %s port %v (%s and %s)" $fleetName $host $l.port (index $claims $claim) $path) }}{{- end }}
-{{- $_ := set $claims $claim $path }}
+{{- range $existingClaim, $existingPath := $claims }}
+{{- $parts := splitList "|" $existingClaim }}
+{{- $existingFleet := index $parts 0 }}
+{{- $existingHost := index $parts 1 }}
+{{- $existingPort := index $parts 2 }}
+{{- if and (eq $existingFleet $fleetName) (eq $existingPort (printf "%v" $l.port)) }}
+{{- $existingWildcard := hasPrefix "*." $existingHost }}
+{{- $overlap := eq $host $existingHost }}
+{{- if and $isWildcard (hasSuffix (printf ".%s" (trimPrefix "*." $host)) $existingHost) }}{{- $overlap = true }}{{- end }}
+{{- if and $existingWildcard (hasSuffix (printf ".%s" (trimPrefix "*." $existingHost)) $host) }}{{- $overlap = true }}{{- end }}
+{{- if $overlap }}{{- fail (printf "overlapping listener claims for fleet %s port %v: %s (%s) and %s (%s)" $fleetName $l.port $existingHost $existingPath $host $path) }}{{- end }}
+{{- end }}
+{{- end }}
+{{- $_ := set $claims (printf "%s|%s|%v" $fleetName $host $l.port) $path }}
 {{- if and (eq $l.protocol "HTTPS") $l.certificate.enabled }}
 {{- $certificateIdentity := printf "Certificate/%s/%s" $l.namespace $l.tls.secretName }}
 {{- if hasKey $identities $certificateIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $certificateIdentity (index $identities $certificateIdentity) $path) }}{{- end }}
@@ -58,6 +92,14 @@
 {{- $policyIdentity := printf "ClientTrafficPolicy/%s/%s" $l.namespace $l.clientTrafficPolicy.name }}
 {{- if hasKey $identities $policyIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $policyIdentity (index $identities $policyIdentity) $path) }}{{- end }}
 {{- $_ := set $identities $policyIdentity $path }}
+{{- end }}
+{{- if $l.infraHealth.enabled }}
+{{- $routeIdentity := printf "HTTPRoute/%s/%s" $l.namespace $l.infraHealth.routeName }}
+{{- if hasKey $identities $routeIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $routeIdentity (index $identities $routeIdentity) $path) }}{{- end }}
+{{- $_ := set $identities $routeIdentity $path }}
+{{- $filterIdentity := printf "HTTPRouteFilter/%s/%s" $l.namespace $l.infraHealth.filterName }}
+{{- if hasKey $identities $filterIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $filterIdentity (index $identities $filterIdentity) $path) }}{{- end }}
+{{- $_ := set $identities $filterIdentity $path }}
 {{- end }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
@@ -109,7 +151,7 @@ metadata:
 spec:
   secretName: {{ $l.tls.secretName }}
   dnsNames:
-    - {{ $host }}
+    - {{ $host | quote }}
   {{- with $l.certificate.duration }}
   duration: {{ . | quote }}
   {{- end }}
@@ -150,6 +192,62 @@ spec:
       sectionName: {{ $l.listenerName }}
   tls:
     {{- toYaml $l.clientTrafficPolicy.tls | nindent 4 }}
+{{- end }}
+{{- if $l.infraHealth.enabled }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: {{ $l.infraHealth.filterName }}
+  namespace: {{ $l.namespace }}
+  {{- with $l.infraHealth.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $l.infraHealth.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  directResponse:
+    contentType: {{ $l.infraHealth.contentType | quote }}
+    statusCode: {{ $l.infraHealth.statusCode }}
+    body:
+      type: Inline
+      inline: {{ $l.infraHealth.body | quote }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $l.infraHealth.routeName }}
+  namespace: {{ $l.namespace }}
+  {{- with $l.infraHealth.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $l.infraHealth.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $l.gatewayName }}
+      sectionName: {{ $l.listenerName }}
+  hostnames:
+    - {{ $host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: {{ $l.infraHealth.path | quote }}
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: {{ $l.infraHealth.filterName }}
 {{- end }}
 {{- end }}
 {{- end }}
