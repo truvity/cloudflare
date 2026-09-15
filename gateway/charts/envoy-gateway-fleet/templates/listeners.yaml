@@ -1,0 +1,156 @@
+{{- $identities := dict -}}
+{{- $claims := dict -}}
+{{- $hostnamePattern := `^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` -}}
+
+{{/* Reserve identities and claims owned by the compatibility health listener. */}}
+{{- range $fleetName, $fleetSpec := .Values.fleets -}}
+{{- $f := include "fleet.resolve" (dict "name" $fleetName "spec" $fleetSpec) | fromYaml -}}
+{{- if $f.healthListener.enabled -}}
+{{- $h := $f.healthListener -}}
+{{- $gatewayIdentity := printf "Gateway/%s/%s" $f.namespace $h.name -}}
+{{- if hasKey $identities $gatewayIdentity }}{{- fail (printf "duplicate rendered identity %s" $gatewayIdentity) }}{{- end -}}
+{{- $_ := set $identities $gatewayIdentity (printf "fleets.%s.healthListener" $fleetName) -}}
+{{- if and (eq $h.protocol "HTTPS") $h.certificate.enabled -}}
+{{- $certificateIdentity := printf "Certificate/%s/%s" $f.namespace $h.tls.secretName -}}
+{{- if hasKey $identities $certificateIdentity }}{{- fail (printf "duplicate rendered identity %s" $certificateIdentity) }}{{- end -}}
+{{- $_ := set $identities $certificateIdentity (printf "fleets.%s.healthListener" $fleetName) -}}
+{{- end -}}
+{{- if $h.hostname -}}
+{{- $claim := printf "%s|%s|%v" $fleetName (lower $h.hostname) $h.port -}}
+{{- if hasKey $claims $claim }}{{- fail (printf "duplicate listener claim for fleet %s hostname %s port %v" $fleetName $h.hostname $h.port) }}{{- end -}}
+{{- $_ := set $claims $claim (printf "fleets.%s.healthListener" $fleetName) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- range $fleetName, $fleetSpec := .Values.fleets }}
+{{- $f := include "fleet.resolve" (dict "name" $fleetName "spec" $fleetSpec) | fromYaml }}
+{{- range $registrationName, $registrationSpec := $f.listeners }}
+{{- $l := include "fleet.listener.resolve" (dict "fleet" $f "name" $registrationName "spec" $registrationSpec) | fromYaml }}
+{{- if $l.enabled }}
+{{- $path := printf "fleets.%s.listeners.%s" $fleetName $registrationName }}
+{{- $dnsLabelPattern := `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` }}
+{{- range $field, $value := dict "namespace" $l.namespace "gatewayName" $l.gatewayName "listenerName" $l.listenerName }}
+{{- if or (gt (len $value) 63) (not (regexMatch $dnsLabelPattern $value)) }}{{- fail (printf "%s.%s must be a valid DNS label no longer than 63 characters" $path $field) }}{{- end }}
+{{- end }}
+{{- if and (eq $l.protocol "HTTPS") (or (gt (len $l.tls.secretName) 63) (not (regexMatch $dnsLabelPattern $l.tls.secretName))) }}{{- fail (printf "%s.tls.secretName must be a valid DNS label no longer than 63 characters" $path) }}{{- end }}
+{{- if and $l.clientTrafficPolicy.enabled (or (gt (len $l.clientTrafficPolicy.name) 63) (not (regexMatch $dnsLabelPattern $l.clientTrafficPolicy.name))) }}{{- fail (printf "%s.clientTrafficPolicy.name must be a valid DNS label no longer than 63 characters" $path) }}{{- end }}
+{{- $host := required (printf "%s.hostname is required" $path) $l.hostname }}
+{{- if not (regexMatch $hostnamePattern $host) }}{{- fail (printf "%s.hostname must be an exact lowercase DNS hostname" $path) }}{{- end }}
+{{- if and (ne $l.protocol "HTTPS") $l.clientTrafficPolicy.enabled }}{{- fail (printf "%s.clientTrafficPolicy requires protocol HTTPS" $path) }}{{- end }}
+{{- $tlsVersions := dict "1.0" 10 "1.1" 11 "1.2" 12 "1.3" 13 }}
+{{- if and $l.clientTrafficPolicy.enabled (gt (index $tlsVersions $l.clientTrafficPolicy.tls.minVersion) (index $tlsVersions $l.clientTrafficPolicy.tls.maxVersion)) }}
+{{- fail (printf "%s.clientTrafficPolicy.tls.minVersion must not exceed maxVersion" $path) }}
+{{- end }}
+
+{{- $gatewayIdentity := printf "Gateway/%s/%s" $l.namespace $l.gatewayName }}
+{{- if hasKey $identities $gatewayIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $gatewayIdentity (index $identities $gatewayIdentity) $path) }}{{- end }}
+{{- $_ := set $identities $gatewayIdentity $path }}
+{{- $claim := printf "%s|%s|%v" $fleetName (lower $host) $l.port }}
+{{- if hasKey $claims $claim }}{{- fail (printf "duplicate listener claim for fleet %s hostname %s port %v (%s and %s)" $fleetName $host $l.port (index $claims $claim) $path) }}{{- end }}
+{{- $_ := set $claims $claim $path }}
+{{- if and (eq $l.protocol "HTTPS") $l.certificate.enabled }}
+{{- $certificateIdentity := printf "Certificate/%s/%s" $l.namespace $l.tls.secretName }}
+{{- if hasKey $identities $certificateIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $certificateIdentity (index $identities $certificateIdentity) $path) }}{{- end }}
+{{- $_ := set $identities $certificateIdentity $path }}
+{{- end }}
+{{- if $l.clientTrafficPolicy.enabled }}
+{{- $policyIdentity := printf "ClientTrafficPolicy/%s/%s" $l.namespace $l.clientTrafficPolicy.name }}
+{{- if hasKey $identities $policyIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $policyIdentity (index $identities $policyIdentity) $path) }}{{- end }}
+{{- $_ := set $identities $policyIdentity $path }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $l.gatewayName }}
+  namespace: {{ $l.namespace }}
+  {{- with $l.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $l.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ $fleetName }}
+  listeners:
+    - name: {{ $l.listenerName }}
+      protocol: {{ $l.protocol }}
+      port: {{ $l.port }}
+      {{- if eq $l.protocol "HTTPS" }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: {{ $l.tls.secretName }}
+      {{- end }}
+      hostname: {{ $host | quote }}
+      allowedRoutes:
+        {{- toYaml $l.allowedRoutes | nindent 8 }}
+{{- if and (eq $l.protocol "HTTPS") $l.certificate.enabled }}
+{{- $_ := required (printf "%s.certificate.issuerRef.name is required" $path) $l.certificate.issuerRef.name }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $l.tls.secretName }}
+  namespace: {{ $l.namespace }}
+  {{- with $l.certificate.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $l.certificate.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  secretName: {{ $l.tls.secretName }}
+  dnsNames:
+    - {{ $host }}
+  {{- with $l.certificate.duration }}
+  duration: {{ . | quote }}
+  {{- end }}
+  {{- with $l.certificate.renewBefore }}
+  renewBefore: {{ . | quote }}
+  {{- end }}
+  {{- with $l.certificate.privateKey }}
+  privateKey:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $l.certificate.usages }}
+  usages:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  issuerRef:
+    {{- toYaml $l.certificate.issuerRef | nindent 4 }}
+{{- end }}
+{{- if $l.clientTrafficPolicy.enabled }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $l.clientTrafficPolicy.name }}
+  namespace: {{ $l.namespace }}
+  {{- with $l.clientTrafficPolicy.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "fleet.annotations" (dict "root" $ "extra" $l.clientTrafficPolicy.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $l.gatewayName }}
+      sectionName: {{ $l.listenerName }}
+  tls:
+    {{- toYaml $l.clientTrafficPolicy.tls | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

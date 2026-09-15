@@ -93,6 +93,84 @@
               "allowedRoutes": { "type": "object" }
             }
           },
+          "listeners": {
+            "type": "object",
+            "description": "Named exact listener registrations attached to the merged fleet.",
+            "propertyNames": {
+              "maxLength": 63,
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "required": ["enabled"],
+                    "properties": { "enabled": { "const": false } }
+                  },
+                  "then": {},
+                  "else": { "required": ["hostname"] }
+                }
+              ],
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "namespace": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                "gatewayName": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+                "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                "listenerName": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                "hostname": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 253,
+                  "pattern": "^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\\.)*[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
+                },
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "protocol": { "enum": ["HTTP", "HTTPS"] },
+                "tls": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "secretName": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" }
+                  }
+                },
+                "certificate": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "duration": { "type": "string" },
+                    "renewBefore": { "type": "string" },
+                    "privateKey": { "type": "object" },
+                    "usages": { "type": "array", "items": { "type": "string" } },
+                    "issuerRef": { "type": "object" }
+                  }
+                },
+                "allowedRoutes": { "type": "object" },
+                "clientTrafficPolicy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "name": { "type": "string", "maxLength": 63, "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+                    "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "tls": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "minVersion": { "enum": ["1.0", "1.1", "1.2", "1.3"] },
+                        "maxVersion": { "enum": ["1.0", "1.1", "1.2", "1.3"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "networkPolicy": {
             "type": "object",
             "additionalProperties": false,
