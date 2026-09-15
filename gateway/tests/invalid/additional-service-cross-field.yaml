@@ -4,4 +4,4 @@ fleets:
       invalid:
         type: ClusterIP
         loadBalancerClass: example.com/network-load-balancer
-        ports: [{port: 443}]
+        ports: [{port: 443, targetPort: 10443}]

@@ -150,7 +150,7 @@ fleets: {}
 #    #      - name: https
 #    #        port: 443
 #    #        protocol: TCP
-#    #        targetPort: 10443
+#    #        targetPort: 10443       # required: Envoy container port
 #    #    externalTrafficPolicy: Local
 #    #    internalTrafficPolicy: Cluster
 #    #    allocateLoadBalancerNodePorts: true

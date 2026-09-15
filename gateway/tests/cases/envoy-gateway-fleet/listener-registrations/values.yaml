@@ -70,6 +70,10 @@ fleets:
           tls:
             minVersion: "1.3"
             maxVersion: "1.3"
+      wildcard-root:
+        hostname: "*.internal.example.com"
+        allowWildcard: true
+        certificate: {enabled: false}
       wildcard-observability:
         hostname: "*.ops.internal.example.com"
         allowWildcard: true
@@ -86,7 +90,7 @@ fleets:
           enabled: false
         allowedRoutes:
           namespaces:
-            from: All
+            from: Same
         infraHealth:
           enabled: true
           path: /ready

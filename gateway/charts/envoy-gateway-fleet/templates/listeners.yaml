@@ -17,8 +17,8 @@
 {{- $_ := set $identities $certificateIdentity (printf "fleets.%s.healthListener" $fleetName) -}}
 {{- end -}}
 {{- if $h.hostname -}}
-{{- $claim := printf "%s|%s|%v" $fleetName (lower $h.hostname) $h.port -}}
-{{- if hasKey $claims $claim }}{{- fail (printf "duplicate listener claim for fleet %s hostname %s port %v" $fleetName $h.hostname $h.port) }}{{- end -}}
+{{- $claim := printf "%s|%v|%s|%s" $fleetName $h.port $h.protocol (lower $h.hostname) -}}
+{{- if hasKey $claims $claim }}{{- fail (printf "duplicate listener claim for fleet %s port %v protocol %s hostname %s" $fleetName $h.port $h.protocol $h.hostname) }}{{- end -}}
 {{- $_ := set $claims $claim (printf "fleets.%s.healthListener" $fleetName) -}}
 {{- end -}}
 {{- end -}}
@@ -58,8 +58,10 @@
 {{- fail (printf "%s.allowedRoutes kind %s is incompatible with protocol %s" $path $kind.kind $l.protocol) }}
 {{- end }}
 {{- end }}
+{{- $routeSelector := $l.allowedRoutes.namespaces.selector | default dict }}
+{{- if and (eq $l.allowedRoutes.namespaces.from "Selector") (eq (len ($routeSelector.matchLabels | default dict)) 0) (eq (len ($routeSelector.matchExpressions | default list)) 0) }}{{- fail (printf "%s.allowedRoutes.namespaces.selector must include at least one matchLabels entry or matchExpressions item" $path) }}{{- end }}
 {{- if and $l.infraHealth.enabled (not $allowsHTTPRoute) }}{{- fail (printf "%s.infraHealth requires allowedRoutes to include gateway.networking.k8s.io/HTTPRoute" $path) }}{{- end }}
-{{- if and $l.infraHealth.enabled (eq $l.allowedRoutes.namespaces.from "Selector") }}{{- fail (printf "%s.infraHealth requires allowedRoutes.namespaces.from Same or All so the chart-owned route is guaranteed to attach" $path) }}{{- end }}
+{{- if and $l.infraHealth.enabled (ne $l.allowedRoutes.namespaces.from "Same") }}{{- fail (printf "%s.infraHealth requires allowedRoutes.namespaces.from Same so only routes in the chart-owned listener namespace can attach" $path) }}{{- end }}
 {{- if and (ne $l.protocol "HTTPS") $l.clientTrafficPolicy.enabled }}{{- fail (printf "%s.clientTrafficPolicy requires protocol HTTPS" $path) }}{{- end }}
 {{- $tlsVersions := dict "1.0" 10 "1.1" 11 "1.2" 12 "1.3" 13 }}
 {{- if and $l.clientTrafficPolicy.enabled (gt (index $tlsVersions $l.clientTrafficPolicy.tls.minVersion) (index $tlsVersions $l.clientTrafficPolicy.tls.maxVersion)) }}
@@ -69,20 +71,9 @@
 {{- $gatewayIdentity := printf "Gateway/%s/%s" $l.namespace $l.gatewayName }}
 {{- if hasKey $identities $gatewayIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $gatewayIdentity (index $identities $gatewayIdentity) $path) }}{{- end }}
 {{- $_ := set $identities $gatewayIdentity $path }}
-{{- range $existingClaim, $existingPath := $claims }}
-{{- $parts := splitList "|" $existingClaim }}
-{{- $existingFleet := index $parts 0 }}
-{{- $existingHost := index $parts 1 }}
-{{- $existingPort := index $parts 2 }}
-{{- if and (eq $existingFleet $fleetName) (eq $existingPort (printf "%v" $l.port)) }}
-{{- $existingWildcard := hasPrefix "*." $existingHost }}
-{{- $overlap := eq $host $existingHost }}
-{{- if and $isWildcard (hasSuffix (printf ".%s" (trimPrefix "*." $host)) $existingHost) }}{{- $overlap = true }}{{- end }}
-{{- if and $existingWildcard (hasSuffix (printf ".%s" (trimPrefix "*." $existingHost)) $host) }}{{- $overlap = true }}{{- end }}
-{{- if $overlap }}{{- fail (printf "overlapping listener claims for fleet %s port %v: %s (%s) and %s (%s)" $fleetName $l.port $existingHost $existingPath $host $path) }}{{- end }}
-{{- end }}
-{{- end }}
-{{- $_ := set $claims (printf "%s|%s|%v" $fleetName $host $l.port) $path }}
+{{- $claim := printf "%s|%v|%s|%s" $fleetName $l.port $l.protocol (lower $host) }}
+{{- if hasKey $claims $claim }}{{- fail (printf "duplicate listener claim for fleet %s port %v protocol %s hostname %s (%s and %s)" $fleetName $l.port $l.protocol $host (index $claims $claim) $path) }}{{- end }}
+{{- $_ := set $claims $claim $path }}
 {{- if and (eq $l.protocol "HTTPS") $l.certificate.enabled }}
 {{- $certificateIdentity := printf "Certificate/%s/%s" $l.namespace $l.tls.secretName }}
 {{- if hasKey $identities $certificateIdentity }}{{- fail (printf "duplicate rendered identity %s (%s and %s)" $certificateIdentity (index $identities $certificateIdentity) $path) }}{{- end }}

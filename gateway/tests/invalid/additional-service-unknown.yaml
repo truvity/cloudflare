@@ -2,5 +2,5 @@ fleets:
   internal:
     additionalServices:
       private:
-        ports: [{port: 443}]
+        ports: [{port: 443, targetPort: 10443}]
         providerSpecificMagic: true

@@ -5,3 +5,4 @@ fleets:
         ports:
           - name: this-name-is-far-too-long
             port: 443
+            targetPort: 10443

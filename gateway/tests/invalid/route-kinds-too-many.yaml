@@ -1,0 +1,17 @@
+fleets:
+  internal:
+    listeners:
+      test:
+        hostname: api.example.com
+        certificate: {enabled: false}
+        allowedRoutes:
+          kinds:
+            - {group: gateway.networking.k8s.io, kind: HTTPRoute}
+            - {group: gateway.networking.k8s.io, kind: GRPCRoute}
+            - {group: example.com, kind: RouteOne}
+            - {group: example.com, kind: RouteTwo}
+            - {group: example.com, kind: RouteThree}
+            - {group: example.com, kind: RouteFour}
+            - {group: example.com, kind: RouteFive}
+            - {group: example.com, kind: RouteSix}
+            - {group: example.com, kind: RouteSeven}
