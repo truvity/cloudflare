@@ -6,6 +6,8 @@
   "additionalProperties": false,
   "properties": {
     "global": { "type": "object" },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
     "replicaCount": { "type": "integer", "minimum": 0 },
     "image": {
       "type": "object",
@@ -25,7 +27,7 @@
       "additionalProperties": false,
       "properties": {
         "create": { "type": "boolean" },
-        "name": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
         "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
       }
     },
