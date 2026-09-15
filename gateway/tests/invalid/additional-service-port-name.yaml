@@ -1,0 +1,7 @@
+fleets:
+  internal:
+    additionalServices:
+      invalid:
+        ports:
+          - name: this-name-is-far-too-long
+            port: 443

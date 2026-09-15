@@ -8,13 +8,15 @@ lint:
     helm lint charts/envoy-gateway-fleet
     ! helm template x charts/envoy-gateway-fleet --set bogusKey=1 >/dev/null 2>&1
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.bogus=1 >/dev/null 2>&1
-    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.envoyproxy.enabled=false >/dev/null 2>&1
+    helm template x charts/envoy-gateway-fleet --set fleets.internal.envoyProxy.enabled=false >/dev/null
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=gateway.example.com --set fleets.internal.listeners.test.bogus=1 >/dev/null 2>&1
+    for values in tests/invalid/*.yaml; do ! helm template invalid charts/envoy-gateway-fleet -f "$values" >/dev/null 2>&1 || exit 1; done
     ! helm template x charts/envoy-gateway-fleet --set-string 'fleets.internal.listeners.test.hostname=*.example.com' >/dev/null 2>&1
     helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.paused.enabled=false >/dev/null
     helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.single.hostname=gateway --set fleets.internal.listeners.single.certificate.enabled=false >/dev/null
     helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.explicit-default.hostname=gateway.example.com --set-string fleets.internal.listeners.explicit-default.listenerName= --set fleets.internal.listeners.explicit-default.certificate.enabled=false >/dev/null
     helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.healthListener.tls.secretName=gateway.tls >/dev/null
+    helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.healthListener.allowedRoutes.kinds[0].kind=HTTPRoute >/dev/null
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname='not a hostname' >/dev/null 2>&1
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.gatewayName=Invalid_Name >/dev/null 2>&1
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.gatewayName=internal --set fleets.internal.listeners.test.certificate.enabled=false >/dev/null 2>&1

@@ -1,0 +1,10 @@
+fleets:
+  internal:
+    listeners:
+      test:
+        hostname: api.example.com
+        certificate: {enabled: false}
+        allowedRoutes:
+          kinds:
+            - group: gateway.networking.k8s.io
+              kind: TLSRoute

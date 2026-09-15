@@ -1,43 +1,53 @@
 # envoy-gateway-fleet
 
-The "fleet" half of an [Envoy Gateway](https://gateway.envoyproxy.io)
-install, as a Helm chart: per-audience **GatewayClass + EnvoyProxy** with
-`mergeGateways` on, an optional **health listener** (with its cert-manager
-Certificate), optional named exact **listener registrations** (Gateway,
-Certificate, and listener-scoped ClientTrafficPolicy), and the fleet's
-**NetworkPolicy**. Upstream's `gateway-helm` chart installs the controller; this chart declares what the controller
-turns into running proxies.
+The fleet half of an [Envoy Gateway](https://gateway.envoyproxy.io) install.
+For each audience, this Helm chart declares one **GatewayClass + EnvoyProxy**
+with `mergeGateways` enabled, optional central Gateways/listeners and
+Certificates, listener-scoped ClientTrafficPolicies, fleet NetworkPolicy,
+additional exposure Services, and optional infra direct-response health.
+Upstream's `gateway-helm` chart installs the controller.
 
 Published to `oci://ghcr.io/truvity/charts/envoy-gateway-fleet` on every tag.
 
 ## The model
 
-```
-                         ┌─ GatewayClass internal ──▶ EnvoyProxy internal-config ──▶ ONE Deployment, Service gateway-internal
- tunnel / LB ──▶ ........┤
-                         └─ GatewayClass customer ──▶ (EnvoyProxy customer-config) ─▶ ONE Deployment, Service gateway-customer
+```text
+                         ┌─ GatewayClass internal ──▶ EnvoyProxy internal-config ──▶ ONE Deployment
+ tunnel / LB ──▶ ........┤                                                       ├─ Service gateway-internal
+                         └─ central/additional exposure Services ────────────────┘
 
- per-service Gateway (gatewayClassName: internal, its own listener/hostname/TLS) ─┐
- per-service HTTPRoute (parentRef → that Gateway) ────────────────────────────────┴─ merged into the class's fleet
+ central or project Gateway (gatewayClassName: internal) ─┐
+ project HTTPRoute/GRPCRoute (parentRef → Gateway) ────────┴─ merged into the class fleet
 ```
 
 - **One controller, N classes, one fleet per class.** `mergeGateways: true`
-  collapses every Gateway that names the class into a single Envoy
-  Deployment behind a single, stable Service. Whatever fronts the cluster
-  targets that Service and never changes as services come and go.
-- **Audience is structural.** Employees and end users get different
-  classes — different fleets, different NetworkPolicies, different
-  authentication at the edge — and a service may attach to either or both.
-- **Service-owned Gateways are not here.** Named listeners are for centrally
-  registered audience entrypoints. A service still owns its own Gateway,
-  hostname, certificate, and route, and may attach to either fleet.
+  collapses every Gateway naming a class into one Envoy Deployment. The
+  controller creates its stable primary Service.
+- **Audience is structural.** Internal and customer traffic can use separate
+  classes, policies, and exposure while sharing the same chart contract.
+- **Central listeners are additive.** Projects may continue to own complete
+  Gateway/Route stacks. Named registrations exist for centrally managed
+  entrypoints without changing the fleet join key.
+- **Compatibility is retained.** The original `healthListener`, including its
+  permissive legacy Secret name behavior, remains supported.
+
+## Ownership contract
+
+| Owner | Resources / responsibility |
+| --- | --- |
+| This chart | GatewayClass, EnvoyProxy, central Gateways/listeners, cert-manager Certificates, listener ClientTrafficPolicies, fleet NetworkPolicies, additional exposure Services, and enabled infra health HTTPRouteFilter/HTTPRoute resources |
+| GitOps | Chart values; issuer, trust, and approval resources; DNS and Cloudflare/provider configuration; cloud-specific Service annotations and `loadBalancerClass` values |
+| Project charts | Business Routes, Services/backends, and backend policies |
+
+The chart never embeds AWS, Cloudflare, account, DNS-zone, issuer, or trust
+particulars. Additional Services are generic Kubernetes Services: the chart
+owns their immutable fleet selector, while values supply exposure details.
 
 ## Usage
 
 ```yaml
-# values.yaml
 commonAnnotations:
-  argocd.argoproj.io/sync-wave: "65"   # optional: whatever your GitOps tool needs
+  argocd.argoproj.io/sync-wave: "65"
 fleets:
   internal:
     envoyProxy:
@@ -50,46 +60,43 @@ fleets:
       enabled: true
       ingress:
         - from:
-            - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: cloudflare-system}}
-              podSelector: {matchLabels: {app.kubernetes.io/name: cloudflared}}
+            - namespaceSelector:
+                matchLabels: {kubernetes.io/metadata.name: edge-system}
+              podSelector:
+                matchLabels: {app.kubernetes.io/name: edge-tunnel}
           ports: [{port: 10443, protocol: TCP}]
-      egress:
-        - to: [{namespaceSelector: {matchLabels: {tenancy.example.com/tenant: "true"}}}]
   customer:
     envoyProxy:
-      enabled: false   # class declared, fleet later
+      enabled: false
 ```
 
 ```sh
 helm install fleets oci://ghcr.io/truvity/charts/envoy-gateway-fleet --version <tag> -f values.yaml
 ```
 
-Every field and its default is documented in
+Every field and default is documented in
 [`charts/envoy-gateway-fleet/values.yaml`](charts/envoy-gateway-fleet/values.yaml).
-The shape in one paragraph: `fleets.<class>` has a `namespace` (the
-controller's, normally), a `gatewayClass`, an `envoyProxy` (service name
-and type, replicas, PDB, pod scheduling, `filterOrder`, and `extraSpec`
-deep-merged last for anything not modelled), a `healthListener`, optional
-named `listeners`, and a `networkPolicy`.
 
-### Why a health listener
+### Compatibility health listener
 
-A merged fleet with zero listeners has zero proxies — Envoy Gateway
-provisions the Deployment from the Gateways it merges. The health Gateway
-is a catch-all listener so the fleet exists before the first per-service
-Gateway arrives, and stays up after the last one leaves. Give it a
-**specific** hostname: a wildcard here conflicts with any wildcard listener
-a per-service Gateway brings (`HostnameConflict`, and that listener never
-programs).
+A merged fleet with zero listeners has zero proxies. `healthListener` is the
+original bootstrap Gateway that keeps the fleet alive before the first project
+Gateway and after the last one leaves. Its input API and existing exact-hostname
+behavior are preserved. Prefer a specific hostname: a compatibility wildcard
+can overlap other fleet listeners.
 
-### Named listener registrations
+### Named central listeners
 
-`fleets.<class>.listeners` is a map keyed by the caller's stable registration
-name. The Gateway name defaults to `<fleet>-<registration>`. Each entry adds one
-exact-hostname Gateway and can add its cert-manager Certificate and an Envoy
-Gateway ClientTrafficPolicy targeted to that listener.
-Entries may override the fleet namespace, so a central registry can derive
-namespaced listener resources without losing the GatewayClass join key.
+`fleets.<class>.listeners` is keyed by a stable registration name. Gateway name
+defaults to `<fleet>-<registration>`. Each registration renders one Gateway and
+may render its Certificate, listener-scoped ClientTrafficPolicy, and infra
+health direct response.
+
+Exact hostnames are the safe default. A wildcard is accepted only as one
+leading `*.` with `allowWildcard: true`, and it must include a specific DNS
+suffix (for example `*.apps.example.com`, not `*.com`). The chart rejects
+malformed DNS names and overlapping exact/wildcard claims on the same fleet and
+port. This avoids relying on listener specificity to resolve central ownership.
 
 ```yaml
 fleets:
@@ -103,56 +110,124 @@ fleets:
             name: application-server
             kind: Issuer
             group: cert-manager.io
-          duration: 720h
-          renewBefore: 240h
-          privateKey: {algorithm: ECDSA, size: 384, rotationPolicy: Always}
-          usages: [server auth]
+        allowedRoutes:
+          namespaces:
+            from: Selector
+            selector:
+              matchLabels:
+                tenancy.example.com/audience: internal
+                tenancy.example.com/state: active
+              matchExpressions:
+                - key: tenancy.example.com/tier
+                  operator: In
+                  values: [application, platform]
+                - key: tenancy.example.com/suspended
+                  operator: DoesNotExist
+          kinds:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+            - group: gateway.networking.k8s.io
+              kind: GRPCRoute
         clientTrafficPolicy:
           enabled: true
           tls: {minVersion: "1.3", maxVersion: "1.3"}
 ```
 
-The chart intentionally does not create Issuers, trust bundles, approval
-policies, routes, backends, DNS, or cloud load balancers. Those remain with
-the consumer that owns the PKI and infrastructure. Listener hostnames must be
-exact; wildcard registrations are rejected by the values schema and template.
-The chart rejects duplicate rendered Gateway/Certificate/policy identities and
-duplicate hostname/port claims among listener registrations and the compatibility
-health listener. Collisions with service-owned Gateways remain the registry
-owner's responsibility.
+`allowedRoutes` is strict. `namespaces.from` supports `Same`, `All`, and
+`Selector`; selectors support multiple `matchLabels` and Kubernetes
+`matchExpressions`. Route kinds always render explicitly and default to
+`gateway.networking.k8s.io/HTTPRoute`. The chart rejects known incompatible
+TCP/TLS/UDP route kinds on HTTP/HTTPS listeners. It cannot validate live
+Namespace labels, so GitOps must ensure a Selector admits intended namespaces.
 
-Registration keys and explicit `namespace`, `gatewayName`, `tls.secretName`, and
-`clientTrafficPolicy.name` values are Kubernetes object identity. Changing one
-can prune and recreate live listener resources. When adopting existing objects,
-override every name to match the current manifests and move ownership within one
-GitOps reconciliation. A namespaced `Issuer` must already exist in the resolved
-listener namespace before enabling its Certificate.
+Registration keys and explicit namespace, Gateway, Secret, policy, health
+route/filter names are live Kubernetes identities. Change them only with an
+adoption plan. A namespaced Issuer must already exist in the listener namespace
+before enabling its Certificate.
 
-### Why raw NetworkPolicy rules
+### Additional exposure Services
 
-The fleet's policy is the one place where "who may reach the proxies"
-(your tunnel, your tailnet router) and "what the proxies may reach" (every
-backend behind the gateway, DNS) are spelled out, and both lists are
-entirely the estate's. The chart takes them as verbatim
-`networking.k8s.io/v1` rules rather than inventing a schema, and adds only
-the one structural rule — xDS egress to the controller — itself.
+`fleets.<class>.additionalServices` renders generic Services selecting the same
+fleet pods as the controller-created primary Service. Values provide the name,
+type, `loadBalancerClass`, annotations, labels, source ranges, ports, and
+standard Service traffic/IP/session options; the pod selector is chart-owned
+and cannot drift. The safe default type is `ClusterIP`; external exposure must
+be selected explicitly.
+
+```yaml
+fleets:
+  internal:
+    additionalServices:
+      private-network-load-balancer:
+        type: LoadBalancer
+        loadBalancerClass: example.com/network-load-balancer
+        annotations:
+          example.com/exposure: private
+        loadBalancerSourceRanges: [192.0.2.0/24]
+        externalTrafficPolicy: Local
+        ports:
+          - {name: https, port: 443, protocol: TCP, targetPort: 10443}
+```
+
+GitOps supplies real provider classes and annotations. The chart rejects a
+Service name colliding with another chart-owned exposure or a fleet's primary
+controller-created Service.
+
+### Optional infra health direct response
+
+A named listener can enable `infraHealth`. The chart creates an Envoy Gateway
+`HTTPRouteFilter` with an inline direct response and a same-namespace HTTPRoute
+attached to that exact Gateway listener through `sectionName`. Path matching is
+`Exact`; status, content type, and body are explicit. Business routes remain
+outside this chart.
+
+```yaml
+fleets:
+  internal:
+    listeners:
+      status:
+        protocol: HTTP
+        port: 8080
+        hostname: status.internal.example.com
+        certificate: {enabled: false}
+        infraHealth:
+          enabled: true
+          path: /ready
+          statusCode: 200
+          contentType: application/json
+          body: '{"status":"ok"}'
+```
+
+Route and filter names default stably to `<gateway>-health` (deterministically
+truncated to 63 characters) and may be overridden for adoption. Enabling infra
+health requires `HTTPRoute` in `allowedRoutes.kinds`, `namespaces.from` set to
+`Same` or `All` so the chart-owned route is guaranteed to attach, and the Envoy
+Gateway `HTTPRouteFilter` CRD installed by the controller release.
+
+### NetworkPolicy
+
+Ingress and estate-specific egress remain verbatim Kubernetes NetworkPolicy
+rules. The chart adds only structural xDS egress to the controller. This keeps
+backend and estate policy in values without inventing a second policy language.
 
 ## Development
 
 ```sh
-devbox shell        # or direnv
-just check          # lint + golden renders + leak canary
-just golden         # regenerate tests/golden after a template change — review the diff
+devbox shell
+just check          # lint + strict negatives + golden renders + leak canary
+just golden         # regenerate goldens after a reviewed template change
+just package        # validate a local chart archive
 ```
 
 Every `tests/cases/envoy-gateway-fleet/<case>/values.yaml` is rendered and
-compared byte-for-byte with `tests/golden/envoy-gateway-fleet/<case>.yaml`.
+compared byte-for-byte with its golden. `tests/invalid` contains schema and
+semantic rejection cases.
 
 ## Releasing
 
-Push a tag `vX.Y.Z`. The shared release workflow (truvity/ci-workflows)
-creates the GitHub Release and pushes the chart at that version — the
-chart's own `version` field is a placeholder that never moves.
+Push a tag `vX.Y.Z`. The shared release workflow stamps the tag version, creates
+the GitHub Release, and publishes the OCI chart. GitOps adoption should wait for
+that immutable chart release.
 
 ## Licence
 
