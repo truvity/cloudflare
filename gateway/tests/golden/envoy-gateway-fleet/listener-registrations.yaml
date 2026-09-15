@@ -184,7 +184,7 @@ spec:
         - group: gateway.networking.k8s.io
           kind: HTTPRoute
         namespaces:
-          from: All
+          from: Same
 
 ---
 # Source: envoy-gateway-fleet/templates/listeners.yaml
@@ -208,6 +208,35 @@ spec:
             kind: Secret
             name: internal-wildcard-observability-tls
       hostname: "*.ops.internal.example.com"
+      allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+
+---
+# Source: envoy-gateway-fleet/templates/listeners.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: internal-wildcard-root
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/managed-by: fleet-registry
+spec:
+  gatewayClassName: internal
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: internal-wildcard-root-tls
+      hostname: "*.internal.example.com"
       allowedRoutes:
         kinds:
         - group: gateway.networking.k8s.io

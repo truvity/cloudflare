@@ -95,8 +95,9 @@ health direct response.
 Exact hostnames are the safe default. A wildcard is accepted only as one
 leading `*.` with `allowWildcard: true`, and it must include a specific DNS
 suffix (for example `*.apps.example.com`, not `*.com`). The chart rejects
-malformed DNS names and overlapping exact/wildcard claims on the same fleet and
-port. This avoids relying on listener specificity to resolve central ownership.
+malformed DNS names and duplicate `(fleet, port, protocol, hostname)` claims.
+Gateway API specificity remains available: exact hosts win over wildcards, and
+nested wildcards with more labels win over broader wildcards.
 
 ```yaml
 fleets:
@@ -150,7 +151,9 @@ before enabling its Certificate.
 `fleets.<class>.additionalServices` renders generic Services selecting the same
 fleet pods as the controller-created primary Service. Values provide the name,
 type, `loadBalancerClass`, annotations, labels, source ranges, ports, and
-standard Service traffic/IP/session options; the pod selector is chart-owned
+standard Service traffic/IP/session options; every port requires an explicit
+`targetPort` because Envoy container ports need not equal public Service ports.
+The pod selector is chart-owned
 and cannot drift. The safe default type is `ClusterIP`; external exposure must
 be selected explicitly.
 
@@ -201,7 +204,8 @@ fleets:
 Route and filter names default stably to `<gateway>-health` (deterministically
 truncated to 63 characters) and may be overridden for adoption. Enabling infra
 health requires `HTTPRoute` in `allowedRoutes.kinds`, `namespaces.from` set to
-`Same` or `All` so the chart-owned route is guaranteed to attach, and the Envoy
+`Same` so only the chart-controlled listener namespace may attach the
+chart-owned route, and the Envoy
 Gateway `HTTPRouteFilter` CRD installed by the controller release.
 
 ### NetworkPolicy
