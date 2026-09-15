@@ -47,6 +47,7 @@ healthListener:
   allowedRoutes:
     namespaces:
       from: All
+listeners: {}
 networkPolicy:
   enabled: false
   name: ""
@@ -74,6 +75,47 @@ Resolve one fleet: defaults ← values. Usage:
 {{- if not $f.healthListener.tls.secretName }}{{- $_ := set $f.healthListener.tls "secretName" (printf "%s-health-tls" $f.healthListener.name) }}{{- end -}}
 {{- if not $f.networkPolicy.name }}{{- $_ := set $f.networkPolicy "name" (printf "envoy-%s" .name) }}{{- end -}}
 {{- toYaml $f -}}
+{{- end -}}
+
+{{/*
+Resolve one named listener registration. The map key is the stable join key
+shared with the consumer registry and supplies deterministic object names.
+*/}}
+{{- define "fleet.listener.resolve" -}}
+{{- $d := dict
+  "enabled" true
+  "namespace" ""
+  "gatewayName" ""
+  "annotations" dict
+  "labels" dict
+  "listenerName" ""
+  "hostname" ""
+  "port" 443
+  "protocol" "HTTPS"
+  "tls" (dict "secretName" "")
+  "certificate" (dict
+    "enabled" true
+    "annotations" dict
+    "labels" dict
+    "duration" ""
+    "renewBefore" ""
+    "privateKey" dict
+    "usages" list
+    "issuerRef" dict)
+  "allowedRoutes" (dict "namespaces" (dict "from" "Same"))
+  "clientTrafficPolicy" (dict
+    "enabled" false
+    "name" ""
+    "annotations" dict
+    "labels" dict
+    "tls" (dict "minVersion" "1.3" "maxVersion" "1.3")) -}}
+{{- $l := mergeOverwrite $d (.spec | default dict) -}}
+{{- if not $l.namespace }}{{- $_ := set $l "namespace" .fleet.namespace }}{{- end -}}
+{{- if not $l.gatewayName }}{{- $_ := set $l "gatewayName" (printf "%s-%s" .fleet.name .name) }}{{- end -}}
+{{- if not $l.listenerName }}{{- $_ := set $l "listenerName" (lower $l.protocol) }}{{- end -}}
+{{- if not $l.tls.secretName }}{{- $_ := set $l.tls "secretName" (printf "%s-tls" $l.gatewayName) }}{{- end -}}
+{{- if not $l.clientTrafficPolicy.name }}{{- $_ := set $l.clientTrafficPolicy "name" (printf "%s-tls" $l.gatewayName) }}{{- end -}}
+{{- toYaml $l -}}
 {{- end -}}
 
 {{/*

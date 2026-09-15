@@ -9,6 +9,19 @@ lint:
     ! helm template x charts/envoy-gateway-fleet --set bogusKey=1 >/dev/null 2>&1
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.bogus=1 >/dev/null 2>&1
     ! helm template x charts/envoy-gateway-fleet --set fleets.internal.envoyproxy.enabled=false >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=gateway.example.com --set fleets.internal.listeners.test.bogus=1 >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set-string 'fleets.internal.listeners.test.hostname=*.example.com' >/dev/null 2>&1
+    helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.paused.enabled=false >/dev/null
+    helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.single.hostname=gateway --set fleets.internal.listeners.single.certificate.enabled=false >/dev/null
+    helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.explicit-default.hostname=gateway.example.com --set-string fleets.internal.listeners.explicit-default.listenerName= --set fleets.internal.listeners.explicit-default.certificate.enabled=false >/dev/null
+    helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.healthListener.tls.secretName=gateway.tls >/dev/null
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname='not a hostname' >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.gatewayName=Invalid_Name >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=health.example.com --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.gatewayName=internal --set fleets.internal.listeners.test.certificate.enabled=false >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.healthListener.enabled=true --set fleets.internal.healthListener.hostname=same.example.com --set fleets.internal.listeners.test.hostname=same.example.com --set fleets.internal.listeners.test.certificate.enabled=false >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.one.hostname=same.example.com --set fleets.internal.listeners.one.certificate.enabled=false --set fleets.internal.listeners.two.hostname=same.example.com --set fleets.internal.listeners.two.certificate.enabled=false >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.one.hostname=one.example.com --set fleets.internal.listeners.one.gatewayName=shared --set fleets.internal.listeners.one.certificate.enabled=false --set fleets.customer.listeners.two.hostname=two.example.com --set fleets.customer.listeners.two.gatewayName=shared --set fleets.customer.listeners.two.certificate.enabled=false >/dev/null 2>&1
+    ! helm template x charts/envoy-gateway-fleet --set fleets.internal.listeners.test.hostname=test.example.com --set fleets.internal.listeners.test.clientTrafficPolicy.enabled=true --set-string fleets.internal.listeners.test.clientTrafficPolicy.tls.minVersion=1.3 --set-string fleets.internal.listeners.test.clientTrafficPolicy.tls.maxVersion=1.2 >/dev/null 2>&1
 
 # Golden renders: render every test case and compare with tests/golden.
 test:

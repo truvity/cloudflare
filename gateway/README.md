@@ -3,8 +3,9 @@
 The "fleet" half of an [Envoy Gateway](https://gateway.envoyproxy.io)
 install, as a Helm chart: per-audience **GatewayClass + EnvoyProxy** with
 `mergeGateways` on, an optional **health listener** (with its cert-manager
-Certificate), and the fleet's **NetworkPolicy**. Upstream's `gateway-helm`
-chart installs the controller; this chart declares what the controller
+Certificate), optional named exact **listener registrations** (Gateway,
+Certificate, and listener-scoped ClientTrafficPolicy), and the fleet's
+**NetworkPolicy**. Upstream's `gateway-helm` chart installs the controller; this chart declares what the controller
 turns into running proxies.
 
 Published to `oci://ghcr.io/truvity/charts/envoy-gateway-fleet` on every tag.
@@ -27,9 +28,9 @@ Published to `oci://ghcr.io/truvity/charts/envoy-gateway-fleet` on every tag.
 - **Audience is structural.** Employees and end users get different
   classes — different fleets, different NetworkPolicies, different
   authentication at the edge — and a service may attach to either or both.
-- **Per-service Gateways are not here.** They belong with the service that
-  owns them: its listener, its hostname, its certificate, its route. This
-  chart is the audience-level contract only.
+- **Service-owned Gateways are not here.** Named listeners are for centrally
+  registered audience entrypoints. A service still owns its own Gateway,
+  hostname, certificate, and route, and may attach to either fleet.
 
 ## Usage
 
@@ -68,8 +69,8 @@ Every field and its default is documented in
 The shape in one paragraph: `fleets.<class>` has a `namespace` (the
 controller's, normally), a `gatewayClass`, an `envoyProxy` (service name
 and type, replicas, PDB, pod scheduling, `filterOrder`, and `extraSpec`
-deep-merged last for anything not modelled), a `healthListener` and a
-`networkPolicy`.
+deep-merged last for anything not modelled), a `healthListener`, optional
+named `listeners`, and a `networkPolicy`.
 
 ### Why a health listener
 
@@ -80,6 +81,52 @@ Gateway arrives, and stays up after the last one leaves. Give it a
 **specific** hostname: a wildcard here conflicts with any wildcard listener
 a per-service Gateway brings (`HostnameConflict`, and that listener never
 programs).
+
+### Named listener registrations
+
+`fleets.<class>.listeners` is a map keyed by the caller's stable registration
+name. The Gateway name defaults to `<fleet>-<registration>`. Each entry adds one
+exact-hostname Gateway and can add its cert-manager Certificate and an Envoy
+Gateway ClientTrafficPolicy targeted to that listener.
+Entries may override the fleet namespace, so a central registry can derive
+namespaced listener resources without losing the GatewayClass join key.
+
+```yaml
+fleets:
+  internal:
+    listeners:
+      private-entrypoint:
+        namespace: application-gateway
+        hostname: gateway.internal.example.com
+        certificate:
+          issuerRef:
+            name: application-server
+            kind: Issuer
+            group: cert-manager.io
+          duration: 720h
+          renewBefore: 240h
+          privateKey: {algorithm: ECDSA, size: 384, rotationPolicy: Always}
+          usages: [server auth]
+        clientTrafficPolicy:
+          enabled: true
+          tls: {minVersion: "1.3", maxVersion: "1.3"}
+```
+
+The chart intentionally does not create Issuers, trust bundles, approval
+policies, routes, backends, DNS, or cloud load balancers. Those remain with
+the consumer that owns the PKI and infrastructure. Listener hostnames must be
+exact; wildcard registrations are rejected by the values schema and template.
+The chart rejects duplicate rendered Gateway/Certificate/policy identities and
+duplicate hostname/port claims among listener registrations and the compatibility
+health listener. Collisions with service-owned Gateways remain the registry
+owner's responsibility.
+
+Registration keys and explicit `namespace`, `gatewayName`, `tls.secretName`, and
+`clientTrafficPolicy.name` values are Kubernetes object identity. Changing one
+can prune and recreate live listener resources. When adopting existing objects,
+override every name to match the current manifests and move ownership within one
+GitOps reconciliation. A namespaced `Issuer` must already exist in the resolved
+listener namespace before enabling its Certificate.
 
 ### Why raw NetworkPolicy rules
 

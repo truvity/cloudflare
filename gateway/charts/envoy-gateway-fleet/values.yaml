@@ -79,6 +79,44 @@ fleets: {}
 #      allowedRoutes:
 #        namespaces:
 #          from: All
+#    # Optional named listener registrations attached to this merged fleet.
+#    # Unlike healthListener, these may use a different namespace and are
+#    # intended for exact consumer-supplied hostnames. The chart creates only
+#    # Gateway/Certificate/ClientTrafficPolicy resources; issuers, trust,
+#    # routes, backends and load balancers remain consumer-owned.
+#    listeners: {}
+#    #  private-entrypoint:
+#    #    enabled: true
+#    #    namespace: ""               # default: fleet namespace
+#    #    gatewayName: ""             # default: <fleet>-<registration>
+#    #    annotations: {}
+#    #    labels: {}
+#    #    listenerName: ""            # default: http or https from protocol
+#    #    hostname: ""                # required; exact hostnames only
+#    #    port: 443
+#    #    protocol: HTTPS
+#    #    tls:
+#    #      secretName: ""            # default: <gateway>-tls
+#    #    certificate:
+#    #      enabled: true
+#    #      annotations: {}
+#    #      labels: {}
+#    #      duration: ""
+#    #      renewBefore: ""
+#    #      privateKey: {}             # verbatim cert-manager privateKey
+#    #      usages: []                 # verbatim cert-manager usages
+#    #      issuerRef: {}              # name required when enabled
+#    #    allowedRoutes:
+#    #      namespaces:
+#    #        from: Same
+#    #    clientTrafficPolicy:
+#    #      enabled: false
+#    #      name: ""                   # default: <gateway>-tls
+#    #      annotations: {}
+#    #      labels: {}
+#    #      tls:
+#    #        minVersion: "1.3"
+#    #        maxVersion: "1.3"
 #    # The fleet's own NetworkPolicy: who may reach the proxies, and what
 #    # the proxies may reach. Rules are verbatim networking.k8s.io/v1
 #    # NetworkPolicy ingress/egress rules — the chart adds only the xDS
