@@ -146,6 +146,10 @@ func (a *Args) Validate() error {
 		}
 	}
 
+	if err := a.validateIngressOrder(); err != nil {
+		return err
+	}
+
 	if a.DNS != nil {
 		if a.DNS.ZoneID == "" {
 			return fmt.Errorf("tunnel %q: dns.zoneId is required when dns is set", a.Name)
@@ -167,6 +171,73 @@ func (a *Args) Validate() error {
 	}
 
 	return nil
+}
+
+// validateIngressOrder rejects a rule that an earlier rule already
+// catches.
+//
+// This is enforced rather than documented because the failure is
+// invisible. cloudflared takes the FIRST matching rule and uses THAT
+// rule's hostname as the origin SNI, so a shadowed rule does not merely
+// go unused: its traffic is delivered to the shadowing rule's origin,
+// under the shadowing rule's SNI. An origin selecting its certificate by
+// SNI then has no chain for the name, and every host the broad rule
+// swallowed answers 502 — with a configuration that reads correctly and
+// a tunnel Cloudflare reports as healthy.
+//
+// Two properties of Cloudflare's matching make this easy to get wrong:
+// `*` SPANS DOTS, so "*.example.com" catches "a.b.example.com"; and
+// order is significant in a file where nothing else is. Exact hostnames
+// therefore belong before wildcards, and deeper wildcards before
+// broader ones.
+func (a *Args) validateIngressOrder() error {
+	for i, earlier := range a.Ingress {
+		for j := i + 1; j < len(a.Ingress); j++ {
+			later := a.Ingress[j]
+
+			if !hostnameCovers(earlier.Hostname, later.Hostname) {
+				continue
+			}
+
+			if earlier.Hostname == later.Hostname {
+				return fmt.Errorf(
+					"tunnel %q: ingress[%d] and ingress[%d] are both %q — the second is dead, and which origin serves the host depends on which line someone edits",
+					a.Name, i, j, earlier.Hostname)
+			}
+
+			return fmt.Errorf(
+				"tunnel %q: ingress[%d] %q is already caught by ingress[%d] %q — cloudflared takes the first match and uses ITS hostname as the origin SNI, "+
+					"so %q would be served by the wrong origin under the wrong name; put the more specific rule first",
+				a.Name, j, later.Hostname, i, earlier.Hostname, later.Hostname)
+		}
+	}
+
+	return nil
+}
+
+// hostnameCovers reports whether a request matching `candidate` would
+// already have matched `pattern`, using Cloudflare's rules: an exact
+// hostname matches itself, and a leading `*` matches one or more labels
+// (it SPANS DOTS, unlike the Gateway API's single-label wildcard).
+//
+// A candidate that is itself a wildcard is covered when everything it
+// could match is also covered, which is what makes "*.a.example.com"
+// dead behind "*.example.com".
+func hostnameCovers(pattern, candidate string) bool {
+	if pattern == candidate {
+		return true
+	}
+
+	suffix, isWildcard := strings.CutPrefix(pattern, "*.")
+	if !isWildcard {
+		// A bare "*" is Cloudflare's catch-all: nothing after it is
+		// ever reached.
+		return pattern == "*"
+	}
+
+	// "*.example.com" covers "a.example.com" and "a.b.example.com", and
+	// covers "*.a.example.com" for the same reason.
+	return strings.HasSuffix(strings.TrimPrefix(candidate, "*."), "."+suffix)
 }
 
 // Slug renders a hostname as a stable resource-name fragment

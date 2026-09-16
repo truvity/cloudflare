@@ -111,7 +111,7 @@ tun, err := tunnel.New(ctx, "mycluster", tunnel.Args{
     Name:      "mycluster",
     Ingress: []tunnel.Ingress{
         // Exact hosts before wildcards; deeper wildcards before broader
-        // ones — cloudflared's `*` spans dots and first match wins.
+        // ones. Enforced, not merely advised — see below.
         {Hostname: "app.example.com", Service: "https://gateway-internal.envoy-gateway-system.svc:443",
          CAPool: "/etc/cloudflared/certs/ca.pem"},
     },
@@ -123,6 +123,43 @@ tun, err := tunnel.New(ctx, "mycluster", tunnel.Args{
 // tun.Token is a secret Output — store it wherever YOUR estate keeps
 // secrets (a Kubernetes Secret for charts/cloudflared, SSM, SOPS...).
 ```
+
+### Ingress order is checked
+
+`Validate` refuses an ingress list in which an earlier rule already
+catches a later one. The rule is enforced rather than documented because
+the failure is invisible:
+
+- cloudflared takes the **first** matching rule, and
+- uses **that rule's** hostname as the origin SNI.
+
+So a shadowed rule does not merely go unused. Its traffic is delivered to
+the shadowing rule's origin under the shadowing rule's name, and an
+origin that selects its certificate by SNI has no chain for it. Every
+host the broad rule swallowed answers 502 — with a configuration that
+reads correctly and a tunnel Cloudflare reports as healthy.
+
+Two properties make it easy to get wrong: Cloudflare's `*` **spans
+dots**, so `*.example.com` also catches `a.b.example.com`; and order is
+significant in a file where nothing else is.
+
+```yaml
+# refused: the wildcard swallows the exact host below it
+- {hostname: "*.example.com",       service: "https://fleet:443"}
+- {hostname: "app.example.com",     service: "https://app:443"}
+
+# refused: the broad wildcard swallows the deeper one
+- {hostname: "*.example.com",       service: "https://fleet:443"}
+- {hostname: "*.team.example.com",  service: "https://team:443"}
+
+# accepted
+- {hostname: "app.example.com",     service: "https://app:443"}
+- {hostname: "*.team.example.com",  service: "https://team:443"}
+- {hostname: "*.example.com",       service: "https://fleet:443"}
+```
+
+An exact rule never shadows a wildcard, and sibling wildcards never
+shadow each other, so neither is refused.
 
 The contract, in one line each: `Args` is plain yaml-taggable data (a
 consumer unmarshals its own config file into it, `Validate()` checks it);

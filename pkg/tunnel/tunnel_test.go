@@ -148,6 +148,46 @@ func TestValidate(t *testing.T) {
 		{"dns without zone", func(a *Args) { a.DNS.ZoneID = "" }, "dns.zoneId is required"},
 		{"empty dns names", func(a *Args) { a.DNS.Names = nil }, "omit the dns block"},
 		{"certs without zone", func(a *Args) { a.Certificates = &Certificates{ZoneID: "z"} }, "certificates.zoneId and certificates.zone"},
+		{
+			"a wildcard listed before the exact host it swallows",
+			func(a *Args) {
+				a.Ingress = []Ingress{
+					{Hostname: "*.devel.example.com", Service: "https://fleet:443"},
+					{Hostname: "gemaal.devel.example.com", Service: "https://gemaal:443"},
+				}
+			},
+			"already caught by ingress[0]",
+		},
+		{
+			"a broad wildcard listed before a deeper one",
+			func(a *Args) {
+				a.Ingress = []Ingress{
+					{Hostname: "*.devel.example.com", Service: "https://fleet:443"},
+					{Hostname: "*.eudi.devel.example.com", Service: "https://eudi:443"},
+				}
+			},
+			"put the more specific rule first",
+		},
+		{
+			"the same hostname twice",
+			func(a *Args) {
+				a.Ingress = []Ingress{
+					{Hostname: "a.example.com", Service: "https://one:443"},
+					{Hostname: "a.example.com", Service: "https://two:443"},
+				}
+			},
+			"the second is dead",
+		},
+		{
+			"a hand-written catch-all before everything else",
+			func(a *Args) {
+				a.Ingress = []Ingress{
+					{Hostname: "*", Service: "http_status:404"},
+					{Hostname: "a.example.com", Service: "https://one:443"},
+				}
+			},
+			"already caught by ingress[0]",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := baseArgs()
@@ -165,4 +205,43 @@ func TestSecretIsRequired(t *testing.T) {
 		return err
 	}, pulumi.WithMocks("p", "s", &mocks{res: map[string]resource.PropertyMap{}}))
 	require.ErrorContains(t, err, "secret is required")
+}
+
+// The order the estate actually uses has to pass, or the check is a
+// blocker rather than a guard: exact hosts first, then the deeper
+// wildcard, then the broader one.
+func TestCorrectlyOrderedIngressIsAccepted(t *testing.T) {
+	a := baseArgs()
+	a.Ingress = []Ingress{
+		{Hostname: "gemaal.devel.example.com", Service: "https://gemaal:443"},
+		{Hostname: "headlamp.devel.example.com", Service: "https://headlamp:443"},
+		{Hostname: "*.eudi.devel.example.com", Service: "https://fleet:443"},
+		{Hostname: "*.devel.example.com", Service: "https://fleet:443"},
+	}
+
+	require.NoError(t, a.Validate())
+}
+
+// An exact hostname never covers a wildcard: the wildcard matches names
+// the exact rule does not, so it is still reachable.
+func TestAnExactRuleDoesNotShadowAWildcard(t *testing.T) {
+	a := baseArgs()
+	a.Ingress = []Ingress{
+		{Hostname: "a.example.com", Service: "https://one:443"},
+		{Hostname: "*.example.com", Service: "https://fleet:443"},
+	}
+
+	require.NoError(t, a.Validate())
+}
+
+// Sibling wildcards catch disjoint sets of names; neither shadows the
+// other however they are ordered.
+func TestSiblingWildcardsDoNotShadowEachOther(t *testing.T) {
+	a := baseArgs()
+	a.Ingress = []Ingress{
+		{Hostname: "*.eudi.example.com", Service: "https://eudi:443"},
+		{Hostname: "*.dms.example.com", Service: "https://dms:443"},
+	}
+
+	require.NoError(t, a.Validate())
 }
