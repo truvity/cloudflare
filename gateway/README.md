@@ -1,4 +1,4 @@
-# envoy-gateway-fleet
+# gateway
 
 Envoy Gateway for Kubernetes estates, as reusable mechanism: the plane the
 controller manages, split into the half that is vendor-specific and the half

@@ -13,9 +13,9 @@ type: application
 # release-public.yaml).
 version: 0.0.0
 appVersion: 0.0.0
-home: https://github.com/truvity/envoy-gateway-fleet
+home: https://github.com/truvity/gateway
 sources:
-  - https://github.com/truvity/envoy-gateway-fleet
+  - https://github.com/truvity/gateway
 keywords:
   - envoy-gateway
   - gateway-api
