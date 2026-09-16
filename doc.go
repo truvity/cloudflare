@@ -1,4 +1,4 @@
-// Package cloudflare is the module root of github.com/truvity/cloudflare.
+// Package cloudflare is the module root of github.com/truvity/cloudflare/v2.
 //
 // The module ships Cloudflare mechanism for Kubernetes estates:
 //

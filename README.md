@@ -10,7 +10,16 @@ Cloudflare for Kubernetes estates, as reusable mechanism:
 | `pkg/tunnel` | Pulumi Go component: tunnel + DNS records + ingress rules (+ opt-in certificate packs) from a config struct | shipped |
 
 Published to `oci://ghcr.io/truvity/charts/cloudflared` on every tag; the
-Go module is `github.com/truvity/cloudflare`.
+Go module is `github.com/truvity/cloudflare/v2`.
+
+```sh
+go get github.com/truvity/cloudflare/v2@v2.0.1
+```
+
+**v2.0.0 cannot be fetched as a Go module.** Its `go.mod` still declared the
+v1 path, and Go refuses a major-version tag whose module path does not end
+in that major version. The chart published at 2.0.0 is fine. Use v2.0.1 or
+later for Go.
 
 ## The rule that makes this repository public
 
@@ -100,7 +109,7 @@ a deployment tool.
 import (
     "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
     "github.com/pulumi/pulumi-random/sdk/v4/go/random"
-    "github.com/truvity/cloudflare/pkg/tunnel"
+    "github.com/truvity/cloudflare/v2/pkg/tunnel"
 )
 
 provider, _ := cloudflare.NewProvider(ctx, "cf", &cloudflare.ProviderArgs{ApiToken: token})
