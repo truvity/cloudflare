@@ -1,0 +1,12 @@
+# Origins with no check are a setting nobody reads.
+defaults:
+  oidc: {issuer: https://id.example.com}
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs: [{name: console}]
+    oidc:
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com
+    csrf: {mode: "off", additionalOrigins: ["https://portal.example.com"]}

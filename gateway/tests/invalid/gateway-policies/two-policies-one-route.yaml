@@ -1,0 +1,12 @@
+# The controller applies the older of two policies on one target and marks
+# the newer Conflicted: the one just written would do nothing.
+defaults:
+  namespace: example
+  oidc: {issuer: https://id.example.com, clientSecret: {name: console-client}, hostname: console.example.com}
+securityPolicies:
+  console:
+    targetRefs: [{name: console}]
+    oidc: {clientID: console}
+  console-v2:
+    targetRefs: [{name: console}]
+    oidc: {clientID: console-v2}

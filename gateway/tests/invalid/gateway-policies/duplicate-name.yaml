@@ -1,0 +1,12 @@
+defaults:
+  namespace: example
+  oidc: {issuer: https://id.example.com, clientSecret: {name: c}, hostname: console.example.com}
+securityPolicies:
+  a:
+    name: console
+    targetRefs: [{name: one}]
+    oidc: {clientID: a}
+  b:
+    name: console
+    targetRefs: [{name: two}]
+    oidc: {clientID: b}

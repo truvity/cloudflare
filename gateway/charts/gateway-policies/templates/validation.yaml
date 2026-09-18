@@ -1,0 +1,169 @@
+{{- /*
+Render-time validation. This file emits no objects; it fails the render
+when an entry cannot mean what it says.
+
+The schema checks one value at a time. What actually leaves a route open or
+takes one down is a combination: an OIDC policy with no issuer, a groups
+posture with nothing to read the groups from, CSRF enforced on a machine
+route, two policies on one route (the controller keeps the older one and
+the newer silently does nothing). Every rule has a fixture under
+tests/invalid/gateway-policies/ that must fail.
+*/ -}}
+
+{{- $objects := dict -}}
+{{- $targets := dict -}}
+
+{{- /* ---- tlsBaseline ------------------------------------------------ */ -}}
+{{- $b := .Values.tlsBaseline -}}
+{{- if $b.enabled }}
+{{- if not $b.exemptLabel }}
+{{- fail "tlsBaseline.exemptLabel is empty — the opt-out is how a Gateway that needs other TLS says so on itself" }}
+{{- end }}
+{{- include "policies.tlsCheck" (dict "tls" $b.tls "where" "tlsBaseline.tls") }}
+{{- range $ns := ($b.namespaces | default (list $.Release.Namespace)) }}
+{{- include "policies.claim" (dict "registry" $objects "kind" "ClientTrafficPolicy" "namespace" $ns "name" $b.name "by" "tlsBaseline") }}
+{{- end }}
+{{- end }}
+
+{{- /* ---- tlsPolicies ------------------------------------------------ */ -}}
+{{- range $key, $spec := .Values.tlsPolicies }}
+{{- $p := include "policies.tlsPolicy.resolve" (dict "key" $key "spec" $spec) | fromYaml }}
+{{- if $p.enabled }}
+{{- $by := printf "tlsPolicies.%s" $key }}
+{{- if not $p.namespace }}
+{{- fail (printf "%s.namespace is required — a ClientTrafficPolicy attaches only to Gateways in its own namespace" $by) }}
+{{- end }}
+{{- if eq (len $p.targetRefs) 0 }}
+{{- fail (printf "%s.targetRefs is empty — name the Gateway or listener; the baseline is for everything else" $by) }}
+{{- end }}
+{{- range $ref := $p.targetRefs }}
+{{- if not (has $ref.kind (list "Gateway" "ListenerSet")) }}
+{{- fail (printf "%s.targetRefs kind %q — TLS is terminated by a Gateway or a ListenerSet, not a route" $by $ref.kind) }}
+{{- end }}
+{{- end }}
+{{- include "policies.tlsCheck" (dict "tls" $p.tls "where" (printf "%s.tls" $by)) }}
+{{- include "policies.claim" (dict "registry" $objects "kind" "ClientTrafficPolicy" "namespace" $p.namespace "name" $p.name "by" $by) }}
+{{- end }}
+{{- end }}
+
+{{- /* ---- securityPolicies ------------------------------------------- */ -}}
+{{- range $key, $spec := .Values.securityPolicies }}
+{{- $p := include "policies.security.resolve" (dict "key" $key "spec" $spec "root" $) | fromYaml }}
+{{- if $p.enabled }}
+{{- $by := printf "securityPolicies.%s" $key }}
+{{- if not $p.namespace }}
+{{- fail (printf "%s.namespace is required (or defaults.namespace) — a SecurityPolicy attaches only to targets in its own namespace" $by) }}
+{{- end }}
+{{- if eq (len $p.targetRefs) 0 }}
+{{- fail (printf "%s.targetRefs is empty — a policy that targets nothing protects nothing" $by) }}
+{{- end }}
+{{- range $ref := $p.targetRefs }}
+{{- if not $ref.name }}
+{{- fail (printf "%s.targetRefs has an entry with no name" $by) }}
+{{- end }}
+{{- if not (has $ref.kind (list "HTTPRoute" "GRPCRoute" "Gateway" "ListenerSet")) }}
+{{- fail (printf "%s.targetRefs kind %q must be HTTPRoute, GRPCRoute, Gateway or ListenerSet" $by $ref.kind) }}
+{{- end }}
+{{- /* Two SecurityPolicies on one target: the controller applies the older
+       and marks the newer Conflicted, so the one you just wrote does
+       nothing. Refuse it here, where it is still a typo. */}}
+{{- $target := $ref.name }}
+{{- with $ref.sectionName }}{{- $target = printf "%s#%s" $target . }}{{- end }}
+{{- include "policies.claim" (dict "registry" $targets "kind" (printf "%s target" $ref.kind) "namespace" $p.namespace "name" $target "by" $by) }}
+{{- end }}
+
+{{- if eq $p.type "oidc" }}
+{{- $o := $p.oidc }}
+{{- if not $o.issuer }}
+{{- fail (printf "%s.oidc.issuer is required (or defaults.oidc.issuer) — sign-in stays off until it is given an issuer" $by) }}
+{{- end }}
+{{- if not $o.clientID }}
+{{- fail (printf "%s.oidc.clientID is required — the client registered at the issuer" $by) }}
+{{- end }}
+{{- if not $o.clientSecret.name }}
+{{- fail (printf "%s.oidc.clientSecret.name is required — an Opaque Secret with the key client-secret, in %s" $by $p.namespace) }}
+{{- end }}
+{{- if not $o.redirectURL }}
+{{- fail (printf "%s.oidc needs hostname or redirectURL — the callback must equal the redirect registered at the issuer" $by) }}
+{{- end }}
+{{- if not (hasPrefix "/" $o.pathPrefix) }}
+{{- fail (printf "%s.oidc.pathPrefix %q must start with /" $by $o.pathPrefix) }}
+{{- end }}
+{{- if $o.idToken.enabled }}
+{{- if not $o.idToken.remoteJWKS.uri }}
+{{- fail (printf "%s.oidc.idToken.remoteJWKS.uri is required — verifying the ID token needs the issuer's keys" $by) }}
+{{- end }}
+{{- if not $o.idToken.header }}
+{{- fail (printf "%s.oidc.idToken.header is required — the ID token is handed over in it" $by) }}
+{{- end }}
+{{- end }}
+{{- if and (eq $p.authorization.posture "groups") (not $o.idToken.enabled) }}
+{{- fail (printf "%s: authorization.posture groups on an oidc policy needs oidc.idToken.enabled — the rule reads the groups claim from the verified ID token" $by) }}
+{{- end }}
+{{- else }}
+{{- $j := $p.jwt }}
+{{- if not $j.issuer }}
+{{- fail (printf "%s.jwt.issuer is required (or defaults.jwt.issuer) — token validation stays off until it is given an issuer" $by) }}
+{{- end }}
+{{- if eq (len $j.audiences) 0 }}
+{{- fail (printf "%s.jwt.audiences is empty — without an audience every token the issuer ever signed, for anything, is accepted here" $by) }}
+{{- end }}
+{{- if not $j.remoteJWKS.uri }}
+{{- fail (printf "%s.jwt.remoteJWKS.uri is required — the issuer's signing keys" $by) }}
+{{- end }}
+{{- if ne $p.csrf.mode "off" }}
+{{- fail (printf "%s.csrf.mode %q on a jwt policy — a machine client sends no Origin, so CSRF on an API or webhook refuses every mutating request; CSRF belongs on cookie-authenticated (oidc) routes" $by $p.csrf.mode) }}
+{{- end }}
+{{- end }}
+
+{{- if eq $p.authorization.posture "groups" }}
+{{- if eq (len $p.authorization.groups) 0 }}
+{{- fail (printf "%s.authorization.groups is empty — the groups posture denies everyone not in the list, so an empty list is a route nobody can use" $by) }}
+{{- end }}
+{{- if not $p.authorization.claim }}
+{{- fail (printf "%s.authorization.claim is required for the groups posture" $by) }}
+{{- end }}
+{{- end }}
+
+{{- if and (eq $p.csrf.mode "off") $p.csrf.additionalOrigins }}
+{{- fail (printf "%s.csrf.additionalOrigins is set but csrf.mode is off — origins with no check are a setting nobody reads" $by) }}
+{{- end }}
+{{- if eq $p.csrf.mode "shadow" }}
+{{- if gt (int $p.csrf.shadowFraction.numerator) (int $p.csrf.shadowFraction.denominator) }}
+{{- fail (printf "%s.csrf.shadowFraction numerator %v is above its denominator %v" $by $p.csrf.shadowFraction.numerator $p.csrf.shadowFraction.denominator) }}
+{{- end }}
+{{- end }}
+
+{{- include "policies.claim" (dict "registry" $objects "kind" "SecurityPolicy" "namespace" $p.namespace "name" $p.name "by" $by) }}
+{{- end }}
+{{- end }}
+
+{{- /* ---- backendTLSPolicies ----------------------------------------- */ -}}
+{{- range $key, $spec := .Values.backendTLSPolicies }}
+{{- $p := include "policies.backendTLS.resolve" (dict "key" $key "spec" $spec) | fromYaml }}
+{{- if $p.enabled }}
+{{- $by := printf "backendTLSPolicies.%s" $key }}
+{{- if not $p.namespace }}
+{{- fail (printf "%s.namespace is required — the policy lives beside the Service it targets" $by) }}
+{{- end }}
+{{- if eq (len $p.targetRefs) 0 }}
+{{- fail (printf "%s.targetRefs is empty — a policy that targets nothing re-encrypts nothing" $by) }}
+{{- end }}
+{{- if not $p.hostname }}
+{{- fail (printf "%s.hostname is required — it is the SNI sent and the name the certificate must carry" $by) }}
+{{- end }}
+{{- $hasRefs := gt (len $p.caCertificateRefs) 0 }}
+{{- if eq $hasRefs (not (empty $p.wellKnownCACertificates)) }}
+{{- fail (printf "%s needs exactly one of caCertificateRefs or wellKnownCACertificates — TLS to a backend that is never verified is not re-encryption" $by) }}
+{{- end }}
+{{- range $ref := $p.caCertificateRefs }}
+{{- if not (has $ref.kind (list "ConfigMap" "Secret")) }}
+{{- fail (printf "%s.caCertificateRefs kind %q must be ConfigMap or Secret" $by $ref.kind) }}
+{{- end }}
+{{- if not $ref.name }}
+{{- fail (printf "%s.caCertificateRefs has an entry with no name" $by) }}
+{{- end }}
+{{- end }}
+{{- include "policies.claim" (dict "registry" $objects "kind" "BackendTLSPolicy" "namespace" $p.namespace "name" $p.name "by" $by) }}
+{{- end }}
+{{- end }}

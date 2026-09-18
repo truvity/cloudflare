@@ -1,9 +1,12 @@
 # Safety — what can break, and what the charts do about it
 
+The first three sections are `gateway-fleet` and `gateway-groups`;
+[gateway-policies](#gateway-policies) has its own below.
+
 The mistakes that take an edge down are relational: two things claiming
 one name, one hostname or one Secret, a grant that grants everything, a
 proxy that is silently dropped. None of them is visible in a single
-object, and most are not visible until they are live. So both charts
+object, and most are not visible until they are live. So the charts
 check them at render time, and every check has a fixture under
 `tests/invalid/<chart>/` that must fail — `just lint` renders each one and
 refuses a fixture that renders.
@@ -79,3 +82,119 @@ A load balancer keeps sending to an endpoint until its own health check
 fails. `shutdown.healthCheckFailureDelay` fails the proxy's readiness that
 long **before** it starts draining, so the endpoint is removed first and
 in-flight connections are not cut.
+
+## gateway-policies
+
+A security policy fails in two directions, and both are quiet: a route
+that should be protected and is not, and a route that refuses what it
+should serve. Neither shows in the object; both show only in traffic.
+
+### Refused at render time
+
+| Refusal | What it prevents |
+|---|---|
+| an `oidc` entry without an issuer, client id, client Secret name, or a `hostname`/`redirectURL` | a policy rendered half-configured; sign-in is **off until given an issuer**, never guessed |
+| an `http://` issuer, endpoint or redirect (schema) | tokens and codes readable by anyone on the path |
+| a `jwt` entry without an issuer, an audience or a JWKS URI | a machine route that accepts every token the issuer ever signed, for anything |
+| CSRF `shadow` or `enforce` on a `jwt` entry | refusing every mutating request of a machine client, which sends no `Origin` |
+| `additionalOrigins` with CSRF `off`, a shadow fraction above one, an origin that is not an origin (schema) | a setting nobody reads, or one the API server rejects after the rest has applied |
+| the `groups` posture with no groups, or on an `oidc` entry without `idToken.enabled` | a route nobody can use, or a rule with no verified claim to read (the API server refuses a JWT principal with no JWT provider) |
+| `idToken.enabled` without a JWKS URI | an ID token that cannot be verified |
+| two entries targeting one route or listener | the controller applies the **older** policy and marks the newer Conflicted: the one just written silently does nothing |
+| two objects of one kind with one namespace and name — across `tlsBaseline` namespaces, `tlsPolicies`, `securityPolicies`, `backendTLSPolicies` | the second overwriting the first |
+| a `tlsPolicies` entry on a route, or with no target | TLS policy where TLS is not terminated |
+| a TLS floor above its ceiling; an unquoted version (`1.2`, a number); an unknown cipher (schema) | a listener no client can reach, or a version the API server reads as something else |
+| an empty `tlsBaseline.exemptLabel` | a baseline no Gateway can opt out of |
+| a `backendTLSPolicies` entry with no target, no hostname, neither or both of `caCertificateRefs` and `wellKnownCACertificates`, or a CA ref that is not a ConfigMap or Secret | TLS to a backend that is never verified, or verified against nothing |
+| any unknown key (`values.schema.json`) | a misspelt security setting read as "use the default" |
+
+### Defaults chosen because the other one failed
+
+**The TLS floor is on, and selected by the absence of a label.** Without
+a ClientTrafficPolicy Envoy negotiates whatever the client offers,
+including versions RFC 8996 retired. A floor attached by name covers only
+the Gateways someone remembered; one that selects every Gateway without
+the opt-out label covers the next Gateway from its first moment, and the
+exception is written on the exception.
+
+**The cipher list is stated.** The default is Envoy's own ECDHE AEAD
+list, written out so it is visible on the cluster and does not move when a
+proxy upgrade changes Envoy's default.
+
+**CSRF is `shadow` on a sign-in route and refused on a machine route.**
+`SameSite` stops most cross-site posts, but not a same-site attacker, an
+older browser or a cookie already sent; the Origin check does. Turned on
+blind, it refuses every client that sends no `Origin` — so it starts in
+shadow, where it counts and refuses nothing.
+
+**`SameSite` is `Lax`, and always written.** An unset attribute means
+different things in different browsers and versions: a policy nobody wrote
+and nobody can read off the cluster. `Lax` still sends the cookie on a
+top-level link into the application, which is how people arrive.
+
+**Sign-out ends the session at the issuer when `endSessionEndpoint` is
+set.** Clearing only the gateway's cookie leaves the issuer session alive,
+and the next page load signs the person straight back in — which everyone
+reads as "sign-out is broken".
+
+**Every field the API server would default is written out** (a target's
+`group`, a Secret reference's `group` and `kind`, a JWKS backend's `kind`):
+a GitOps controller otherwise diffs its render against the server's
+defaults forever.
+
+### CSRF: shadow, then enforce
+
+Shadow evaluates every mutating request, counts the verdict and lets it
+through. Enforce answers a failing one with `403 Invalid origin`. Move a route to `enforce` once the counters and the logs
+below show that everything it would refuse is something it should.
+
+The counters are Envoy's CSRF filter statistics, one set per listener
+(`http.<connection manager prefix>.csrf.*`; in Prometheus form
+`envoy_http_csrf_*` with the prefix as the `envoy_http_conn_manager_prefix`
+label). They count identically in shadow and in enforce:
+
+| Counter | Counts |
+|---|---|
+| `request_valid` | mutating requests whose source origin matched |
+| `request_invalid` | mutating requests that would be (shadow) or were (enforce) refused |
+| `missing_source_origin` | the subset of those with neither `Origin` nor `Referer` — typically a script, a curl or a webhook, not a browser |
+
+A counter says *how many*, per listener, and on a shared listener many
+routes feed one counter. To say *which* request, add these fields to the
+proxy's access log with `gateway-fleet` (v1.1.0 and newer,
+`proxy.accessLog.extraFields`; see
+[below](#adding-one-access-log-field-does-not-drop-the-others)):
+
+```yaml
+accessLog:
+  extraFields:
+    origin: "%REQ(ORIGIN)%"
+    referer: "%REQ_WITHOUT_QUERY(REFERER)%"   # never log the query: it can carry a code
+    sec-fetch-site: "%REQ(SEC-FETCH-SITE)%"
+    sec-fetch-mode: "%REQ(SEC-FETCH-MODE)%"
+```
+
+With the default fields (`method`, `:authority`, `route_name`,
+`user-agent`, `response_code`, `response_code_details`) every shadow
+decision can be recomputed from one line: a mutating `method` on a route
+with the policy, whose `origin` — or, when empty, `referer` — does not
+match `:authority` or an additional origin, is one the filter would refuse.
+Empty on both is `missing_source_origin`. `sec-fetch-*` are set by browsers
+and nothing else, so they separate a real cross-site form post from a
+script. Once enforced, a refusal is logged with `response_code` 403 and the
+filter's detail in `response_code_details`.
+
+### One Gateway, one Gateway-level ClientTrafficPolicy
+
+A Gateway that already has its own Gateway-level ClientTrafficPolicy (for example `gateway-fleet`'s `exposures.<n>.clientTrafficPolicy`) must
+carry the baseline's opt-out label (`gateway-fleet`: `exposures.<n>.labels`). Two policies at the same level
+are a conflict the controller resolves by age, not by intent. A
+listener-level policy (`tlsPolicies` with a `sectionName`) is more specific
+and wins for its listener without an opt-out.
+
+### `mode: off` is not the string "off"
+
+In YAML 1.1, which Helm reads, an unquoted `off` (like `no`, `yes`, `on`)
+is a boolean. `csrf.mode: off` would reach the chart as `false`; the
+schema refuses it rather than read it as unset and fall back to shadow.
+Quote it: `mode: "off"`.

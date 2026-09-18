@@ -1,0 +1,30 @@
+apiVersion: v2
+name: gateway-policies
+description: >-
+  Envoy Gateway security policies, the half that protects what the other two
+  charts expose: a baseline ClientTrafficPolicy (TLS floor and cipher set)
+  on every Gateway of a namespace unless it opts out by label, stricter TLS
+  per Gateway or listener, a SecurityPolicy per protected route or listener
+  (browser sign-in with OIDC, bearer tokens with JWT, authorization on a
+  groups claim, CSRF in shadow or enforce), and BackendTLSPolicy for
+  backends that present a private-chain certificate. The TLS floor is on by
+  default; nothing authenticates until it is given an issuer.
+type: application
+# Placeholder: the git tag is the sole version authority. The release
+# workflow stamps both fields from the tag (truvity/ci-workflows
+# release-public.yaml).
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/truvity/gateway
+sources:
+  - https://github.com/truvity/gateway
+keywords:
+  - envoy-gateway
+  - gateway-api
+  - oidc
+  - jwt
+  - csrf
+  - tls
+maintainers:
+  - name: Truvity
+    url: https://github.com/truvity

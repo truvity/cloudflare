@@ -1,0 +1,33 @@
+---
+# Source: gateway-policies/templates/tls-baseline.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-baseline
+  namespace: gateways
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: tls-baseline-exempt
+          operator: DoesNotExist
+  tls:
+    minVersion: "1.3"
+
+---
+# Source: gateway-policies/templates/tls-baseline.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-baseline
+  namespace: example-tools
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: tls-baseline-exempt
+          operator: DoesNotExist
+  tls:
+    minVersion: "1.3"

@@ -1,0 +1,25 @@
+{{- range $key, $spec := .Values.securityPolicies }}
+{{- $p := include "policies.security.resolve" (dict "key" $key "spec" $spec "root" $) | fromYaml }}
+{{- if $p.enabled }}
+---
+{{- /* One protected route or listener. oidc: the gateway signs the browser
+       in and keeps the tokens in cookies it encrypts; jwt: every request
+       carries a bearer token. Either way the authorization posture decides
+       who passes, and CSRF guards what a cookie authenticates. */}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $p.name }}
+  namespace: {{ $p.namespace }}
+  {{- with include "policies.annotations" (dict "root" $ "extra" $p.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $p.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- include "policies.security.spec" $p | nindent 2 }}
+{{- end }}
+{{- end }}

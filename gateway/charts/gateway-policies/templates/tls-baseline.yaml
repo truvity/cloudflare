@@ -1,0 +1,31 @@
+{{- $b := .Values.tlsBaseline }}
+{{- if $b.enabled }}
+{{- range $ns := ($b.namespaces | default (list $.Release.Namespace)) }}
+---
+{{- /* The floor for every Gateway in this namespace. Selected by the ABSENCE
+       of a label, so a Gateway created later is covered from its first
+       moment, and one that needs something else says so on itself. */}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $b.name }}
+  namespace: {{ $ns }}
+  {{- with include "policies.annotations" (dict "root" $ "extra" $b.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $b.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: {{ $b.exemptLabel }}
+          operator: DoesNotExist
+  tls:
+    {{- include "policies.tls" $b.tls | nindent 4 }}
+{{- end }}
+{{- end }}

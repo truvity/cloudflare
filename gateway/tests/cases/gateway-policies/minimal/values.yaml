@@ -1,0 +1,3 @@
+# An empty values file: the TLS floor for the release namespace, and
+# nothing else. No issuer, so nothing authenticates.
+{}

@@ -1,0 +1,296 @@
+---
+# Source: gateway-policies/templates/backend-tls-policies.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: store
+  namespace: example-store
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: store
+      sectionName: https
+  validation:
+    hostname: "store.example-store.svc"
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: example-trust-bundle
+
+---
+# Source: gateway-policies/templates/backend-tls-policies.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: vault
+  namespace: example-vault
+  annotations:
+    example.com/sync-wave: "71"
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: vault
+  validation:
+    hostname: "vault.example.internal"
+    wellKnownCACertificates: System
+    subjectAltNames:
+      - hostname: vault.example.internal
+        type: Hostname
+
+---
+# Source: gateway-policies/templates/tls-baseline.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-baseline
+  namespace: gateways
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: tls-baseline-exempt
+          operator: DoesNotExist
+  tls:
+    ciphers:
+    - ECDHE-ECDSA-AES128-GCM-SHA256
+    - ECDHE-RSA-AES128-GCM-SHA256
+    - ECDHE-ECDSA-AES256-GCM-SHA384
+    - ECDHE-RSA-AES256-GCM-SHA384
+    - ECDHE-ECDSA-CHACHA20-POLY1305
+    - ECDHE-RSA-CHACHA20-POLY1305
+    minVersion: "1.2"
+
+---
+# Source: gateway-policies/templates/tls-baseline.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-baseline
+  namespace: example-tools
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: tls-baseline-exempt
+          operator: DoesNotExist
+  tls:
+    ciphers:
+    - ECDHE-ECDSA-AES128-GCM-SHA256
+    - ECDHE-RSA-AES128-GCM-SHA256
+    - ECDHE-ECDSA-AES256-GCM-SHA384
+    - ECDHE-RSA-AES256-GCM-SHA384
+    - ECDHE-ECDSA-CHACHA20-POLY1305
+    - ECDHE-RSA-CHACHA20-POLY1305
+    minVersion: "1.2"
+
+---
+# Source: gateway-policies/templates/tls-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: strict-listener
+  namespace: gateways
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: public
+      sectionName: partners
+  tls:
+    maxVersion: "1.3"
+    minVersion: "1.3"
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: admin
+  namespace: example-admin
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  authorization:
+    defaultAction: Deny
+    rules:
+    - action: Allow
+      name: allow-groups
+      principal:
+        jwt:
+          claims:
+          - name: groups
+            valueType: StringArray
+            values:
+            - example-admins
+          provider: example-id
+  csrf:
+    additionalOrigins:
+    - https://portal.example.com
+  jwt:
+    providers:
+    - audiences:
+      - example-admin
+      claimToHeaders:
+      - claim: sub
+        header: x-auth-request-user
+      - claim: email
+        header: x-auth-request-email
+      extractFrom:
+        headers:
+        - name: x-example-id-token
+      issuer: https://id.example.com
+      name: example-id
+      remoteJWKS:
+        backendRefs:
+        - group: ""
+          kind: Service
+          name: issuer
+          namespace: example-id
+          port: 8080
+        cacheDuration: 300s
+        uri: https://id.example.com/keys
+  oidc:
+    clientID: example-admin
+    clientSecret:
+      group: ""
+      kind: Secret
+      name: example-admin-client
+    cookieConfig:
+      sameSite: Strict
+    forwardIDToken:
+      header: x-example-id-token
+    logoutPath: /_auth/logout
+    provider:
+      authorizationEndpoint: https://id.example.com/authorize
+      endSessionEndpoint: https://id.example.com/end_session
+      issuer: https://id.example.com
+      tokenEndpoint: https://id.example.com/token
+    redirectURL: https://admin.example.com/_auth/callback
+    refreshToken: true
+    scopes:
+    - openid
+    - email
+    - profile
+    - offline_access
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: admin
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: api
+  namespace: example-api
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  authorization:
+    defaultAction: Deny
+    rules:
+    - action: Allow
+      name: allow-groups
+      principal:
+        jwt:
+          claims:
+          - name: groups
+            valueType: StringArray
+            values:
+            - example-api-callers
+          provider: jwt
+  jwt:
+    providers:
+    - audiences:
+      - example-api
+      claimToHeaders:
+      - claim: azp
+        header: x-client-id
+      issuer: https://id.example.com
+      name: jwt
+      remoteJWKS:
+        cacheDuration: 300s
+        uri: https://id.example.com/keys
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: GRPCRoute
+    name: api
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: console
+  namespace: example-console
+  annotations:
+    example.com/sync-wave: "70"
+spec:
+  csrf:
+    shadowFraction:
+      denominator: 100
+      numerator: 100
+  jwt:
+    providers:
+    - audiences:
+      - example-console
+      claimToHeaders:
+      - claim: sub
+        header: x-auth-request-user
+      - claim: email
+        header: x-auth-request-email
+      extractFrom:
+        headers:
+        - name: x-example-id-token
+      issuer: https://id.example.com
+      name: example-id
+      remoteJWKS:
+        backendRefs:
+        - group: ""
+          kind: Service
+          name: issuer
+          namespace: example-id
+          port: 8080
+        cacheDuration: 300s
+        uri: https://id.example.com/keys
+  oidc:
+    clientID: example-console
+    clientSecret:
+      group: ""
+      kind: Secret
+      name: example-console-client
+    cookieConfig:
+      sameSite: Lax
+    forwardAccessToken: true
+    forwardIDToken:
+      header: x-example-id-token
+    logoutPath: /oauth2/logout
+    provider:
+      authorizationEndpoint: https://id.example.com/authorize
+      endSessionEndpoint: https://id.example.com/end_session
+      issuer: https://id.example.com
+      tokenEndpoint: https://id.example.com/token
+    redirectURL: https://console.example.com/oauth2/callback
+    refreshToken: true
+    scopes:
+    - openid
+    - email
+    - profile
+    - offline_access
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: console

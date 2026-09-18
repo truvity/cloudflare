@@ -1,0 +1,10 @@
+defaults:
+  oidc: {issuer: https://id.example.com}
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs: [{kind: Service, name: console}]
+    oidc:
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com

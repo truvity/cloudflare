@@ -1,0 +1,6 @@
+tlsBaseline:
+  namespaces: [gateways]
+tlsPolicies:
+  tls-baseline:
+    namespace: gateways
+    targetRefs: [{name: public}]

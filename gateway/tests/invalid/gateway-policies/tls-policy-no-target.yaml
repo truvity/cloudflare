@@ -1,0 +1,3 @@
+tlsPolicies:
+  strict:
+    namespace: gateways

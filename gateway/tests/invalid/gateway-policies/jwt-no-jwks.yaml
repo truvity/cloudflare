@@ -1,0 +1,8 @@
+securityPolicies:
+  api:
+    type: jwt
+    namespace: example
+    targetRefs: [{name: api}]
+    jwt:
+      issuer: https://id.example.com
+      audiences: [api]

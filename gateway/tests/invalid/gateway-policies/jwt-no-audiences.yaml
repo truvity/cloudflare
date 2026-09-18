@@ -1,0 +1,9 @@
+# Without an audience every token the issuer ever signed is accepted.
+securityPolicies:
+  api:
+    type: jwt
+    namespace: example
+    targetRefs: [{name: api}]
+    jwt:
+      issuer: https://id.example.com
+      remoteJWKS: {uri: https://id.example.com/keys}

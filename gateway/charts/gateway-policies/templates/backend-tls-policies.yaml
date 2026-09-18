@@ -1,0 +1,37 @@
+{{- range $key, $spec := .Values.backendTLSPolicies }}
+{{- $p := include "policies.backendTLS.resolve" (dict "key" $key "spec" $spec) | fromYaml }}
+{{- if $p.enabled }}
+---
+{{- /* The gateway re-encrypts to this backend and verifies its certificate:
+       the name it must carry, and the CA it must chain to. */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: {{ $p.name }}
+  namespace: {{ $p.namespace }}
+  {{- with include "policies.annotations" (dict "root" $ "extra" $p.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $p.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    {{- toYaml $p.targetRefs | nindent 4 }}
+  validation:
+    hostname: {{ $p.hostname | quote }}
+    {{- with $p.caCertificateRefs }}
+    caCertificateRefs:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $p.wellKnownCACertificates }}
+    wellKnownCACertificates: {{ . }}
+    {{- end }}
+    {{- with $p.subjectAltNames }}
+    subjectAltNames:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}
+{{- end }}

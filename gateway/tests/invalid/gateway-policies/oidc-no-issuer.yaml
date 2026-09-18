@@ -1,0 +1,10 @@
+# Sign-in stays off until it is given an issuer: an oidc entry without one
+# is refused, never rendered half-configured.
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs: [{name: console}]
+    oidc:
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com

@@ -1,0 +1,2 @@
+# The opt-out is how a Gateway that needs other TLS says so on itself.
+tlsBaseline: {exemptLabel: ""}

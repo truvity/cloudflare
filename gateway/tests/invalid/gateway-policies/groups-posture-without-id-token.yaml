@@ -1,0 +1,13 @@
+# The rule reads the groups claim from the verified ID token; without it
+# there is nothing to read.
+defaults:
+  oidc: {issuer: https://id.example.com}
+securityPolicies:
+  admin:
+    namespace: example
+    targetRefs: [{name: admin}]
+    oidc:
+      clientID: admin
+      clientSecret: {name: admin-client}
+      hostname: admin.example.com
+    authorization: {posture: groups, groups: [admins]}

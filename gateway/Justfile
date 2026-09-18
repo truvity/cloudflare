@@ -1,7 +1,7 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-charts := "gateway-fleet gateway-groups"
+charts := "gateway-fleet gateway-groups gateway-policies"
 
 # Lint every chart.
 #

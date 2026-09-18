@@ -1,0 +1,5 @@
+securityPolicies:
+  api:
+    type: basic
+    namespace: example
+    targetRefs: [{name: api}]
