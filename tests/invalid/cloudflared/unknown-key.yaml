@@ -1,0 +1,3 @@
+# A typo must fail the render instead of being silently ignored.
+replicaCount: 2
+replicaCont: 3
