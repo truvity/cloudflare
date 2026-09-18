@@ -1,0 +1,4 @@
+# Strict inside the objects the chart defines, not only at the top.
+image:
+  repository: cloudflare/cloudflared
+  version: "2026.1.0"
