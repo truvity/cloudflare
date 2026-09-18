@@ -1,0 +1,10 @@
+# A health hostname that is not a DNS name is a listener the controller
+# rejects, leaving the exposure without one.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: "health endpoint"
+      certificate: {issuerRef: {name: ca}}

@@ -1,0 +1,14 @@
+# An empty selector on the health listener's routes matches every
+# namespace: the opposite of a grant.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: h.example.com
+      certificate: {issuerRef: {name: ca}}
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector: {}
