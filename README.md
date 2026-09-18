@@ -1,25 +1,241 @@
 # cloudflare
 
-Cloudflare for Kubernetes estates, as reusable mechanism:
+Cloudflare for Kubernetes estates, as reusable mechanism: accounts, zone
+settings and tunnels as Pulumi Go components, and the in-cluster end of a
+tunnel as a Helm chart.
 
 | Artifact | What | Status |
 | --- | --- | --- |
-| `charts/cloudflared` | The in-cluster end of a Cloudflare Tunnel — `cloudflared` as a plain Deployment, token from any Secret, one install per account | shipped |
-| `pkg/account` | One API token bound to one account, as a provider to pass to everything created there | shipped |
-| `pkg/zone` | Zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
-| `pkg/tunnel` | Pulumi Go component: tunnel + DNS records + ingress rules (+ opt-in certificate packs) from a config struct | shipped |
+| `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with | shipped |
+| `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
+| `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
+| `charts/cloudflared` | `cloudflared` as a plain Deployment: token from a Secret, optional origin CA from a Secret, one install per account | shipped |
 
-Published to `oci://ghcr.io/truvity/charts/cloudflared` on every tag; the
-Go module is `github.com/truvity/cloudflare/v2`.
+The chart publishes to `oci://ghcr.io/truvity/charts/cloudflared` on every
+tag. The Go module is `github.com/truvity/cloudflare/v2`; **use v2.0.1 or
+later**, because v2.0.0 cannot be fetched as a module (see
+[docs/adoption.md](docs/adoption.md#the-go-module-moves-to-v2)).
 
-```sh
-go get github.com/truvity/cloudflare/v2@v2.0.1
+## Who it is for
+
+A platform team that runs Kubernetes behind Cloudflare Tunnel and manages
+its Cloudflare side with Pulumi in Go (the `pulumi-cloudflare` v6
+provider). The estate's domains may live in more than one Cloudflare
+account. The API tokens, the tunnel secrets, where the tunnel token is
+stored, the origin CA and the network policy around the daemon are the
+estate's. Nothing here installs a secret manager, a certificate issuer or
+a gateway: the tunnel routes to an origin the estate already runs.
+
+## The model
+
+A Cloudflare API token is scoped to one account, and a tunnel cannot cross
+accounts. So "which account" is a property of every resource, not a
+global. **The zone is the unit and the account is its attribute**: a
+domain belongs to a zone, a zone belongs to exactly one account, and an
+account owns its zones and its tunnel.
+
+```
+account "example-platform"  (pkg/account: one token, one provider)
+├── zone example.com        (pkg/zone, with acct.Use())
+├── zone example.net        (pkg/zone, with acct.Use())
+└── tunnel                  (pkg/tunnel, with acct.Use())
+      ingress: app.example.com, app.example.net → the estate's origin
+      token ──► Secret ──► cloudflared release "cloudflared-platform"
+
+account "example-partner"
+├── zone example.org
+└── tunnel ──► Secret ──► cloudflared release "cloudflared-partner"
 ```
 
-**v2.0.0 cannot be fetched as a Go module.** Its `go.mod` still declared the
-v1 path, and Go refuses a major-version tag whose module path does not end
-in that major version. The chart published at 2.0.0 is fine. Use v2.0.1 or
-later for Go.
+In Go, an estate writes the account as data: one `account.New` per
+account, and `acct.Use()` passed to every zone, tunnel and record created
+in it, so nothing can pick up another account's provider by accident.
+Several zones in one account share that account's `Use()`, and one tunnel
+serves hostnames from all of them. In the cluster, **one cloudflared per
+account**, because its tunnel is in that account: the chart carries the
+release name in every object name and in the pod selector, so the
+installs share a namespace.
+
+## Install and a worked example
+
+```sh
+go get github.com/truvity/cloudflare/v2@latest
+```
+
+A Pulumi program for the two accounts above. Every value is a
+placeholder; an estate usually unmarshals the rows from its own YAML,
+because every `Args` type is plain yaml-taggable data.
+
+```go
+package main
+
+import (
+	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+
+	"github.com/truvity/cloudflare/v2/pkg/account"
+	"github.com/truvity/cloudflare/v2/pkg/tunnel"
+	"github.com/truvity/cloudflare/v2/pkg/zone"
+)
+
+// One row per account: the account owns its zones and its tunnel.
+type accountRow struct {
+	Name    string
+	Account account.Args
+	Zones   []zoneRow
+	Tunnel  tunnel.Args
+}
+
+type zoneRow struct {
+	Name     string
+	Settings zone.Args
+	// Hostnames in this zone that point at the account's tunnel.
+	Hostnames []string
+}
+
+var accounts = []accountRow{
+	{
+		Name:    "example-platform",
+		Account: account.Args{AccountID: "example-platform-account-id"},
+		Zones: []zoneRow{
+			{
+				Name: "example-com",
+				Settings: zone.Args{
+					ZoneID:        "example-com-zone-id",
+					SSL:           "strict",
+					MinTLSVersion: "1.2",
+					TotalTLS:      &zone.TotalTLS{Enabled: true},
+				},
+				Hostnames: []string{"app.example.com"},
+			},
+			{
+				Name:      "example-net",
+				Settings:  zone.Args{ZoneID: "example-net-zone-id", SSL: "strict"},
+				Hostnames: []string{"app.example.net"},
+			},
+		},
+		Tunnel: tunnel.Args{
+			Name: "example-platform",
+			Ingress: []tunnel.Ingress{
+				{Hostname: "app.example.com", Service: "https://gateway.example-system.svc:443",
+					CAPool: "/etc/cloudflared/certs/ca.pem"},
+				{Hostname: "app.example.net", Service: "https://gateway.example-system.svc:443",
+					CAPool: "/etc/cloudflared/certs/ca.pem"},
+			},
+		},
+	},
+	{
+		Name:    "example-partner",
+		Account: account.Args{AccountID: "example-partner-account-id"},
+		Zones: []zoneRow{
+			{
+				Name:      "example-org",
+				Settings:  zone.Args{ZoneID: "example-org-zone-id", MinTLSVersion: "1.2"},
+				Hostnames: []string{"portal.example.org"},
+			},
+		},
+		Tunnel: tunnel.Args{
+			Name: "example-partner",
+			Ingress: []tunnel.Ingress{
+				{Hostname: "portal.example.org", Service: "https://gateway.example-system.svc:443"},
+			},
+		},
+	},
+}
+
+func main() {
+	pulumi.Run(func(ctx *pulumi.Context) error {
+		cfg := config.New(ctx, "")
+
+		for _, row := range accounts {
+			// The token is scoped to this account. It comes from wherever
+			// the estate keeps secrets; here, a Pulumi config secret.
+			acct, err := account.New(ctx, row.Name, row.Account, cfg.RequireSecret(row.Name+"-api-token"))
+			if err != nil {
+				return err
+			}
+
+			// A tunnel cannot cross accounts: take the id from the account.
+			args := row.Tunnel
+			args.AccountID = acct.AccountID
+
+			tun, err := tunnel.New(ctx, row.Name, args, cfg.RequireSecret(row.Name+"-tunnel-secret"), acct.Use())
+			if err != nil {
+				return err
+			}
+
+			for _, z := range row.Zones {
+				if _, err := zone.New(ctx, z.Name, z.Settings, acct.Use()); err != nil {
+					return err
+				}
+
+				// One proxied CNAME per hostname, in its own zone, at the
+				// account's tunnel.
+				for _, host := range z.Hostnames {
+					if _, err := cloudflare.NewDnsRecord(ctx, "cname-"+tunnel.Slug(host), &cloudflare.DnsRecordArgs{
+						ZoneId:  pulumi.String(z.Settings.ZoneID),
+						Name:    pulumi.String(host),
+						Type:    pulumi.String("CNAME"),
+						Content: tun.CNAMETarget,
+						Proxied: pulumi.Bool(true),
+						Ttl:     pulumi.Float64(1),
+					}, acct.Use()); err != nil {
+						return err
+					}
+				}
+			}
+
+			// The token is a secret output. Store it where the estate
+			// keeps secrets; charts/cloudflared reads it from a Secret.
+			ctx.Export(row.Name+"-tunnel-token", tun.Token)
+		}
+
+		return nil
+	})
+}
+```
+
+`tunnel.Args.DNS` creates the same records for a tunnel whose hostnames
+all sit in one zone. The example creates them per zone instead, which is
+how one tunnel serves several zones of its account.
+
+Then one cloudflared per account, each reading its own tunnel's token
+from a Secret the estate created (External Secrets, SOPS, or
+`kubectl create secret generic … --from-literal tunnel-token=…`):
+
+```sh
+helm install cloudflared-platform oci://ghcr.io/truvity/charts/cloudflared \
+  --version <version> --namespace cloudflare-system --create-namespace \
+  --values platform-values.yaml
+```
+
+```yaml
+# platform-values.yaml
+secretName: cloudflared-platform-token   # key tunnel-token (secretKey)
+# The CA that signed the origin's certificate, as a Secret key ca.pem;
+# the ingress rules above point caPool at the mounted file.
+caSecretName: cloudflared-platform-origin-ca
+podDisruptionBudget:
+  enabled: true
+```
+
+The second account is a second release, `cloudflared-partner`, with its
+own `secretName`. [docs/reference.md](docs/reference.md) has every value
+and every Go field.
+
+## Documentation
+
+- [docs/adoption.md](docs/adoption.md): prerequisites, install order, the
+  zero-diff gate, adopting existing objects, and upgrading across the
+  v2.0.0 breaking changes
+- [docs/safety.md](docs/safety.md): every refusal, in the chart and in the
+  Go packages, and the failure it prevents; the traps
+- [docs/reference.md](docs/reference.md): every chart value, every Go
+  input and output, and the child names that are a contract
+- [docs/doctrine.md](docs/doctrine.md): what this repository owns and what
+  the consuming estate owns, and why it is shaped this way
+- [CHANGELOG.md](CHANGELOG.md): what changed for a consumer, per version
 
 ## The rule that makes this repository public
 
@@ -32,215 +248,29 @@ cannot be unpublished — so the rule is mechanical, not remembered.
 This repository follows the shared
 [component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
 
-The same rule shapes the Go packages: credentials come in as an API token,
-secrets (the tunnel token) go out as Pulumi `Output`s and the **caller**
-decides where they live. No secret store and no cloud SDK. Zone settings
-are their own package, opted into per zone, because plenty of Cloudflare
-plans have none and an estate should not acquire them by accident.
-
-## Accounts and zones
-
-A Cloudflare API token is scoped to one account, and a tunnel cannot cross
-accounts. So for an estate whose domains live in more than one account,
-"which account" is a property of every resource rather than a global:
-
-- **the zone is the unit** — a domain belongs to a zone, and a zone belongs
-  to exactly one account;
-- **the account is its attribute** — one `pkg/account` per account, and
-  every zone, tunnel and DNS record is created with that account's
-  provider;
-- **one cloudflared per account** — because its tunnel is in that account.
-  The chart carries the release name in every object name and in the pod
-  selector, so several installs share a namespace.
-
-```go
-platform, _ := account.New(ctx, "platform", account.Args{AccountID: acctID}, token)
-
-zone.New(ctx, "example-com", zone.Args{
-    ZoneID:        zoneID,
-    SSL:           "strict",
-    MinTLSVersion: "1.2",
-    TotalTLS:      &zone.TotalTLS{Enabled: true},
-}, platform.Use())
-
-tunnel.New(ctx, "edge", tunnelArgs, secret, platform.Use())
-```
-
-## pkg/account
-
-```go
-acct, err := account.New(ctx, "platform", account.Args{
-    AccountID: "...",   // from the caller's own registry
-}, apiToken)            // a pulumi.StringInput from wherever secrets live
-```
-
-The contract, in one line each: the token is a caller input and is marked
-secret, so it never reaches plain state; `Use()` is the resource option
-that binds a component to this account, so a caller never has to remember
-which of several providers a zone or tunnel belongs to; the provider child
-is named `provider-<name>`; nothing else is read, created or changed.
-
-## pkg/zone
-
-```go
-zone.New(ctx, "example-com", zone.Args{
-    ZoneID:        "...",
-    SSL:           "strict",           // off | flexible | full | strict
-    MinTLSVersion: "1.2",              // 1.0 | 1.1 | 1.2 | 1.3
-    TotalTLS:      &zone.TotalTLS{Enabled: true, CertificateAuthority: "google"},
-}, acct.Use())
-```
-
-**Total TLS is the reason this package exists.** Without it, every proxied
-hostname needs its own Advanced Certificate pack, so adding a hostname
-means creating a certificate resource and waiting for validation. With it,
-the zone issues per-hostname certificates itself and adding a hostname is a
-DNS record and nothing else. It needs Advanced Certificate Manager on the
-zone's plan, which is why it is opt-in rather than a default.
-
-The contract, in one line each: an unset field is a setting this estate
-does not manage, so a zone keeps whatever it has; `Validate()` rejects a
-zone that would manage nothing at all; children are named
-`setting-<name>-ssl`, `setting-<name>-min-tls-version` and
-`total-tls-<name>`. Only three settings are here on purpose — a Cloudflare
-zone has scores, and the rest are defaults nobody should be managing from
-a deployment tool.
-
-## pkg/tunnel
-
-```go
-import (
-    "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
-    "github.com/pulumi/pulumi-random/sdk/v4/go/random"
-    "github.com/truvity/cloudflare/v2/pkg/tunnel"
-)
-
-provider, _ := cloudflare.NewProvider(ctx, "cf", &cloudflare.ProviderArgs{ApiToken: token})
-secret, _ := random.NewRandomBytes(ctx, "tunnel-secret", &random.RandomBytesArgs{Length: pulumi.Int(32)})
-
-tun, err := tunnel.New(ctx, "mycluster", tunnel.Args{
-    AccountID: accountID,
-    Name:      "mycluster",
-    Ingress: []tunnel.Ingress{
-        // Exact hosts before wildcards; deeper wildcards before broader
-        // ones. Enforced, not merely advised — see below.
-        {Hostname: "app.example.com", Service: "https://gateway-internal.envoy-gateway-system.svc:443",
-         CAPool: "/etc/cloudflared/certs/ca.pem"},
-    },
-    DNS: &tunnel.DNS{ZoneID: zoneID, Names: []string{"app.example.com"}},
-    // Certificates: opt-in Advanced Certificate packs — off by default,
-    // because plenty of plans have no zone-level features.
-}, secret.Base64, pulumi.Provider(provider))
-
-// tun.Token is a secret Output — store it wherever YOUR estate keeps
-// secrets (a Kubernetes Secret for charts/cloudflared, SSM, SOPS...).
-```
-
-### Ingress order is checked
-
-`Validate` refuses an ingress list in which an earlier rule already
-catches a later one. The rule is enforced rather than documented because
-the failure is invisible:
-
-- cloudflared takes the **first** matching rule, and
-- uses **that rule's** hostname as the origin SNI.
-
-So a shadowed rule does not merely go unused. Its traffic is delivered to
-the shadowing rule's origin under the shadowing rule's name, and an
-origin that selects its certificate by SNI has no chain for it. Every
-host the broad rule swallowed answers 502 — with a configuration that
-reads correctly and a tunnel Cloudflare reports as healthy.
-
-Two properties make it easy to get wrong: Cloudflare's `*` **spans
-dots**, so `*.example.com` also catches `a.b.example.com`; and order is
-significant in a file where nothing else is.
-
-```yaml
-# refused: the wildcard swallows the exact host below it
-- {hostname: "*.example.com",       service: "https://fleet:443"}
-- {hostname: "app.example.com",     service: "https://app:443"}
-
-# refused: the broad wildcard swallows the deeper one
-- {hostname: "*.example.com",       service: "https://fleet:443"}
-- {hostname: "*.team.example.com",  service: "https://team:443"}
-
-# accepted
-- {hostname: "app.example.com",     service: "https://app:443"}
-- {hostname: "*.team.example.com",  service: "https://team:443"}
-- {hostname: "*.example.com",       service: "https://fleet:443"}
-```
-
-An exact rule never shadows a wildcard, and sibling wildcards never
-shadow each other, so neither is refused.
-
-The contract, in one line each: `Args` is plain yaml-taggable data (a
-consumer unmarshals its own config file into it, `Validate()` checks it);
-the tunnel secret is a caller input, never derived; the token comes back
-as a secret Output for the caller to store; no zone settings are ever
-touched. Child resources are deterministically named (`tunnel-<name>`,
-`ingress-<name>`, `cname-<name>-<slug>`, `acm-<name>-<slug>`) so an
-estate migrating existing top-level resources can alias onto them.
-
-## charts/cloudflared
-
-```sh
-helm install cloudflared oci://ghcr.io/truvity/charts/cloudflared \
-  --version <tag> --namespace cloudflare-system --create-namespace \
-  --set secretName=cloudflared-tunnel-token
-```
-
-The chart assumes a **remotely-managed** tunnel (`cloudflared tunnel run
---token-file …`): ingress rules live in Cloudflare, the pod only needs the
-token. Create the Secret with whatever owns secrets in your estate —
-External Secrets, SOPS, `kubectl create secret generic … --from-literal
-tunnel-token=…`.
-
-| Value | Default | Notes |
-| --- | --- | --- |
-| `nameOverride` / `fullnameOverride` | `""` | object names and the pod selector carry the release name, so two installs coexist in one namespace |
-| `replicaCount` | `2` | two replicas = two tunnel connections; set `podDisruptionBudget.enabled` for drains |
-| `image.repository` / `image.tag` | `cloudflare/cloudflared` / pinned | Renovate bumps the tag here |
-| `secretName` / `secretKey` | `cloudflared-tunnel-token` / `tunnel-token` | mounted at `/secrets/<key>`, read with `--token-file` |
-| `caSecretName` | `""` | Secret with `ca.pem`; mounted at `/etc/cloudflared/certs/ca.pem` so the tunnel config's `originRequest.caPool` can verify private origins |
-| `extraArgs` | `[]` | appended to `cloudflared tunnel … run` |
-| `nodeSelector`, `tolerations`, `affinity`, `topologySpreadConstraints`, `priorityClassName`, `podAnnotations`, `podLabels` | empty | scheduling is the estate's |
-| `resources` | 50m / 64Mi, limit 256Mi | |
-
-Running two installs in one namespace is one `helm install` per account
-with different release names:
-
-```sh
-helm install cloudflared-platform oci://ghcr.io/truvity/charts/cloudflared \
-  --namespace cloudflare-system --set secretName=cloudflared-platform-token
-helm install cloudflared-partner  oci://ghcr.io/truvity/charts/cloudflared \
-  --namespace cloudflare-system --set secretName=cloudflared-partner-token
-```
-
-Network policies are deliberately not in the chart: the pod needs egress
-to Cloudflare's edge (7844/udp+tcp, 443/tcp) and to the origins the tunnel
-routes to, and only the estate knows those.
-
-## Development
-
-```sh
-devbox shell        # or direnv
-just check          # lint + golden renders + leak canary (+ go build/vuln)
-just golden         # regenerate tests/golden after a template change — review the diff
-```
-
-Every `tests/cases/<chart>/<case>/values.yaml` is rendered and compared
-byte-for-byte with `tests/golden/<chart>/<case>.yaml`; a template change
-is reviewed as a diff, with no cluster involved.
-
-`tests/invalid/<chart>/` holds one fixture per refusal. Each must fail to
-render; `just lint` proves it. A rule without a fixture is a rule that
-will quietly stop working.
-
 ## Status
 
 Used in production by its maintainers. Releases are listed on the
 [releases page](https://github.com/truvity/cloudflare/releases), and
 [CHANGELOG.md](CHANGELOG.md) says what changed for a consumer in each.
+
+## Development
+
+```sh
+devbox shell        # or direnv
+just check          # build + lint + golden renders and go test + leak canary + govulncheck
+just golden         # regenerate tests/golden after a template change — review the diff
+```
+
+CI runs `build`, `lint`, `test` and `leak-canary`, each as its own job;
+`vuln` runs daily. Every `tests/cases/<chart>/<case>/values.yaml` is
+rendered and compared byte-for-byte with `tests/golden/<chart>/<case>.yaml`
+(a case may pin its release name in a `release` file next to its values);
+a template change is reviewed as a diff, with no cluster involved.
+
+`tests/invalid/<chart>/` holds one fixture per refusal. Each must fail to
+render; `just lint` proves it. A rule without a fixture is a rule that
+will quietly stop working.
 
 ## Releasing
 
