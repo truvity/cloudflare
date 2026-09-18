@@ -1,0 +1,251 @@
+# gateway-policies — the policies that protect what gateway-fleet and
+# gateway-groups expose. Four kinds of object, each optional:
+#
+#   tlsBaseline          one ClientTrafficPolicy per namespace: the TLS floor
+#                        and cipher set for EVERY Gateway there, unless the
+#                        Gateway carries the opt-out label. ON by default.
+#   tlsPolicies.<name>   a ClientTrafficPolicy on named Gateways or listeners,
+#                        for the ones that need more than the baseline.
+#   securityPolicies.<n> a SecurityPolicy on a protected route or listener:
+#                        browser sign-in (oidc) or bearer tokens (jwt), who
+#                        may pass (authenticated or an allow-list of groups),
+#                        and CSRF on cookie-authenticated routes.
+#   backendTLSPolicies.<n> a BackendTLSPolicy: the gateway verifies a
+#                        backend's certificate against a CA you name.
+#
+# Nothing here names an issuer, a client, a hostname or a CA: every such
+# thing is an input. With an empty values file this chart renders exactly
+# one object, the TLS floor for the release namespace, and authenticates
+# nothing: an OIDC or JWT policy is refused until it is given an issuer.
+#
+# Requires Envoy Gateway v1.9 or newer (the SecurityPolicy `csrf` block and
+# OIDC `cookieConfig`), and Gateway API v1.4+ for BackendTLSPolicy v1.
+
+# Annotations on every object this chart renders. An object's own
+# annotations override matching keys.
+commonAnnotations: {}
+
+# ---------------------------------------------------------------------------
+# The TLS floor. A ClientTrafficPolicy only attaches to Gateways in its own
+# namespace, so there is one per namespace that holds Gateways. It selects
+# Gateways by label rather than by name, which is what makes it default-on:
+# a Gateway created next year is covered the moment it exists, and one that
+# genuinely needs something else opts out visibly, by carrying the label.
+#
+# A Gateway that already has its own Gateway-level ClientTrafficPolicy (for
+# example gateway-fleet's exposures.<n>.clientTrafficPolicy) must carry the
+# opt-out label: two Gateway-level policies on one Gateway are a conflict
+# the controller resolves by age, not by intent. A listener-level policy
+# (tlsPolicies with a sectionName) is more specific and needs no opt-out.
+# ---------------------------------------------------------------------------
+tlsBaseline:
+  enabled: true
+  name: tls-baseline
+  # Where to render one policy each. Empty: the release namespace only.
+  namespaces: []
+  annotations: {}
+  labels: {}
+  # A Gateway carrying this label key (any value) is not selected.
+  exemptLabel: tls-baseline-exempt
+  tls:
+    # "1.2" keeps every client from the last decade and refuses 1.0/1.1
+    # (RFC 8996). "1.3" refuses everything older; ciphers are then not
+    # rendered, because TLS 1.3 suites are not configurable.
+    minVersion: "1.2"
+    # "" renders nothing: Envoy's own maximum (1.3) applies.
+    maxVersion: ""
+    # TLS 1.2 suites: forward-secret (ECDHE) and authenticated (AEAD) only.
+    # This is Envoy's own default set, stated so that it is visible on the
+    # cluster and does not move when a proxy upgrade changes the default.
+    # [] renders no list and leaves the choice to Envoy.
+    ciphers:
+      - ECDHE-ECDSA-AES128-GCM-SHA256
+      - ECDHE-RSA-AES128-GCM-SHA256
+      - ECDHE-ECDSA-AES256-GCM-SHA384
+      - ECDHE-RSA-AES256-GCM-SHA384
+      - ECDHE-ECDSA-CHACHA20-POLY1305
+      - ECDHE-RSA-CHACHA20-POLY1305
+
+# ---------------------------------------------------------------------------
+# Stricter TLS on named Gateways or listeners. Off unless an entry exists.
+# ---------------------------------------------------------------------------
+tlsPolicies: {}
+#  strict-listener:
+#    enabled: true
+#    name: ""                       # default: the map key
+#    namespace: ""                  # required: the Gateway's namespace
+#    annotations: {}
+#    labels: {}
+#    targetRefs:                    # required; Gateway or ListenerSet
+#      - kind: Gateway
+#        name: public
+#        sectionName: strict         # one listener; omit for the whole Gateway
+#    tls:
+#      minVersion: "1.3"
+#      maxVersion: ""
+#      ciphers: []
+
+# ---------------------------------------------------------------------------
+# Merged under every securityPolicies entry, so an issuer, a namespace or a
+# CSRF posture shared by many routes is stated once. An entry's own value
+# replaces the default, including an empty one ("", false, []).
+# ---------------------------------------------------------------------------
+defaults:
+  namespace: ""
+  annotations: {}
+  labels: {}
+
+  # Browser sign-in: the gateway runs the authorization code flow itself and
+  # keeps the tokens in cookies it encrypts. No proxy, no session store.
+  oidc:
+    # Required on every oidc entry, here or in the entry. Nothing is
+    # rendered half-configured: an oidc entry without one is refused.
+    issuer: ""
+    # Written out instead of discovered, so the controller never has to
+    # reach the issuer to translate the policy. "" uses discovery.
+    authorizationEndpoint: ""
+    tokenEndpoint: ""
+    # Signing out also ends the session at the issuer. Without it the
+    # cookie is cleared, the issuer session lives on, and the next page
+    # load signs the person straight back in.
+    endSessionEndpoint: ""
+    clientID: ""
+    # An Opaque Secret in the policy's namespace with the key
+    # `client-secret`. The Secret is yours to deliver; the chart only
+    # references it.
+    clientSecret:
+      name: ""
+    # The callback is <pathPrefix>/callback and sign-out is
+    # <pathPrefix>/logout. redirectURL is https://<hostname><pathPrefix>/callback
+    # unless given in full; it must equal the redirect registered at the
+    # issuer, and one of hostname or redirectURL is required.
+    hostname: ""
+    pathPrefix: /oauth2
+    redirectURL: ""
+    logoutPath: ""
+    # "openid" is always sent. A refresh token usually needs
+    # offline_access as well; add it where the issuer requires it.
+    scopes:
+      - openid
+      - email
+      - profile
+    # Refresh the tokens underneath the session instead of signing the
+    # person out when the access token expires.
+    refreshToken: true
+    # Send the access token upstream as `Authorization: Bearer`.
+    forwardAccessToken: false
+    # Lax | Strict | None | "". Stated, not left to the browser: an unset
+    # SameSite means different things in different browsers. Lax still
+    # sends the cookie on a top-level link into the application; Strict
+    # suits one nothing links into. "" renders no cookieConfig.
+    cookieSameSite: Lax
+    # Verify the ID token on every request as a JWT. Needed for the
+    # `groups` posture (the rule reads the verified claim) and for
+    # claimToHeaders; otherwise the encrypted session cookie is the proof.
+    idToken:
+      enabled: false
+      # The request header the ID token is handed over in, and read from.
+      header: x-id-token
+      # The JWT provider's name; the authorization rule refers to it.
+      providerName: oidc
+      # Default: [clientID]. An ID token is minted for exactly one client.
+      audiences: []
+      remoteJWKS:
+        uri: ""                   # required when enabled
+        cacheDuration: 300s
+        # Fetch the keys from an in-cluster Service instead of the public
+        # URL; uri still names the path and the Host. [{name, namespace, port}]
+        backendRefs: []
+      # [{header, claim}]: set from the verified token, overwriting whatever
+      # the request carried under that name.
+      claimToHeaders: []
+
+  # Bearer tokens, for machine routes: every request must carry a token the
+  # issuer signed for one of the audiences.
+  jwt:
+    providerName: jwt
+    issuer: ""                    # required on every jwt entry
+    audiences: []                 # required: a token for another audience is refused
+    remoteJWKS:
+      uri: ""                     # required
+      cacheDuration: 300s
+      backendRefs: []
+    # Where the token is read from. {} is Envoy Gateway's default, the
+    # Authorization header with the Bearer prefix. Verbatim otherwise:
+    # {headers: [{name, valuePrefix}], cookies: [...], params: [...]}
+    extractFrom: {}
+    claimToHeaders: []
+
+  # Who may pass once authenticated.
+  authorization:
+    # authenticated: anyone the issuer signed in (the issuer's own client
+    #                rules still decide who can sign in at all).
+    # groups:        only a token whose `claim` holds one of `groups`;
+    #                everything else is denied. On an oidc entry this needs
+    #                idToken.enabled.
+    posture: authenticated
+    claim: groups
+    groups: []
+    ruleName: allow-groups
+
+  # Cross-site request forgery: the gateway compares the Origin (or, when
+  # absent, the Referer) of every mutating request (POST, PUT, PATCH,
+  # DELETE) with the destination host, which catches what SameSite cannot:
+  # a same-site attacker, an older browser, a cookie already sent.
+  csrf:
+    # off | shadow | enforce, or "" for the entry type's default:
+    #   oidc  shadow: every request is evaluated and counted, none refused.
+    #   jwt   off, and nothing else is accepted. A machine client sends no
+    #         Origin, so enforcing on an API or a webhook refuses all of it.
+    mode: ""
+    # Other origins allowed to post here, e.g. https://app.example.com.
+    additionalOrigins: []
+    # Shadow only: the share of requests evaluated in shadow; the rest are
+    # enforced. 100/100 is a pure dry run. Lower the numerator to roll
+    # enforcement out gradually, or switch to enforce.
+    shadowFraction:
+      numerator: 100
+      denominator: 100
+
+# ---------------------------------------------------------------------------
+# One SecurityPolicy per entry. Off unless an entry exists.
+# ---------------------------------------------------------------------------
+securityPolicies: {}
+#  console:
+#    enabled: true
+#    type: oidc                     # oidc | jwt
+#    name: ""                       # default: the map key
+#    namespace: ""                  # required (here or in defaults)
+#    annotations: {}
+#    labels: {}
+#    targetRefs:                    # required; HTTPRoute (default), GRPCRoute,
+#      - name: console              # Gateway or ListenerSet, with an optional
+#                                   # sectionName for one listener or rule
+#    oidc: {}                       # merged over defaults.oidc
+#    jwt: {}                        # merged over defaults.jwt
+#    authorization: {}              # merged over defaults.authorization
+#    csrf: {}                       # merged over defaults.csrf
+#    extraSpec: {}                  # deep-merged over the generated spec, last
+
+# ---------------------------------------------------------------------------
+# Re-encryption to a backend with a private-chain certificate. Off unless
+# an entry exists.
+# ---------------------------------------------------------------------------
+backendTLSPolicies: {}
+#  store:
+#    enabled: true
+#    name: ""                       # default: the map key
+#    namespace: ""                  # required: the Service's namespace
+#    annotations: {}
+#    labels: {}
+#    targetRefs:                    # required
+#      - kind: Service              # default
+#        name: store
+#        sectionName: https         # the Service port's name; optional
+#    hostname: store.example.internal   # required: SNI and the name verified
+#    # Exactly one of these two:
+#    caCertificateRefs:             # [{kind: ConfigMap|Secret, name}], key ca.crt
+#      - kind: ConfigMap
+#        name: example-trust-bundle
+#    wellKnownCACertificates: ""    # "System": the proxy's own trust store
+#    subjectAltNames: []            # [{type: Hostname, hostname}|{type: URI, uri}]

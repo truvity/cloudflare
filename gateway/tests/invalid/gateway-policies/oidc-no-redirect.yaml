@@ -1,0 +1,11 @@
+# The callback must equal the redirect registered at the issuer, so it is
+# stated: a hostname or a full redirectURL.
+defaults:
+  oidc: {issuer: https://id.example.com}
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs: [{name: console}]
+    oidc:
+      clientID: console
+      clientSecret: {name: console-client}

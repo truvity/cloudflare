@@ -1,0 +1,4 @@
+# An issuer over plain HTTP hands out tokens anyone on the path can read.
+defaults:
+  oidc:
+    issuer: http://id.example.com

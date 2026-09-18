@@ -1,0 +1,12 @@
+defaults:
+  oidc:
+    issuer: https://id.example.com
+    idToken: {enabled: true}
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs: [{name: console}]
+    oidc:
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com

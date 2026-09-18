@@ -1,0 +1,12 @@
+# A machine client sends no Origin: CSRF on an API refuses every mutating
+# request, so it is refused on a jwt policy.
+securityPolicies:
+  api:
+    type: jwt
+    namespace: example
+    targetRefs: [{name: api}]
+    jwt:
+      issuer: https://id.example.com
+      audiences: [api]
+      remoteJWKS: {uri: https://id.example.com/keys}
+    csrf: {mode: shadow}

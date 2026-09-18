@@ -1,0 +1,3 @@
+# "/" would put the callback at //callback.
+defaults:
+  oidc: {issuer: https://id.example.com, pathPrefix: /}

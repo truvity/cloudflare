@@ -1,0 +1,2 @@
+defaults:
+  csrf: {mode: dry-run}

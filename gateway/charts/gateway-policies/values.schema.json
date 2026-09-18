@@ -1,0 +1,383 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gateway-policies values",
+  "description": "An unknown key is an error, not a silent no-op: a misspelt security setting would otherwise render a policy that quietly protects less than it says.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object",
+      "description": "Helm's shared values. Unused by this chart; allowed so a parent chart can set it."
+    },
+    "commonAnnotations": { "$ref": "#/definitions/stringMap" },
+    "tlsBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "name": { "$ref": "#/definitions/dnsLabel" },
+        "namespaces": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/dnsLabel" }
+        },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "labels": { "$ref": "#/definitions/stringMap" },
+        "exemptLabel": {
+          "type": "string",
+          "description": "A label key: an optional DNS-subdomain prefix and a name.",
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$"
+        },
+        "tls": { "$ref": "#/definitions/tls" }
+      }
+    },
+    "tlsPolicies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "name": { "type": "string" },
+          "namespace": { "type": "string" },
+          "annotations": { "$ref": "#/definitions/stringMap" },
+          "labels": { "$ref": "#/definitions/stringMap" },
+          "targetRefs": {
+            "type": "array",
+            "maxItems": 16,
+            "items": { "$ref": "#/definitions/policyTargetRef" }
+          },
+          "tls": { "$ref": "#/definitions/tls" }
+        }
+      }
+    },
+    "defaults": { "$ref": "#/definitions/securityCommon" },
+    "securityPolicies": {
+      "type": "object",
+      "additionalProperties": {
+        "allOf": [
+          { "$ref": "#/definitions/securityCommon" },
+          {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "type": { "type": "string", "enum": ["oidc", "jwt"] },
+              "name": { "type": "string" },
+              "targetRefs": {
+                "type": "array",
+                "maxItems": 16,
+                "items": { "$ref": "#/definitions/policyTargetRef" }
+              },
+              "extraSpec": {
+                "type": "object",
+                "description": "Deep-merged over the generated SecurityPolicy spec, last. For fields this chart does not model."
+              }
+            }
+          }
+        ]
+      }
+    },
+    "backendTLSPolicies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "name": { "type": "string" },
+          "namespace": { "type": "string" },
+          "annotations": { "$ref": "#/definitions/stringMap" },
+          "labels": { "$ref": "#/definitions/stringMap" },
+          "targetRefs": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name"],
+              "properties": {
+                "group": { "type": "string" },
+                "kind": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "sectionName": { "type": "string" }
+              }
+            }
+          },
+          "hostname": {
+            "type": "string",
+            "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+          },
+          "caCertificateRefs": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name"],
+              "properties": {
+                "group": { "type": "string", "enum": [""] },
+                "kind": { "type": "string" },
+                "name": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "wellKnownCACertificates": { "type": "string" },
+          "subjectAltNames": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type"],
+              "properties": {
+                "type": { "type": "string", "enum": ["Hostname", "URI"] },
+                "hostname": { "type": "string" },
+                "uri": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "dnsLabel": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+      "maxLength": 63
+    },
+    "httpsURL": {
+      "type": "string",
+      "description": "Empty, or an https:// URL. An issuer reached over plain HTTP hands out tokens anyone on the path can read.",
+      "pattern": "^$|^https://[^\\s]+$"
+    },
+    "tlsVersion": {
+      "type": "string",
+      "enum": ["", "Auto", "1.0", "1.1", "1.2", "1.3"]
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minVersion": { "$ref": "#/definitions/tlsVersion" },
+        "maxVersion": { "$ref": "#/definitions/tlsVersion" },
+        "ciphers": {
+          "type": "array",
+          "description": "TLS 1.2 and older only. Names as Envoy Gateway v1.9 lists them (OpenSSL style or the IANA alias).",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ECDHE-ECDSA-AES128-GCM-SHA256",
+              "ECDHE-RSA-AES128-GCM-SHA256",
+              "ECDHE-ECDSA-AES256-GCM-SHA384",
+              "ECDHE-RSA-AES256-GCM-SHA384",
+              "ECDHE-ECDSA-CHACHA20-POLY1305",
+              "ECDHE-RSA-CHACHA20-POLY1305",
+              "ECDHE-ECDSA-AES128-SHA",
+              "ECDHE-RSA-AES128-SHA",
+              "AES128-GCM-SHA256",
+              "AES128-SHA",
+              "ECDHE-ECDSA-AES256-SHA",
+              "ECDHE-RSA-AES256-SHA",
+              "AES256-GCM-SHA384",
+              "AES256-SHA",
+              "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+              "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+              "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+              "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+              "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+              "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+              "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+              "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+              "TLS_RSA_WITH_AES_128_GCM_SHA256",
+              "TLS_RSA_WITH_AES_128_CBC_SHA",
+              "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+              "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+              "TLS_RSA_WITH_AES_256_GCM_SHA384",
+              "TLS_RSA_WITH_AES_256_CBC_SHA"
+            ]
+          }
+        }
+      }
+    },
+    "policyTargetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "group": { "type": "string", "enum": ["gateway.networking.k8s.io"] },
+        "kind": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "sectionName": { "type": "string" }
+      }
+    },
+    "backendRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "group": { "type": "string" },
+        "kind": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "remoteJWKS": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "uri": { "$ref": "#/definitions/httpsURL" },
+        "cacheDuration": { "type": "string", "pattern": "^$|^([0-9]{1,5}(h|m|s|ms)){1,4}$" },
+        "backendRefs": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/definitions/backendRef" }
+        }
+      }
+    },
+    "claimToHeaders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["header", "claim"],
+        "properties": {
+          "header": { "type": "string", "minLength": 1 },
+          "claim": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "headerName": {
+      "type": "string",
+      "pattern": "^$|^[A-Za-z0-9!#$%&'*+.^_`|~-]+$"
+    },
+    "securityCommon": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": true,
+        "type": true,
+        "name": true,
+        "targetRefs": true,
+        "extraSpec": true,
+        "namespace": { "type": "string" },
+        "annotations": { "$ref": "#/definitions/stringMap" },
+        "labels": { "$ref": "#/definitions/stringMap" },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuer": { "$ref": "#/definitions/httpsURL" },
+            "authorizationEndpoint": { "$ref": "#/definitions/httpsURL" },
+            "tokenEndpoint": { "$ref": "#/definitions/httpsURL" },
+            "endSessionEndpoint": { "$ref": "#/definitions/httpsURL" },
+            "clientID": { "type": "string" },
+            "clientSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" }
+              }
+            },
+            "hostname": {
+              "type": "string",
+              "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*(:[0-9]{1,5})?$"
+            },
+            "pathPrefix": { "type": "string", "pattern": "^/[^\\s]*[^/\\s]$" },
+            "redirectURL": { "$ref": "#/definitions/httpsURL" },
+            "logoutPath": { "type": "string", "pattern": "^$|^/" },
+            "scopes": { "$ref": "#/definitions/stringList" },
+            "refreshToken": { "type": "boolean" },
+            "forwardAccessToken": { "type": "boolean" },
+            "cookieSameSite": { "type": "string", "enum": ["", "Lax", "Strict", "None"] },
+            "idToken": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "header": { "$ref": "#/definitions/headerName" },
+                "providerName": { "type": "string", "minLength": 1, "maxLength": 253 },
+                "audiences": { "type": "array", "maxItems": 8, "items": { "type": "string" } },
+                "remoteJWKS": { "$ref": "#/definitions/remoteJWKS" },
+                "claimToHeaders": { "$ref": "#/definitions/claimToHeaders" }
+              }
+            }
+          }
+        },
+        "jwt": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "providerName": { "type": "string", "minLength": 1, "maxLength": 253 },
+            "issuer": { "type": "string", "maxLength": 253 },
+            "audiences": { "type": "array", "maxItems": 8, "items": { "type": "string" } },
+            "remoteJWKS": { "$ref": "#/definitions/remoteJWKS" },
+            "extractFrom": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "headers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name"],
+                    "properties": {
+                      "name": { "type": "string", "minLength": 1 },
+                      "valuePrefix": { "type": "string" }
+                    }
+                  }
+                },
+                "cookies": { "$ref": "#/definitions/stringList" },
+                "params": { "$ref": "#/definitions/stringList" }
+              }
+            },
+            "claimToHeaders": { "$ref": "#/definitions/claimToHeaders" }
+          }
+        },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "posture": { "type": "string", "enum": ["authenticated", "groups"] },
+            "claim": { "type": "string" },
+            "groups": { "type": "array", "maxItems": 128, "items": { "type": "string", "minLength": 1 } },
+            "ruleName": { "type": "string", "minLength": 1 }
+          }
+        },
+        "csrf": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["", "off", "shadow", "enforce"] },
+            "additionalOrigins": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "string",
+                "pattern": "^(\\*|[A-Za-z][A-Za-z0-9+.-]*://(\\*|(\\*\\.)?(([\\w-]+\\.?)+)?[\\w-]+)(:\\d{1,5})?)$"
+              }
+            },
+            "shadowFraction": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["numerator"],
+              "properties": {
+                "numerator": { "type": "integer", "minimum": 0 },
+                "denominator": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

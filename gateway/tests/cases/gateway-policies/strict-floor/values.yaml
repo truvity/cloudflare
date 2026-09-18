@@ -1,0 +1,6 @@
+# The floor raised to TLS 1.3 everywhere: the cipher list is not rendered,
+# because TLS 1.3 suites are not configurable and the API refuses one.
+tlsBaseline:
+  namespaces: [gateways, example-tools]
+  tls:
+    minVersion: "1.3"

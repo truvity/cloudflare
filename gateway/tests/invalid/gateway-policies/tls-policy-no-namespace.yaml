@@ -1,0 +1,3 @@
+tlsPolicies:
+  strict:
+    targetRefs: [{name: public}]

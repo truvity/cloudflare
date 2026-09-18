@@ -1,0 +1,11 @@
+# A misspelt setting inside an entry is an error, not a silent default.
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs: [{name: console}]
+    oidc:
+      issuer: https://id.example.com
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com
+      cookieSamesite: Strict

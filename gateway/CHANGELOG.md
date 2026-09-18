@@ -2,7 +2,27 @@
 
 What changed for a consumer, per version, newest first. A version with no
 heading here is a patch cut automatically for dependency bumps alone; its
-GitHub Release lists them. Both charts are released at every version.
+GitHub Release lists them. Every chart is released at every version.
+
+## v1.2.0
+
+- **New chart: `gateway-policies`.** The Envoy Gateway policies that
+  protect what the other two charts expose, from generic values:
+  - `tlsBaseline`: one ClientTrafficPolicy per namespace selecting every
+    Gateway without the `tls-baseline-exempt` label. **On by default**,
+    so a new install of this chart renders it: TLS 1.2 or later and the
+    six ECDHE AEAD cipher suites in the release namespace.
+  - `tlsPolicies`: stricter TLS on named Gateways or listeners.
+  - `securityPolicies`: an OIDC or JWT SecurityPolicy per protected route
+    or listener, with an `authenticated` or `groups` posture and CSRF
+    `off`, `shadow` or `enforce`. CSRF defaults to `shadow` on OIDC and is
+    refused on JWT. Nothing is rendered until given an issuer.
+  - `backendTLSPolicies`: verify a private-chain backend.
+  See [docs/reference.md](docs/reference.md#gateway-policies) and
+  [docs/adoption.md](docs/adoption.md#the-zero-diff-gate) for moving
+  hand-written policies onto it.
+- `gateway-fleet` and `gateway-groups` are unchanged: existing installs
+  render byte-for-byte as in 1.1.0.
 
 ## v1.1.0
 

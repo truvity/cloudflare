@@ -1,0 +1,5 @@
+# `off` unquoted is YAML 1.1's boolean false, not the string "off": it must
+# fail loudly rather than be read as "unset" and fall back to shadow.
+defaults:
+  csrf:
+    mode: off

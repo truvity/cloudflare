@@ -8,6 +8,7 @@ that is not.
 |---|---|---|
 | `charts/gateway-fleet` | GatewayClass and EnvoyProxy per class; one Gateway per exposure, with its health listener, its `allowedListeners` rule, its baseline ClientTrafficPolicy and its NetworkPolicy | shipped |
 | `charts/gateway-groups` | One ListenerSet per project group, a listener and a Certificate per domain, an optional BackendTLSPolicy and the ingress rule that lets the gateway reach the group's workloads | shipped |
+| `charts/gateway-policies` | The policies that protect what the other two expose: a TLS floor on every Gateway of a namespace unless it opts out, stricter TLS per listener, an OIDC or JWT SecurityPolicy per protected route with an `authenticated` or `groups` posture and CSRF, and BackendTLSPolicy for private-chain backends | shipped from v1.2.0 |
 
 Charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
 
@@ -16,7 +17,9 @@ Charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
 A platform team running Kubernetes with Envoy Gateway (1.9 or later, from
 upstream's `gateway-helm`), cert-manager and an issuer of its own, that
 wants its entry points — public, private, client-certificate — declared as
-data, and each project's hostnames granted rather than self-served. The
+data, each project's hostnames granted rather than self-served, and sign-in,
+token checks and TLS floors stated as policy rather than left to each
+application. The OIDC issuer and its clients are the estate's too. The
 Envoy Gateway **controller** is not here: these charts own what it
 reconciles.
 
@@ -44,6 +47,10 @@ GatewayClass  ── parametersRef ──►  EnvoyProxy
        NetworkPolicy
 ```
 
+**Policies** protect both halves (`gateway-policies`): a TLS floor selects
+every Gateway of a namespace unless the Gateway opts out by label, and a
+SecurityPolicy attaches to a project's route — or a listener — by name.
+
 Two consequences worth stating, because both are load-bearing:
 
 - **The exposure's listener is a health endpoint, not a route.** A Gateway
@@ -56,7 +63,7 @@ Two consequences worth stating, because both are load-bearing:
 
 ## Install and a worked example
 
-Both charts come from one tag; pin them at the same version.
+All three charts come from one tag; pin them at the same version.
 
 ```sh
 helm install fleet oci://ghcr.io/truvity/charts/gateway-fleet \
@@ -132,15 +139,46 @@ groups:
 A project then attaches an HTTPRoute to the ListenerSet `argocd` in the
 exposure's namespace, from a namespace carrying the grant label.
 
+```sh
+helm install policies oci://ghcr.io/truvity/charts/gateway-policies \
+  --namespace envoy-gateway-system \
+  --values policies-values.yaml
+```
+
+```yaml
+# On by default, with no values at all: TLS 1.2 or later and the
+# forward-secret AEAD ciphers on every Gateway of the namespace, unless the
+# Gateway carries the label `tls-baseline-exempt`.
+tlsBaseline:
+  namespaces: [envoy-gateway-system]
+
+defaults:
+  oidc:
+    issuer: https://id.example.com     # nothing signs in until this is set
+
+securityPolicies:
+  argocd:
+    namespace: argocd
+    targetRefs: [{name: argocd}]       # the project's HTTPRoute
+    oidc:
+      clientID: example-argocd
+      clientSecret: {name: example-argocd-client}   # key client-secret; yours to deliver
+      hostname: argocd.example.com
+    # CSRF is in shadow on a sign-in route by default: counted, not refused.
+```
+
+[docs/reference.md](docs/reference.md#gateway-policies) has a worked
+example with every kind of policy.
+
 ## Documentation
 
 - [docs/adoption.md](docs/adoption.md) — prerequisites, install order, the
   zero-diff gate, and upgrading across breaking releases
 - [docs/safety.md](docs/safety.md) — every render-time refusal and the
   failure it prevents; the traps
-- [docs/reference.md](docs/reference.md) — every value of both charts
-- [docs/doctrine.md](docs/doctrine.md) — the two-chart split, the three
-  owners, and the ownership contract
+- [docs/reference.md](docs/reference.md) — every value of every chart
+- [docs/doctrine.md](docs/doctrine.md) — the split between the charts, the
+  three owners, and the ownership contract
 - [CHANGELOG.md](CHANGELOG.md) — what changed for a consumer, per version
 
 ## The rule that makes this repository public
@@ -174,7 +212,7 @@ that will quietly stop working.
 ## Releasing
 
 Push a tag `vX.Y.Z`. The shared release workflow creates the GitHub Release
-and pushes both charts at that version — a chart's own `version` field is a
+and pushes every chart at that version — a chart's own `version` field is a
 placeholder that never moves.
 
 Auto-release is present but not armed (`vars.AUTO_RELEASE` is unset), so

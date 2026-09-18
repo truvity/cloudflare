@@ -1,0 +1,10 @@
+# A policy that targets nothing protects nothing.
+defaults:
+  oidc: {issuer: https://id.example.com}
+securityPolicies:
+  console:
+    namespace: example
+    oidc:
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com

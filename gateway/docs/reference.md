@@ -1,6 +1,6 @@
 # Reference
 
-Every value of both charts. `charts/<chart>/values.yaml` carries the same
+Every value of every chart. `charts/<chart>/values.yaml` carries the same
 keys as commented defaults, and `values.schema.json` is the authority on
 types: an unknown key fails the render.
 
@@ -131,3 +131,260 @@ wins. The other keys are per group only.
 | `networkPolicy.from.namespace` | *required* when enabled | the namespace the gateway's pods run in |
 | `networkPolicy.from.podLabels` | *required* when enabled | the gateway's pod labels |
 | `networkPolicy.ports` | *required* when enabled | `[{port, protocol}]` |
+
+## gateway-policies
+
+The policies that protect what the other two charts expose. With an empty
+values file it renders one object — the TLS floor for the release
+namespace — and authenticates nothing. Written against the Envoy Gateway
+1.9.1 CRDs (see [adoption.md](adoption.md#prerequisites)).
+
+### Worked example
+
+Neutral names throughout; an abridged copy of the `full` golden case
+(`tests/cases/gateway-policies/full/values.yaml`), whose render is
+`tests/golden/gateway-policies/full.yaml`.
+
+```yaml
+commonAnnotations:
+  example.com/sync-wave: "70"
+
+tlsBaseline:
+  namespaces: [gateways, example-tools]
+  annotations:
+    example.com/sync-wave: "66"
+
+tlsPolicies:
+  strict-listener:                  # one listener held to TLS 1.3 only
+    namespace: gateways
+    targetRefs:
+      - name: public
+        sectionName: partners
+    tls: {minVersion: "1.3", maxVersion: "1.3"}
+
+defaults:
+  oidc:
+    issuer: https://id.example.com
+    authorizationEndpoint: https://id.example.com/authorize
+    tokenEndpoint: https://id.example.com/token
+    endSessionEndpoint: https://id.example.com/end_session
+    scopes: [openid, email, profile, offline_access]
+    idToken:
+      enabled: true
+      header: x-example-id-token
+      providerName: example-id
+      remoteJWKS:
+        uri: https://id.example.com/keys
+        backendRefs:                # keys from the issuer's Service next door
+          - {name: issuer, namespace: example-id, port: 8080}
+      claimToHeaders:
+        - {header: x-auth-request-user, claim: sub}
+        - {header: x-auth-request-email, claim: email}
+  jwt:
+    issuer: https://id.example.com
+    remoteJWKS:
+      uri: https://id.example.com/keys
+
+securityPolicies:
+  console:                          # anyone signed in; CSRF in shadow (default)
+    namespace: example-console
+    targetRefs: [{name: console}]
+    oidc:
+      clientID: example-console
+      clientSecret: {name: example-console-client}
+      hostname: console.example.com
+      forwardAccessToken: true
+
+  admin:                            # one group; CSRF enforced
+    namespace: example-admin
+    targetRefs: [{name: admin}]
+    oidc:
+      clientID: example-admin
+      clientSecret: {name: example-admin-client}
+      hostname: admin.example.com
+      pathPrefix: /_auth
+      cookieSameSite: Strict
+    authorization:
+      posture: groups
+      groups: [example-admins]
+    csrf:
+      mode: enforce
+      additionalOrigins: [https://portal.example.com]
+
+  api:                              # a machine route: bearer tokens, no CSRF
+    type: jwt
+    namespace: example-api
+    targetRefs: [{kind: GRPCRoute, name: api}]
+    jwt:
+      audiences: [example-api]
+    authorization:
+      posture: groups
+      groups: [example-api-callers]
+
+backendTLSPolicies:
+  store:
+    namespace: example-store
+    targetRefs: [{name: store, sectionName: https}]
+    hostname: store.example-store.svc
+    caCertificateRefs: [{kind: ConfigMap, name: example-trust-bundle}]
+```
+
+Relational mistakes fail the render; [safety.md](safety.md#gateway-policies)
+lists every refusal.
+
+### Top level
+
+| Value | Default | Notes |
+|---|---|---|
+| `commonAnnotations` | `{}` | on every rendered object; an object's own `annotations` win per key |
+| `tlsBaseline` | on | see below |
+| `tlsPolicies` | `{}` | one ClientTrafficPolicy per entry |
+| `defaults` | see below | merged under every `securityPolicies` entry |
+| `securityPolicies` | `{}` | one SecurityPolicy per entry |
+| `backendTLSPolicies` | `{}` | one BackendTLSPolicy per entry |
+
+### `tlsBaseline` — the floor for every Gateway
+
+A ClientTrafficPolicy only attaches to Gateways in its own namespace, so
+one is rendered per namespace. It selects Gateways by the **absence** of a
+label, so a Gateway created later is covered from its first moment, and one
+that needs something else opts out visibly by carrying the label.
+
+| Value | Default | Notes |
+|---|---|---|
+| `tlsBaseline.enabled` | `true` | |
+| `tlsBaseline.name` | `tls-baseline` | the same name in every namespace |
+| `tlsBaseline.namespaces` | `[]` | empty: the release namespace only |
+| `tlsBaseline.annotations`, `.labels` | `{}` | |
+| `tlsBaseline.exemptLabel` | `tls-baseline-exempt` | a Gateway carrying this label key (any value) is not selected |
+| `tlsBaseline.tls.minVersion` | `"1.2"` | `"1.0"`–`"1.3"` or `Auto`, quoted. RFC 8996 retired 1.0 and 1.1 |
+| `tlsBaseline.tls.maxVersion` | `""` | empty renders nothing: Envoy's maximum (1.3) applies |
+| `tlsBaseline.tls.ciphers` | the six ECDHE AEAD suites | TLS 1.2 and older only; not rendered when `minVersion` is `"1.3"` (the API refuses both). `[]` leaves the choice to Envoy. The default is Envoy's own list, stated so it is visible and does not move with a proxy upgrade |
+
+A Gateway with its own Gateway-level ClientTrafficPolicy must carry the
+opt-out label: see [safety.md](safety.md#one-gateway-one-gateway-level-clienttrafficpolicy).
+
+### `tlsPolicies.<name>` — stricter TLS where it is needed
+
+| Value | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | |
+| `name` | the map key | |
+| `namespace` | *required* | the Gateway's namespace |
+| `annotations`, `labels` | `{}` | |
+| `targetRefs` | *required* | `{kind, name, sectionName}`; `kind` `Gateway` (default) or `ListenerSet`; `sectionName` narrows it to one listener |
+| `tls.minVersion` | `"1.3"` | |
+| `tls.maxVersion` | `""` | |
+| `tls.ciphers` | `[]` | as for the baseline |
+
+### `defaults` and `securityPolicies.<name>` — protected routes
+
+`defaults` is merged under every entry, key by key; an entry's own value
+replaces it, including an empty one (`""`, `false`, `[]`). So an issuer, a
+namespace or a CSRF posture shared by many routes is stated once.
+
+Entry-only keys:
+
+| Value | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | |
+| `type` | `oidc` | `oidc`: the gateway signs the browser in. `jwt`: every request carries a bearer token |
+| `name` | the map key | |
+| `targetRefs` | *required* | `{kind, name, sectionName}`; `kind` `HTTPRoute` (default), `GRPCRoute`, `Gateway` or `ListenerSet`. Two entries on one target are refused: the controller would apply the older and silently ignore the newer |
+| `extraSpec` | `{}` | deep-merged over the generated spec, last, for fields this chart does not model |
+
+Keys valid in both `defaults` and an entry:
+
+| Value | Default | Notes |
+|---|---|---|
+| `namespace` | `""` | *required* (here or in the entry): the target's namespace |
+| `annotations`, `labels` | `{}` | |
+
+#### `oidc` — browser sign-in
+
+The gateway runs the authorization code flow itself, refreshes the tokens
+and keeps them in cookies it encrypts: no proxy, no session store, no
+cookie key to manage.
+
+| Value | Default | Notes |
+|---|---|---|
+| `oidc.issuer` | `""` | **required** on every oidc entry. Until it is set nothing signs in: an entry without one is refused, never rendered half-configured. `https://` only |
+| `oidc.authorizationEndpoint`, `.tokenEndpoint` | `""` | written out instead of discovered, so the controller never has to reach the issuer to translate the policy; empty uses discovery |
+| `oidc.endSessionEndpoint` | `""` | sign-out also ends the session at the issuer. Without it the cookie is cleared, the issuer session lives on, and the next page load signs the person straight back in |
+| `oidc.clientID` | `""` | *required* |
+| `oidc.clientSecret.name` | `""` | *required*: an Opaque Secret **in the policy's namespace** with the key `client-secret`. Delivering it is the caller's job; the chart only references it (with `group` and `kind` written out) |
+| `oidc.hostname` | `""` | the redirect becomes `https://<hostname><pathPrefix>/callback`. One of `hostname` or `redirectURL` is *required*: it must equal the redirect registered at the issuer |
+| `oidc.pathPrefix` | `/oauth2` | the callback is `<pathPrefix>/callback`, sign-out `<pathPrefix>/logout`. Pick one the application never serves |
+| `oidc.redirectURL` | derived | set in full to override |
+| `oidc.logoutPath` | `<pathPrefix>/logout` | |
+| `oidc.scopes` | `[openid, email, profile]` | `openid` is always sent. Most issuers need `offline_access` for a refresh token |
+| `oidc.refreshToken` | `true` | refresh underneath the session instead of signing the person out when the access token expires |
+| `oidc.forwardAccessToken` | `false` | send the access token upstream as `Authorization: Bearer` |
+| `oidc.cookieSameSite` | `Lax` | `Lax`, `Strict`, `None` or `""` (renders no `cookieConfig`). Stated, not left to the browser, whose default differs by browser and version. `Lax` still sends the cookie on a top-level link into the application; `Strict` suits one nothing links into |
+| `oidc.idToken.enabled` | `false` | verify the ID token as a JWT on every request. *Required* for the `groups` posture and for `claimToHeaders` |
+| `oidc.idToken.header` | `x-id-token` | the header the ID token is handed over in and read from |
+| `oidc.idToken.providerName` | `oidc` | the JWT provider's name; the authorization rule refers to it |
+| `oidc.idToken.audiences` | `[clientID]` | an ID token is minted for exactly one client |
+| `oidc.idToken.remoteJWKS.uri` | `""` | *required* when enabled |
+| `oidc.idToken.remoteJWKS.cacheDuration` | `300s` | |
+| `oidc.idToken.remoteJWKS.backendRefs` | `[]` | `{name, namespace, port}`: fetch the keys from an in-cluster Service instead of the public URL (`uri` still names the path) |
+| `oidc.idToken.claimToHeaders` | `[]` | `{header, claim}`: set from the verified token, overwriting whatever the request carried under that name |
+
+#### `jwt` — machine routes
+
+| Value | Default | Notes |
+|---|---|---|
+| `jwt.providerName` | `jwt` | |
+| `jwt.issuer` | `""` | **required** on every jwt entry; until it is set nothing validates |
+| `jwt.audiences` | `[]` | **required**: without one, every token the issuer ever signed, for anything, is accepted |
+| `jwt.remoteJWKS.uri` | `""` | *required* |
+| `jwt.remoteJWKS.cacheDuration` | `300s` | |
+| `jwt.remoteJWKS.backendRefs` | `[]` | as for `oidc.idToken` — the in-cluster issuer's Service |
+| `jwt.extractFrom` | `{}` | `{}` is Envoy Gateway's default, `Authorization: Bearer`. Otherwise `{headers: [{name, valuePrefix}], cookies, params}` |
+| `jwt.claimToHeaders` | `[]` | |
+
+#### `authorization` — who passes
+
+| Value | Default | Notes |
+|---|---|---|
+| `authorization.posture` | `authenticated` | `authenticated`: anyone the issuer signed in or signed a token for. `groups`: `defaultAction: Deny` and one rule allowing a token whose `claim` holds one of `groups` |
+| `authorization.claim` | `groups` | read from the verified token (the ID token on an oidc entry) as a string array |
+| `authorization.groups` | `[]` | *required* for `groups`; an empty allow-list is a route nobody can use |
+| `authorization.ruleName` | `allow-groups` | |
+
+#### `csrf` — cross-site request forgery
+
+The gateway compares the `Origin` (or, when absent, the `Referer`) of every
+mutating request — `POST`, `PUT`, `PATCH`, `DELETE` — with the request's
+own host. It is the second line after `SameSite`, not a replacement: it
+catches a same-site attacker, an older browser and a cookie already sent.
+
+| Value | Default | Notes |
+|---|---|---|
+| `csrf.mode` | `""` | `off`, `shadow`, `enforce`, or `""` for the type's default: **`shadow` on `oidc`**, `off` on `jwt`. On a `jwt` entry anything but `off` is refused: a machine client sends no `Origin`, so CSRF on an API or a webhook refuses every mutating request |
+| `csrf.additionalOrigins` | `[]` | other origins allowed to post, e.g. `https://app.example.com` (Envoy compares host and port only). Refused with `off` |
+| `csrf.shadowFraction` | `100/100` | shadow only: the share evaluated in shadow; the rest are enforced. Lower the numerator to roll enforcement out gradually |
+
+How to move a route from shadow to enforce, the counters, and the
+access-log fields that make every shadow decision reconstructable:
+[safety.md](safety.md#csrf-shadow-then-enforce).
+
+### `backendTLSPolicies.<name>` — private-chain backends
+
+| Value | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | |
+| `name` | the map key | |
+| `namespace` | *required* | the Service's namespace |
+| `annotations`, `labels` | `{}` | |
+| `targetRefs` | *required* | `{kind, name, sectionName}`; `kind` `Service` (default), `sectionName` the Service port's name |
+| `hostname` | *required* | sent as SNI, and the name the certificate must carry |
+| `caCertificateRefs` | `[]` | `{kind: ConfigMap\|Secret, name}` with the CA under `ca.crt`. Exactly one of this or `wellKnownCACertificates` |
+| `wellKnownCACertificates` | `""` | `System`: the proxy's own trust store |
+| `subjectAltNames` | `[]` | `{type: Hostname, hostname}` or `{type: URI, uri}`, verified instead of `hostname` |
+
+The proxy presents a client certificate to such a backend only if its
+EnvoyProxy has one (`gateway-fleet`: `proxy.backendTLS.clientCertificateRef`).
+`gateway-groups` can also render a BackendTLSPolicy per group
+(`groups.<n>.backendTLS`); use this chart for a backend that is not tied
+to one group, and never both for one Service.

@@ -1,0 +1,15 @@
+# The groups posture denies everyone not in the list: an empty list is a
+# route nobody can use.
+defaults:
+  oidc:
+    issuer: https://id.example.com
+    idToken: {enabled: true, remoteJWKS: {uri: https://id.example.com/keys}}
+securityPolicies:
+  admin:
+    namespace: example
+    targetRefs: [{name: admin}]
+    oidc:
+      clientID: admin
+      clientSecret: {name: admin-client}
+      hostname: admin.example.com
+    authorization: {posture: groups}

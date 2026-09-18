@@ -1,0 +1,2 @@
+defaults:
+  authorization: {posture: everyone}

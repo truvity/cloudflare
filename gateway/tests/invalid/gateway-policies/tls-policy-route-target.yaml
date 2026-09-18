@@ -1,0 +1,5 @@
+# TLS is terminated by a Gateway or a ListenerSet, not a route.
+tlsPolicies:
+  strict:
+    namespace: gateways
+    targetRefs: [{kind: HTTPRoute, name: console}]

@@ -1,0 +1,5 @@
+backendTLSPolicies:
+  store:
+    namespace: example
+    hostname: store.example.internal
+    caCertificateRefs: [{kind: ConfigMap, name: bundle}]

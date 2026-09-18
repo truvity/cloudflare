@@ -1,0 +1,6 @@
+backendTLSPolicies:
+  store:
+    namespace: example
+    targetRefs: [{name: store}]
+    hostname: store.example.internal
+    caCertificateRefs: [{kind: Service, name: bundle}]

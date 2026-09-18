@@ -1,0 +1,2 @@
+tlsBaseline:
+  tls: {ciphers: [ECDHE-RSA-DES-CBC3-SHA]}

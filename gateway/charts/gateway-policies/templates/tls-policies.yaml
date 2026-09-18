@@ -1,0 +1,28 @@
+{{- range $key, $spec := .Values.tlsPolicies }}
+{{- $p := include "policies.tlsPolicy.resolve" (dict "key" $key "spec" $spec) | fromYaml }}
+{{- if $p.enabled }}
+---
+{{- /* TLS for named Gateways or listeners beyond the baseline. A listener
+       (sectionName) is more specific than the baseline's Gateway-level
+       selection and wins for that listener; a whole Gateway named here
+       should carry the baseline's opt-out label. */}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $p.name }}
+  namespace: {{ $p.namespace }}
+  {{- with include "policies.annotations" (dict "root" $ "extra" $p.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $p.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    {{- toYaml $p.targetRefs | nindent 4 }}
+  tls:
+    {{- include "policies.tls" $p.tls | nindent 4 }}
+{{- end }}
+{{- end }}
