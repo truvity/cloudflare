@@ -29,6 +29,9 @@ default, and the consuming estate supplies it from its own (private)
 repository. `hack/leak-canary.sh` enforces this in CI, and public history
 cannot be unpublished — so the rule is mechanical, not remembered.
 
+This repository follows the shared
+[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
+
 The same rule shapes the Go packages: credentials come in as an API token,
 secrets (the tunnel token) go out as Pulumi `Output`s and the **caller**
 decides where they live. No secret store and no cloud SDK. Zone settings
@@ -229,11 +232,28 @@ Every `tests/cases/<chart>/<case>/values.yaml` is rendered and compared
 byte-for-byte with `tests/golden/<chart>/<case>.yaml`; a template change
 is reviewed as a diff, with no cluster involved.
 
+`tests/invalid/<chart>/` holds one fixture per refusal. Each must fail to
+render; `just lint` proves it. A rule without a fixture is a rule that
+will quietly stop working.
+
+## Status
+
+Used in production by its maintainers. Releases are listed on the
+[releases page](https://github.com/truvity/cloudflare/releases), and
+[CHANGELOG.md](CHANGELOG.md) says what changed for a consumer in each.
+
 ## Releasing
 
 Push a tag `vX.Y.Z`. The shared release workflow creates the GitHub
 Release and pushes every chart at that version — a chart's own `version`
-field is a placeholder that never moves.
+field is a placeholder that never moves — and the same tag is the Go
+module's version.
+
+Auto-release is present but not armed (`vars.AUTO_RELEASE` is unset), so
+every release today is a manual tag. When armed it cuts **patches only**:
+at once for a merged `security`-labelled pull request, weekly for
+dependency bumps. Minors and majors are always manual, tagged when the
+change merges and after its CHANGELOG heading.
 
 ## Licence
 
