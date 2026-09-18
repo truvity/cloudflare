@@ -8,6 +8,14 @@ classes:
       replicas: 2
       service:
         name: gateway-internal
+      # The controller's default access-log line plus request headers that
+      # say which client sent a request, and one default field overridden.
+      accessLog:
+        extraFields:
+          origin: "%REQ(ORIGIN)%"
+          referer: "%REQ_WITHOUT_QUERY(REFERER)%"
+          sec-fetch-site: "%REQ(SEC-FETCH-SITE)%"
+          user-agent: "%REQ(USER-AGENT):64%"
   customer:
     # Declared for later: a class with no proxy yet takes no parametersRef.
     mergeGateways: false

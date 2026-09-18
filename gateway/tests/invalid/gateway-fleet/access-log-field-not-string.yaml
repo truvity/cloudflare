@@ -1,0 +1,20 @@
+# An access-log field is an Envoy command operator, which is a string. A
+# number or a map here would reach the EnvoyProxy and be refused there, on
+# the cluster; the schema refuses it at render time instead.
+classes:
+  internal:
+    mergeGateways: true
+    proxy:
+      accessLog:
+        extraFields:
+          origin: 1
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
