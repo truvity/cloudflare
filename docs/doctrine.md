@@ -13,10 +13,15 @@ arriving ambiently were enough. So:
   several providers a resource belongs to; it passes the account's.
 - **A zone belongs to exactly one account,** and `pkg/zone` is created
   with that account's `Use()`. Several zones of one account share it.
-- **One tunnel, and one cloudflared, per account,** because the tunnel is
-  in that account. The chart carries the release name in every object
-  name and in the pod selector for exactly this reason: the installs
-  share a namespace without claiming each other's pods.
+- **One tunnel, and one cloudflared, per cluster and account.** The
+  tunnel is in one account, so a cluster serving two accounts runs two.
+  A second cluster serving the same account gets its own tunnel, not
+  extra connectors on the first cluster's: connectors of one tunnel are
+  load-balanced as equals, so sharing one across clusters would send a
+  cluster's hostnames to another cluster's origins, and one token would
+  open both. The chart carries the release name in every object name
+  and in the pod selector so that one cluster's installs share a
+  namespace without claiming each other's pods.
 
 Accounts are data, not code: every `Args` type is a plain yaml-taggable
 struct, so an estate keeps its accounts, zones and tunnels as rows in its

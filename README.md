@@ -51,10 +51,14 @@ In Go, an estate writes the account as data: one `account.New` per
 account, and `acct.Use()` passed to every zone, tunnel and record created
 in it, so nothing can pick up another account's provider by accident.
 Several zones in one account share that account's `Use()`, and one tunnel
-serves hostnames from all of them. In the cluster, **one cloudflared per
-account**, because its tunnel is in that account: the chart carries the
-release name in every object name and in the pod selector, so the
-installs share a namespace.
+serves hostnames from all of them. **The tunnel is per cluster and
+account**: a cluster that serves hostnames from two accounts runs two
+tunnels and two cloudflared installs, one per account, and a second
+cluster serving the same account gets a tunnel of its own rather than
+extra connectors on the first one's, so each cluster's routes, token and
+failure stay its own. The chart carries the release name in every object
+name and in the pod selector, so one cluster's installs share a
+namespace.
 
 ## Install and a worked example
 
