@@ -1,0 +1,11 @@
+# A Gateway name that is not a DNS label is rejected by the API server
+# after the rest of the release has applied.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    gatewayName: Public_Gateway
+    health:
+      hostname: h.example.com
+      certificate: {issuerRef: {name: ca}}

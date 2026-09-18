@@ -1,0 +1,15 @@
+# Without the gateway's pod labels the rule admits every pod of the
+# gateway's namespace.
+defaults:
+  parent: {name: public}
+  certificate: {issuerRef: {name: ca}}
+groups:
+  store:
+    domains: [a.example.com]
+    networkPolicy:
+      enabled: true
+      namespaces: [example-store]
+      from:
+        namespace: envoy-gateway-system
+        podLabels: {}
+      ports: [{port: 8080, protocol: TCP}]

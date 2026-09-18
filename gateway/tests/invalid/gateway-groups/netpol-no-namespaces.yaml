@@ -1,0 +1,14 @@
+# A NetworkPolicy with nowhere to render protects nothing.
+defaults:
+  parent: {name: public}
+  certificate: {issuerRef: {name: ca}}
+groups:
+  store:
+    domains: [a.example.com]
+    networkPolicy:
+      enabled: true
+      namespaces: []
+      from:
+        namespace: envoy-gateway-system
+        podLabels: {app.kubernetes.io/name: envoy}
+      ports: [{port: 8080, protocol: TCP}]

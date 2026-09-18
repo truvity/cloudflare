@@ -1,0 +1,13 @@
+# The rule must name the namespace the gateway's pods run in.
+defaults:
+  parent: {name: public}
+  certificate: {issuerRef: {name: ca}}
+groups:
+  store:
+    domains: [a.example.com]
+    networkPolicy:
+      enabled: true
+      namespaces: [example-store]
+      from:
+        podLabels: {app.kubernetes.io/name: envoy}
+      ports: [{port: 8080, protocol: TCP}]

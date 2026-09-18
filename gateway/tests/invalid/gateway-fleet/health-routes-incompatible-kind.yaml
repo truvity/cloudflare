@@ -1,0 +1,14 @@
+# A TCPRoute cannot attach to an HTTPS listener; the grant would never
+# admit anything.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: h.example.com
+      certificate: {issuerRef: {name: ca}}
+      allowedRoutes:
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: TCPRoute
