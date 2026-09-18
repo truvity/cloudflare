@@ -160,6 +160,13 @@
             }
           }
         },
+        "accessLog": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraFields": { "$ref": "#/definitions/stringMap" }
+          }
+        },
         "extraSpec": { "type": "object" }
       }
     },

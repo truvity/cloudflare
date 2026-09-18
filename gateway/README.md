@@ -112,6 +112,7 @@ exposures:
 | `exposures.<n>.proxy.service.clusterIP` | `""` | a pinned address; reaches the Service through the controller's patch hook |
 | `exposures.<n>.proxy.shutdown.healthCheckFailureDelay` | `""` | fail readiness this long before draining, so a load balancer removes the endpoint first |
 | `exposures.<n>.proxy.backendTLS.clientCertificateRef` | unset | the certificate Envoy presents to a backend that asks for one |
+| `exposures.<n>.proxy.accessLog.extraFields` | `{}` | fields added to the controller's default JSON access log (`name: command operator`); the default fields are rendered too, because a JSON format replaces the default instead of extending it. `%REQ_WITHOUT_QUERY(referer)%` keeps a URL-valued header's query string out of the log |
 | `exposures.<n>.clientTrafficPolicy.tls.clientValidation` | disabled | turns an exposure into one only a certificate holder can reach |
 | `exposures.<n>.networkPolicy` | disabled | rules are the estate's; only the xDS egress is structural, because without it the proxies never get a configuration |
 

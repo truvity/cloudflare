@@ -81,6 +81,16 @@ classes: {}
 #        clientCertificateRef:
 #          name: ""
 #          namespace: ""
+#      # Fields added to Envoy Gateway's default JSON access log, as
+#      # name: Envoy command operator. Empty (the default) renders no
+#      # telemetry, so the controller's default applies unchanged. A JSON
+#      # format replaces the default rather than extending it, so the chart
+#      # renders the default fields too; a name that matches one overrides it.
+#      # %REQ_WITHOUT_QUERY(...)% logs a URL-valued header without its query.
+#      accessLog:
+#        extraFields: {}
+#          # origin: "%REQ(ORIGIN)%"
+#          # referer: "%REQ_WITHOUT_QUERY(REFERER)%"
 #      extraSpec: {}                # deep-merged over the generated spec last
 
 # ---------------------------------------------------------------------------

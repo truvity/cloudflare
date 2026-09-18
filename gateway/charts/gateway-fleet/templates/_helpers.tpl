@@ -59,7 +59,44 @@ backendTLS:
   clientCertificateRef:
     name: ""
     namespace: ""
+accessLog:
+  extraFields: {}
 extraSpec: {}
+{{- end -}}
+
+{{/*
+Envoy Gateway's own JSON access-log fields: what a proxy logs when its
+EnvoyProxy sets no telemetry. Copied from the controller
+(internal/xds/translator/accesslog.go, EnvoyJSONLogFields) because a JSON
+format REPLACES that default rather than extending it: adding one field
+without these would silently drop the other twenty-four. Re-check on a
+controller upgrade.
+*/}}
+{{- define "gateway.proxy.accessLogDefaultFields" -}}
+start_time: "%START_TIME%"
+method: "%REQ(:METHOD)%"
+x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+protocol: "%PROTOCOL%"
+response_code: "%RESPONSE_CODE%"
+response_flags: "%RESPONSE_FLAGS%"
+response_code_details: "%RESPONSE_CODE_DETAILS%"
+connection_termination_details: "%CONNECTION_TERMINATION_DETAILS%"
+upstream_transport_failure_reason: "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
+bytes_received: "%BYTES_RECEIVED%"
+bytes_sent: "%BYTES_SENT%"
+duration: "%DURATION%"
+x-envoy-upstream-service-time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+x-forwarded-for: "%REQ(X-FORWARDED-FOR)%"
+user-agent: "%REQ(USER-AGENT)%"
+x-request-id: "%REQ(X-REQUEST-ID)%"
+":authority": "%REQ(:AUTHORITY)%"
+upstream_host: "%UPSTREAM_HOST%"
+upstream_cluster: "%UPSTREAM_CLUSTER%"
+upstream_local_address: "%UPSTREAM_LOCAL_ADDRESS%"
+downstream_local_address: "%DOWNSTREAM_LOCAL_ADDRESS%"
+downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
+requested_server_name: "%REQUESTED_SERVER_NAME%"
+route_name: "%ROUTE_NAME%"
 {{- end -}}
 
 {{/*
@@ -120,6 +157,16 @@ class has exactly one proxy, so the flag has no meaning per exposure.
 {{- $ref := dict "kind" "Secret" "name" . -}}
 {{- with $p.backendTLS.clientCertificateRef.namespace }}{{- $_ := set $ref "namespace" . }}{{- end -}}
 {{- $_ := set $s "backendTLS" (dict "clientCertificateRef" $ref) -}}
+{{- end -}}
+{{- /* Extra access-log fields: the controller's default JSON line plus
+       these, to stdout, which is where the default goes. Nothing is
+       rendered without them, so the controller's default stays in charge. */ -}}
+{{- with $p.accessLog.extraFields }}
+{{- $fields := mergeOverwrite (include "gateway.proxy.accessLogDefaultFields" $ | fromYaml) . -}}
+{{- $setting := dict
+      "format" (dict "type" "JSON" "json" $fields)
+      "sinks" (list (dict "type" "File" "file" (dict "path" "/dev/stdout"))) -}}
+{{- $_ := set $s "telemetry" (dict "accessLog" (dict "settings" (list $setting))) -}}
 {{- end -}}
 {{- $s = mergeOverwrite $s ($p.extraSpec | default dict) -}}
 {{- toYaml $s -}}
