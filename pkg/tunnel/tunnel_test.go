@@ -43,7 +43,7 @@ func run(t *testing.T, args Args) *mocks {
 	t.Helper()
 	m := &mocks{res: map[string]resource.PropertyMap{}}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		tun, err := New(ctx, "devel", args, pulumi.String("c2VjcmV0"))
+		tun, err := New(ctx, "cluster-a", args, pulumi.String("c2VjcmV0"))
 		if err != nil {
 			return err
 		}
@@ -63,12 +63,12 @@ func run(t *testing.T, args Args) *mocks {
 func baseArgs() Args {
 	return Args{
 		AccountID: "acct",
-		Name:      "devel",
+		Name:      "cluster-a",
 		Ingress: []Ingress{
-			{Hostname: "app.devel.example.com", Service: "https://gateway.svc:443", CAPool: "/etc/cloudflared/certs/ca.pem"},
-			{Hostname: "*.devel.example.com", Service: "https://gateway.svc:443", OriginServerName: "*.devel.example.com"},
+			{Hostname: "console.apps.example.com", Service: "https://gateway.svc:443", CAPool: "/etc/cloudflared/certs/ca.pem"},
+			{Hostname: "*.apps.example.com", Service: "https://gateway.svc:443", OriginServerName: "*.apps.example.com"},
 		},
-		DNS: &DNS{ZoneID: "zone", Names: []string{"app.devel.example.com", "*.devel.example.com"}},
+		DNS: &DNS{ZoneID: "zone", Names: []string{"console.apps.example.com", "*.apps.example.com"}},
 	}
 }
 
@@ -76,10 +76,10 @@ func TestChildNamesAreTheDocumentedContract(t *testing.T) {
 	m := run(t, baseArgs())
 
 	for _, want := range []string{
-		"cloudflare:index/zeroTrustTunnelCloudflared:ZeroTrustTunnelCloudflared/tunnel-devel",
-		"cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-devel",
-		"cloudflare:index/dnsRecord:DnsRecord/cname-devel-app-devel-example-com",
-		"cloudflare:index/dnsRecord:DnsRecord/cname-devel-star-devel-example-com",
+		"cloudflare:index/zeroTrustTunnelCloudflared:ZeroTrustTunnelCloudflared/tunnel-cluster-a",
+		"cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-cluster-a",
+		"cloudflare:index/dnsRecord:DnsRecord/cname-cluster-a-console-apps-example-com",
+		"cloudflare:index/dnsRecord:DnsRecord/cname-cluster-a-star-apps-example-com",
 	} {
 		assert.Contains(t, m.res, want)
 	}
@@ -93,17 +93,17 @@ func TestChildNamesAreTheDocumentedContract(t *testing.T) {
 func TestIngressGetsCatchAllAppended(t *testing.T) {
 	m := run(t, baseArgs())
 
-	cfg := m.res["cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-devel"]
+	cfg := m.res["cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-cluster-a"]
 	rules := cfg["config"].ObjectValue()["ingresses"].ArrayValue()
 	require.Len(t, rules, 3)
 	assert.Equal(t, "http_status:404", rules[2].ObjectValue()["service"].StringValue())
-	assert.Equal(t, "app.devel.example.com", rules[0].ObjectValue()["hostname"].StringValue())
+	assert.Equal(t, "console.apps.example.com", rules[0].ObjectValue()["hostname"].StringValue())
 }
 
 func TestDNSRecordShape(t *testing.T) {
 	m := run(t, baseArgs())
 
-	rec := m.res["cloudflare:index/dnsRecord:DnsRecord/cname-devel-app-devel-example-com"]
+	rec := m.res["cloudflare:index/dnsRecord:DnsRecord/cname-cluster-a-console-apps-example-com"]
 	assert.Equal(t, "CNAME", rec["type"].StringValue())
 	assert.True(t, rec["proxied"].BoolValue())
 	assert.Equal(t, float64(1), rec["ttl"].NumberValue())
@@ -114,10 +114,10 @@ func TestCertificatesOptInSkipsTopWildcard(t *testing.T) {
 	args.Certificates = &Certificates{ZoneID: "zone", Zone: "example.com"}
 	m := run(t, args)
 
-	assert.Contains(t, m.res, "cloudflare:index/certificatePack:CertificatePack/acm-devel-app-devel-example-com")
-	assert.Contains(t, m.res, "cloudflare:index/certificatePack:CertificatePack/acm-devel-star-devel-example-com")
+	assert.Contains(t, m.res, "cloudflare:index/certificatePack:CertificatePack/acm-cluster-a-console-apps-example-com")
+	assert.Contains(t, m.res, "cloudflare:index/certificatePack:CertificatePack/acm-cluster-a-star-apps-example-com")
 
-	pack := m.res["cloudflare:index/certificatePack:CertificatePack/acm-devel-app-devel-example-com"]
+	pack := m.res["cloudflare:index/certificatePack:CertificatePack/acm-cluster-a-console-apps-example-com"]
 	assert.Equal(t, "advanced", pack["type"].StringValue())
 	assert.Equal(t, float64(90), pack["validityDays"].NumberValue())
 	assert.Equal(t, "lets_encrypt", pack["certificateAuthority"].StringValue())
@@ -152,8 +152,8 @@ func TestValidate(t *testing.T) {
 			"a wildcard listed before the exact host it swallows",
 			func(a *Args) {
 				a.Ingress = []Ingress{
-					{Hostname: "*.devel.example.com", Service: "https://fleet:443"},
-					{Hostname: "gemaal.devel.example.com", Service: "https://gemaal:443"},
+					{Hostname: "*.apps.example.com", Service: "https://fleet:443"},
+					{Hostname: "console.apps.example.com", Service: "https://console:443"},
 				}
 			},
 			"already caught by ingress[0]",
@@ -162,8 +162,8 @@ func TestValidate(t *testing.T) {
 			"a broad wildcard listed before a deeper one",
 			func(a *Args) {
 				a.Ingress = []Ingress{
-					{Hostname: "*.devel.example.com", Service: "https://fleet:443"},
-					{Hostname: "*.eudi.devel.example.com", Service: "https://eudi:443"},
+					{Hostname: "*.apps.example.com", Service: "https://fleet:443"},
+					{Hostname: "*.team-a.apps.example.com", Service: "https://team-a:443"},
 				}
 			},
 			"put the more specific rule first",
@@ -207,16 +207,16 @@ func TestSecretIsRequired(t *testing.T) {
 	require.ErrorContains(t, err, "secret is required")
 }
 
-// The order the estate actually uses has to pass, or the check is a
-// blocker rather than a guard: exact hosts first, then the deeper
-// wildcard, then the broader one.
+// A correctly ordered list has to pass, or the check is a blocker
+// rather than a guard: exact hosts first, then the deeper wildcard, then
+// the broader one.
 func TestCorrectlyOrderedIngressIsAccepted(t *testing.T) {
 	a := baseArgs()
 	a.Ingress = []Ingress{
-		{Hostname: "gemaal.devel.example.com", Service: "https://gemaal:443"},
-		{Hostname: "headlamp.devel.example.com", Service: "https://headlamp:443"},
-		{Hostname: "*.eudi.devel.example.com", Service: "https://fleet:443"},
-		{Hostname: "*.devel.example.com", Service: "https://fleet:443"},
+		{Hostname: "console.apps.example.com", Service: "https://console:443"},
+		{Hostname: "dashboard.apps.example.com", Service: "https://dashboard:443"},
+		{Hostname: "*.team-a.apps.example.com", Service: "https://fleet:443"},
+		{Hostname: "*.apps.example.com", Service: "https://fleet:443"},
 	}
 
 	require.NoError(t, a.Validate())
@@ -239,8 +239,8 @@ func TestAnExactRuleDoesNotShadowAWildcard(t *testing.T) {
 func TestSiblingWildcardsDoNotShadowEachOther(t *testing.T) {
 	a := baseArgs()
 	a.Ingress = []Ingress{
-		{Hostname: "*.eudi.example.com", Service: "https://eudi:443"},
-		{Hostname: "*.dms.example.com", Service: "https://dms:443"},
+		{Hostname: "*.team-a.example.com", Service: "https://team-a:443"},
+		{Hostname: "*.team-b.example.com", Service: "https://team-b:443"},
 	}
 
 	require.NoError(t, a.Validate())

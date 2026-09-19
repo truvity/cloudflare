@@ -241,7 +241,7 @@ func hostnameCovers(pattern, candidate string) bool {
 }
 
 // Slug renders a hostname as a stable resource-name fragment
-// ("*.devel.example.com" → "star-devel-example-com").
+// ("*.apps.example.com" → "star-apps-example-com").
 func Slug(host string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(host, "*", "star"), ".", "-")
 }
