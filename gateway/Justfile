@@ -15,8 +15,13 @@ lint:
     set -euo pipefail
     for chart in {{ charts }}; do
       helm lint "charts/$chart"
-      # An unknown key at the top level and inside an entry.
-      ! helm template x "charts/$chart" --set bogusKey=1 >/dev/null 2>&1
+      # An unknown top-level key must fail the render. Not `! helm
+      # template ...`: bash's `set -e` ignores a command negated with `!`,
+      # so such a probe could never fail the recipe.
+      if helm template x "charts/$chart" --set bogusKey=1 >/dev/null 2>&1; then
+        echo "$chart: an unknown key rendered" >&2
+        exit 1
+      fi
       # Every negative fixture must fail; one that renders is a hole in the
       # validation, which is exactly the kind of hole nobody notices.
       for values in tests/invalid/"$chart"/*.yaml; do
