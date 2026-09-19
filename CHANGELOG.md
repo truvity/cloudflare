@@ -14,10 +14,13 @@ together at every version.
 
 ## v2.0.0
 
-- **Breaking: accounts and zones are data.** `pkg/account` binds one API
-  token to one account and hands back the resource option every zone,
-  tunnel and record in that account is created with; the account id is no
-  longer a string on `tunnel.Args` with the provider arriving ambiently.
+- **Accounts and zones are data.** The new `pkg/account` binds one API
+  token to one account and hands back the resource option
+  (`acct.Use()`, an explicit provider) that binds a zone, tunnel or
+  record to that account, where the provider otherwise arrives
+  ambiently. It is additive: `tunnel.Args` still carries the account id
+  as a string, and `pkg/tunnel`'s only change in this release is the
+  ingress-order check below.
 - **`pkg/zone`**: the three zone settings an estate decides — origin SSL
   mode, minimum TLS version and Total TLS — each opt-in; a zone that would
   manage nothing is refused.
