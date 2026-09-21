@@ -53,7 +53,12 @@ Pulumi run. Each rule is covered by the package's tests.
 | an `ssl` other than `off`, `flexible`, `full`, `strict` | a value outside the set Cloudflare accepts, found during the apply instead of before it |
 | a `minTlsVersion` other than `1.0`, `1.1`, `1.2`, `1.3` | the same |
 | a `totalTls.certificateAuthority` other than `google`, `lets_encrypt`, `ssl_com` | the same |
-| a zone with none of `ssl`, `minTlsVersion`, `totalTls` | a declared zone that manages nothing: it reads as managed and is not. Omit the zone instead |
+| a zone with none of `ssl`, `minTlsVersion`, `totalTls`, `cache` | a declared zone that manages nothing: it reads as managed and is not. Omit the zone instead |
+| a `cache.hosts` entry that is empty | a filter expression matching the empty name, which is no host |
+| a `cache.hosts` entry with an upper-case letter | a rule that is applied, reported healthy and matches nothing: Cloudflare compares a lower-cased host |
+| a `cache.hosts` entry containing `/`, `:`, `"`, `\` or a space | a URL or a quoted fragment pasted where a hostname goes, which would either match nothing or end the expression early |
+| a `cache.hosts` wildcard that is not one leading label (`app.*.example`, `*.`) | a wildcard Cloudflare's set literal cannot express, silently matching nothing |
+| a `cache.hosts` entry listed twice | a second rule term for a host already covered, which reads as two policies for one name |
 
 ### pkg/tunnel
 

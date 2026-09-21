@@ -5,6 +5,24 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v2.1.0
+
+- **`pkg/zone` gains `cache`: which hostnames a zone may cache at all.**
+  Without it a zone caches by file extension — a response under a `.js`
+  or `.css` name is stored at the edge whether or not its origin asked,
+  and where the origin sent no `Cache-Control` the zone gives the browser
+  four hours. The block renders the `http_request_cache_settings` phase
+  as two rules whose expressions partition the zone, so exactly one
+  matches any request: a listed host is cached only as far as its own
+  `Cache-Control` goes, and everything else is bypassed.
+  `respectOriginBrowserTtl` sets the zone's Browser Cache TTL to "Respect
+  Existing Headers", which is what stops the four hours being added to
+  responses no rule caches. Additive: a zone without the block keeps the
+  caching it has. New children: `cache-rules-<name>` and
+  `setting-<name>-browser-cache-ttl`. A zone has one ruleset per phase,
+  so adopting a zone that already has cache rules means importing or
+  deleting them first — see [reference.md](docs/reference.md#pkgzone).
+
 ## v2.0.1
 
 - **Use this release, not v2.0.0, for Go.** The module path is now
