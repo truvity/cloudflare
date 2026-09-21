@@ -1,0 +1,5 @@
+# A route with no hostname takes everything its parent serves.
+routes:
+  - name: example-app
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}

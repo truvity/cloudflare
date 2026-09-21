@@ -1,0 +1,34 @@
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: shop
+  namespace: example-shop
+spec:
+  csrf:
+    shadowFraction:
+      denominator: 100
+      numerator: 100
+  oidc:
+    clientID: example-shop
+    clientSecret:
+      group: ""
+      kind: Secret
+      name: example-shop-client
+    cookieConfig:
+      sameSite: Lax
+    logoutPath: /oauth2/logout
+    provider:
+      issuer: https://id.example.com
+    redirectURL: https://shop.example/oauth2/callback
+    refreshToken: true
+    scopes:
+    - openid
+    - email
+    - profile
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: example-shop
+    sectionName: app

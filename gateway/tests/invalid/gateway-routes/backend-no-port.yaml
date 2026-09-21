@@ -1,0 +1,5 @@
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    parentRefs: [{name: example}]
+    backend: {name: example-app}

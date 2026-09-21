@@ -1,0 +1,5 @@
+{{- /* One HTTPRoute per entry, exactly as an application chart calls it. */}}
+{{- range $route := .Values.routes }}
+---
+{{ include "gateway-routes.productRoute" (dict "root" $ "route" $route) }}
+{{- end }}

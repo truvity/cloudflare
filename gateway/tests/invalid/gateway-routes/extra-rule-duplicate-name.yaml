@@ -1,0 +1,10 @@
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}
+    extraRules:
+      - name: redirect
+        paths: [/r]
+      - name: redirect
+        paths: [/s]

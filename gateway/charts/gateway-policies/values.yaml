@@ -230,9 +230,17 @@ securityPolicies: {}
 #    namespace: ""                  # required (here or in defaults)
 #    annotations: {}
 #    labels: {}
-#    targetRefs:                    # required; HTTPRoute (default), GRPCRoute,
-#      - name: console              # Gateway or ListenerSet, with an optional
-#                                   # sectionName for one listener or rule
+#    targetRefs:                    # required; kind HTTPRoute (default),
+#      - name: console              # GRPCRoute, Gateway or ListenerSet
+#        sectionName: app           # optional: ONE section of that target —
+#                                   # a listener of a Gateway or ListenerSet,
+#                                   # or a RULE of a route, by the rule's own
+#                                   # `name`. The target's other rules keep
+#                                   # serving unprotected, which is how an
+#                                   # application publishes its assets while
+#                                   # its shell and API stay gated (the
+#                                   # gateway-routes library chart renders
+#                                   # exactly that pair, `app` and `static`).
 #    oidc: {}                       # merged over defaults.oidc
 #    jwt: {}                        # merged over defaults.jwt
 #    authorization: {}              # merged over defaults.authorization

@@ -1,7 +1,8 @@
 # Safety — what can break, and what the charts do about it
 
 The first three sections are `gateway-fleet` and `gateway-groups`;
-[gateway-policies](#gateway-policies) has its own below.
+[gateway-policies](#gateway-policies) and [gateway-routes](#gateway-routes)
+have their own below.
 
 The mistakes that take an edge down are relational: two things claiming
 one name, one hostname or one Secret, a grant that grants everything, a
@@ -223,3 +224,61 @@ In YAML 1.1, which Helm reads, an unquoted `off` (like `no`, `yes`, `on`)
 is a boolean. `csrf.mode: off` would reach the chart as `false`; the
 schema refuses it rather than read it as unset and fall back to shadow.
 Quote it: `mode: "off"`.
+
+## gateway-routes
+
+A route whose rules are named fails in one direction that matters: the
+gate lands on a rule nobody serves, or on no rule at all, and the
+application answers — signed in or not — exactly as it would have. Nothing
+in the route says so.
+
+### Refused at render time
+
+| Refusal | What it prevents |
+|---|---|
+| `static` or an `extraRules` path of `/` | a rule that carries no policy serving the whole application, shell and API included, to anyone: the one mistake this template exists to make impossible |
+| a path that is not absolute; a rule with no paths | a match the API server rejects, or a rule that matches nothing |
+| `static` with a backend or a filter but no paths | the rule is not rendered at all: a public surface someone believes exists |
+| an `extraRules` entry named `app` or `static`, or a name used twice | a second rule under the name a policy targets — the gate then applies to one of them |
+| an `extraRules` entry with no name, or a name that is not a section name | a rule no policy can target, and one that cannot be told apart in a status condition |
+| no `name`, a `name` that is not a DNS subdomain | an object the API server rejects |
+| no `hostnames`, or one that is not a hostname | a route that takes everything its parent serves |
+| no `parentRefs`, or one with no name | a route attached to nothing |
+| a rule with no backend name, or a port outside 1–65535 | a rule that routes nowhere |
+| any unknown key, at the route, a rule, a backend or a parent | a library template has no `values.schema.json`: a misspelt `hostnames` or `static` would otherwise render a route that quietly serves something else |
+
+### Traps worth knowing
+
+#### A `sectionName` that matches no rule takes the gate off
+
+The policy is not applied and **the route keeps serving**. The controller
+says so — `Accepted: False`, `reason: TargetNotFound`, "No section name
+*x* found for HTTPRoute *ns/name*" — and traffic says nothing: the request
+that should have been redirected to the issuer reaches the application
+instead. So the rule names here are a contract rather than a label, and
+renaming one is a breaking change for whoever writes the policies.
+
+Two consequences for anyone changing this chart or a caller's values:
+
+- `app` and `static` are fixed. A caller cannot rename them, and an
+  `extraRules` entry cannot take either name.
+- After a change to a route's rules, read the policy's status, not the
+  route's: an accepted route with an unaccepted policy is an open door.
+
+#### The most specific prefix wins, not the first rule
+
+Envoy ranks path prefixes by length, so `static`'s `/app/assets` wins over
+`app`'s `/` however the rules are ordered, and a rule added later cannot
+steal traffic from a more specific one. Ordering the rules, or giving them
+priorities, is therefore not a thing to get right — but two rules with the
+*same* prefix are, and that is what the duplicate-name and path refusals
+above are for.
+
+#### One route, not two
+
+The same split can be written as two HTTPRoutes, one targeted by the
+policy and one not. It works, and it puts the security-relevant half of
+the arrangement in two objects that nothing ties together: a rename of the
+untargeted route is invisible to the policy, and a reader of either one
+cannot tell which surface is gated. Named rules keep the pair in one
+object, where the diff shows both halves at once.

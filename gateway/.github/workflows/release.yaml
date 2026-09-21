@@ -29,4 +29,4 @@ jobs:
       packages: write
     uses: truvity/ci-workflows/.github/workflows/release-public.yaml@ea3c238133634f69f0c51240ede27bb270e24dc0 # v3.0.1
     with:
-      charts: '["gateway-fleet", "gateway-groups", "gateway-policies"]'
+      charts: '["gateway-fleet", "gateway-groups", "gateway-policies", "gateway-routes"]'

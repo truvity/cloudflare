@@ -1,0 +1,20 @@
+# The consumer that renders charts/gateway-routes in the golden and
+# negative tests. A library chart cannot be rendered on its own — `helm
+# template` refuses it — so the harness stands in for the application chart
+# that includes it, and every tests/cases/gateway-routes/<case>/values.yaml
+# is read as this chart's values.
+#
+# A real caller declares the dependency from the registry
+# (oci://ghcr.io/truvity/charts, at the version it pins). Here the chart is
+# a symlink in charts/ so the tests always render the working tree, and the
+# version constraint admits the 0.0.0 placeholder the release workflow
+# stamps at the tag.
+apiVersion: v2
+name: gateway-routes-harness
+description: Renders charts/gateway-routes for the test suite.
+type: application
+version: 0.0.0
+dependencies:
+  - name: gateway-routes
+    version: ">=0.0.0-0"
+    repository: "file://../../../charts/gateway-routes"

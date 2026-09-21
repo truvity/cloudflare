@@ -1,0 +1,4 @@
+routes:
+  - hostnames: [app.example]
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}

@@ -9,6 +9,7 @@ that is not.
 | `charts/gateway-fleet` | GatewayClass and EnvoyProxy per class; one Gateway per exposure, with its health listener, its `allowedListeners` rule, its baseline ClientTrafficPolicy and its NetworkPolicy | shipped |
 | `charts/gateway-groups` | One ListenerSet per project group, a listener and a Certificate per domain, an optional BackendTLSPolicy and the ingress rule that lets the gateway reach the group's workloads | shipped |
 | `charts/gateway-policies` | The policies that protect what the other two expose: a TLS floor on every Gateway of a namespace unless it opts out, stricter TLS per listener, an OIDC or JWT SecurityPolicy per protected route with an `authenticated` or `groups` posture and CSRF, and BackendTLSPolicy for private-chain backends | shipped from v1.2.0 |
+| `charts/gateway-routes` | A library chart for the application's side: one HTTPRoute whose rules are named, `app` for the gated surface and `static` for the public assets, so a policy can gate one of them | shipped from v1.3.0 |
 
 Charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
 
@@ -49,7 +50,13 @@ GatewayClass  ── parametersRef ──►  EnvoyProxy
 
 **Policies** protect both halves (`gateway-policies`): a TLS floor selects
 every Gateway of a namespace unless the Gateway opts out by label, and a
-SecurityPolicy attaches to a project's route — or a listener — by name.
+SecurityPolicy attaches to a project's route — or a listener, or one *rule*
+of a route — by name.
+
+**Routes** are the project's, and `gateway-routes` is the one piece of this
+repository that lives in the project's chart: a library template that gives
+a route's rules the names the policies target, so an application can serve
+its assets to anyone while its shell and its API stay gated.
 
 Two consequences worth stating, because both are load-bearing:
 
@@ -170,6 +177,39 @@ securityPolicies:
 [docs/reference.md](docs/reference.md#gateway-policies) has a worked
 example with every kind of policy.
 
+The application's own chart depends on `gateway-routes` and calls one
+template, which is what makes `sectionName` above meaningful:
+
+```yaml
+# the application's Chart.yaml
+dependencies:
+  - name: gateway-routes
+    version: 1.3.0
+    repository: oci://ghcr.io/truvity/charts
+```
+
+```yaml
+# the application's templates/httproute.yaml
+{{ include "gateway-routes.productRoute" (dict "root" $ "route" .Values.route) }}
+```
+
+```yaml
+# the application's values.yaml
+route:
+  name: example-app
+  hostnames: [app.example]
+  parentRefs: [{kind: ListenerSet, name: argocd, namespace: envoy-gateway-system}]
+  backend: {name: example-app, port: 8080}
+  static:
+    paths: [/app/assets]        # public: no policy names this rule
+```
+
+A `securityPolicies` entry with `targetRefs: [{name: example-app, sectionName: app}]`
+then gates the shell and the API and leaves `/app/assets` anonymous —
+which is what lets a browser that has not signed in, and an edge cache
+that holds no cookie, fetch them. [docs/reference.md](docs/reference.md#gateway-routes)
+has every input.
+
 ## Documentation
 
 - [docs/adoption.md](docs/adoption.md) — prerequisites, install order, the
@@ -208,6 +248,10 @@ just golden         # regenerate tests/golden after a template change — review
 `tests/invalid/<chart>/` holds one fixture per validation rule. Each must
 fail to render; `just lint` proves it. A rule without a fixture is a rule
 that will quietly stop working.
+
+A library chart renders nothing by itself, so its cases and fixtures go
+through `tests/harness/<chart>/`, a consumer chart that stands in for the
+application including it.
 
 ## Releasing
 

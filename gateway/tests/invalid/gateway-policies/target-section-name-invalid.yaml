@@ -1,0 +1,13 @@
+# A section name is matched literally against a rule's or listener's name;
+# one that cannot be either protects nothing.
+securityPolicies:
+  console:
+    namespace: example
+    targetRefs:
+      - name: console
+        sectionName: /app
+    oidc:
+      issuer: https://id.example.com
+      clientID: console
+      clientSecret: {name: console-client}
+      hostname: console.example.com

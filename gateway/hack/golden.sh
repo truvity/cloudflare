@@ -4,6 +4,11 @@
 # tests/golden/<chart>/<case>.yaml. A template change that alters output
 # therefore shows up as a reviewable diff, with no cluster involved.
 #
+# A LIBRARY chart renders nothing by itself — `helm template` refuses one —
+# so its cases are rendered through tests/harness/<chart>, a consumer chart
+# that stands in for the application including it and reads the case's
+# values.
+#
 #   hack/golden.sh          compare (CI)
 #   hack/golden.sh update   regenerate the golden files
 set -euo pipefail
@@ -18,7 +23,12 @@ for values in "$root"/tests/cases/*/*/values.yaml; do
   chart="$(basename "$(dirname "$case_dir")")"
   golden="$root/tests/golden/$chart/$case_name.yaml"
 
-  rendered="$(helm template "$chart" "$root/charts/$chart" \
+  chart_dir="$root/charts/$chart"
+  if [ -d "$root/tests/harness/$chart" ]; then
+    chart_dir="$root/tests/harness/$chart"
+  fi
+
+  rendered="$(helm template "$chart" "$chart_dir" \
       --namespace "$(cat "$case_dir/namespace" 2>/dev/null || echo default)" \
       -f "$values")"
 

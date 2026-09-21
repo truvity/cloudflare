@@ -14,6 +14,12 @@
   and, for sign-in, an OIDC issuer with a client per protected application
   and its secret delivered as a Secret (key `client-secret`) in the
   application's namespace.
+- For `gateway-routes`: nothing to install — it is a library chart, pulled
+  as a dependency of an application's chart. Rule-level policy targets
+  need Envoy Gateway 1.9 and Gateway API CRDs carrying
+  `HTTPRoute.spec.rules[].name`; a controller that ignores the rule name
+  would gate the whole route instead, which is a surface going dark rather
+  than one opening, but check it before relying on the split.
 
 ## Install order
 
@@ -28,6 +34,13 @@
 5. The projects' HTTPRoutes, each naming its group's ListenerSet as
    parent. A SecurityPolicy may exist before its route; it attaches when
    the route appears.
+
+Moving an application onto `gateway-routes` is a route change and a policy
+change, and they are not interchangeable in order: render the route with
+its named rules first, then point the policy at `sectionName: app`. The
+other order leaves the policy unaccepted (`TargetNotFound`) for as long as
+it takes the route to land, and an unaccepted policy is not a closed door
+but an open one — see [safety.md](safety.md#gateway-routes).
 
 ## The zero-diff gate
 

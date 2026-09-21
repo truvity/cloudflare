@@ -1,0 +1,15 @@
+# The smallest thing worth rendering: one hostname, one parent, one
+# backend. No public prefixes, so no `static` rule — the whole surface is
+# the gated one, and a policy targeting `sectionName: app` protects all of
+# it.
+routes:
+  - name: example-app
+    hostnames:
+      - app.example
+    parentRefs:
+      - kind: ListenerSet
+        name: example
+        namespace: gateways
+    backend:
+      name: example-app
+      port: 8080

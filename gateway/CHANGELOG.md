@@ -4,6 +4,30 @@ What changed for a consumer, per version, newest first. A version with no
 heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. Every chart is released at every version.
 
+## v1.4.0
+
+- **New chart: `gateway-routes`, a library chart for the application's
+  side.** `{{ include "gateway-routes.productRoute" (dict "root" $ "route" .Values.route) }}`
+  renders one HTTPRoute whose rules are **named**: `app`, the gated
+  surface (the shell, the API, everything a more specific rule does not
+  claim), and `static`, the public one, rendered only when given path
+  prefixes. Further anonymous rules — a redirect, a well-known document —
+  go in `extraRules`. The names are the contract a policy targets; `/` is
+  refused on any rule no policy gates, and an unknown input key fails the
+  render as `values.schema.json` does for the other charts. See
+  [charts/gateway-routes/README.md](charts/gateway-routes/README.md) and
+  [docs/reference.md](docs/reference.md#gateway-routes).
+- **`gateway-policies`: `securityPolicies.<name>.targetRefs[].sectionName`
+  can name a route RULE**, not only a Gateway's listener — the rendered
+  target is `{group: gateway.networking.k8s.io, kind: HTTPRoute, name:
+  <route>, sectionName: app}`. It was already passed through; it is now
+  documented, checked against the section-name shape, and covered by a
+  golden case. A section name that matches no rule leaves the policy
+  unapplied and the route **serving**, so
+  [docs/safety.md](docs/safety.md#gateway-routes) says how to read that.
+- `gateway-fleet`, `gateway-groups` and existing `gateway-policies` values
+  are unchanged: they render byte-for-byte as in 1.2.0.
+
 ## v1.3.0
 
 The charts assumed a cloud and a certificate on a curve Envoy already
