@@ -140,6 +140,10 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 	SSL:           "strict",
 	MinTLSVersion: "1.2",
 	TotalTLS:      &zone.TotalTLS{Enabled: true, CertificateAuthority: "google"},
+	Cache: &zone.Cache{
+		Hosts:                   []string{"app.example", "*.tenants.example"},
+		RespectOriginBrowserTTL: true,
+	},
 }, acct.Use())
 ```
 
@@ -151,6 +155,7 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 | `SSL` | `ssl` | `off`, `flexible`, `full`, `strict` | the zone setting `ssl`: how Cloudflare connects to the origin. `full` encrypts and accepts any certificate; `strict` also verifies it |
 | `MinTLSVersion` | `minTlsVersion` | `1.0`, `1.1`, `1.2`, `1.3` | the zone setting `min_tls_version`: the lowest version a browser may negotiate |
 | `TotalTLS` | `totalTls` | see below | Total TLS: a certificate per proxied hostname |
+| `Cache` | `cache` | see below | the zone's cache rules: which hostnames may be cached at all |
 
 `TotalTLS`:
 
@@ -163,12 +168,43 @@ Total TLS issues a certificate for every proxied A, AAAA or CNAME record,
 so a new hostname needs no certificate resource of its own. It needs
 Advanced Certificate Manager on the zone's plan.
 
+`Cache`:
+
+| Field | YAML key | Notes |
+| --- | --- | --- |
+| `Hosts` | `hosts` | the hostnames that may be cached: an exact name (`app.example`) or one leading wildcard label (`*.app.example`). An empty list is a policy — the zone caches nothing |
+| `RespectOriginBrowserTTL` | `respectOriginBrowserTtl` | sets the zone setting `browser_cache_ttl` to `0`, Cloudflare's "Respect Existing Headers". False leaves the setting alone |
+
+Without this block a zone caches by **file extension**: a response under a
+name ending in `.js` or `.css` is stored at the edge whether or not its
+origin asked for that, and where the origin sent no `Cache-Control` the
+zone gives the browser four hours. An application that answers unknown
+paths with its own shell then has one page cached under another page's
+name.
+
+With it, the phase holds two rules whose expressions partition the zone —
+the listed hosts, and everything else — so exactly one matches any request
+and the outcome does not depend on how two overlapping cache rules merge.
+A listed host is cached only as far as its own `Cache-Control` goes
+(`edge_ttl` mode `bypass_by_default`: the origin's header decides, and a
+response without one is not cached), and the browser is handed that header
+unchanged (`browser_ttl` mode `respect_origin`). So how long anything
+lives is decided in the application that serves the bytes and knows
+whether they are content-addressed.
+
+**A zone has one ruleset per phase.** A zone that declares `cache` owns
+the whole `http_request_cache_settings` phase: cache rules added beside
+these in the dashboard are replaced, not merged. If the zone already has
+cache rules when this is first applied, adopt them with `pulumi import`
+onto the child name below, or delete them first — Cloudflare will
+otherwise refuse a second entry point ruleset for the phase.
+
 ### Outputs and names
 
 | | |
 | --- | --- |
 | `Zone.ZoneID` | the zone id, as an output |
-| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version` (both `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), each only when its field is set |
+| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>` (`cloudflare.Ruleset`), each only when its field is set |
 
 ## pkg/tunnel
 
