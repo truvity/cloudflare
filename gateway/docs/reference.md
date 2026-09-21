@@ -260,6 +260,7 @@ that needs something else opts out visibly by carrying the label.
 | `tlsBaseline.tls.minVersion` | `"1.2"` | `"1.0"`–`"1.3"` or `Auto`, quoted. RFC 8996 retired 1.0 and 1.1 |
 | `tlsBaseline.tls.maxVersion` | `""` | empty renders nothing: Envoy's maximum (1.3) applies |
 | `tlsBaseline.tls.ciphers` | the six ECDHE AEAD suites | TLS 1.2 and older only; not rendered when `minVersion` is `"1.3"` (the API refuses both). `[]` leaves the choice to Envoy. The default is Envoy's own list, stated so it is visible and does not move with a proxy upgrade |
+| `tlsBaseline.tls.ecdhCurves` | `[]` | the key-exchange groups, for 1.3 as well as 1.2. `[]` leaves Envoy's own list (`X25519:P-256`), which **cannot complete a TLS 1.2 handshake for a P-384 certificate** — see safety.md. `X25519`, `P-256`, `P-384`, `P-521`; another name is refused |
 
 A Gateway with its own Gateway-level ClientTrafficPolicy must carry the
 opt-out label: see [safety.md](safety.md#one-gateway-one-gateway-level-clienttrafficpolicy).
@@ -276,6 +277,7 @@ opt-out label: see [safety.md](safety.md#one-gateway-one-gateway-level-clienttra
 | `tls.minVersion` | `"1.3"` | |
 | `tls.maxVersion` | `""` | |
 | `tls.ciphers` | `[]` | as for the baseline |
+| `tls.ecdhCurves` | `[]` | as for the baseline, and the one TLS value a 1.3 floor does not make redundant |
 
 ### `defaults` and `securityPolicies.<name>` — protected routes
 

@@ -1,0 +1,11 @@
+# The same typo on a stricter listener.
+tlsPolicies:
+  strict:
+    enabled: true
+    namespace: gateways
+    targetRefs:
+      - kind: Gateway
+        name: private
+    tls:
+      minVersion: "1.3"
+      ecdhCurves: [secp384r1]

@@ -1,0 +1,25 @@
+# An estate whose certificates are P-384, which is the case the default
+# curve list quietly refuses: under TLS 1.2 the server's signature is made
+# on a curve from this list, and Envoy's own list is X25519:P-256. Every
+# 1.3 client works; the first 1.2 client does not, and nothing in the
+# policy says why.
+#
+# X25519 stays first so 1.3 clients keep the fast path.
+tlsBaseline:
+  namespaces: [gateways]
+  tls:
+    ecdhCurves: [X25519, P-384]
+
+# The same knob on a stricter listener, where a floor of 1.3 makes the
+# curve list the only TLS value left that can refuse a certificate.
+tlsPolicies:
+  p384-only:
+    enabled: true
+    namespace: gateways
+    targetRefs:
+      - kind: Gateway
+        name: private
+        sectionName: mtls
+    tls:
+      minVersion: "1.3"
+      ecdhCurves: [P-384]

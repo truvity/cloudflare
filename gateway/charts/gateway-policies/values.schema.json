@@ -204,6 +204,14 @@
               "TLS_RSA_WITH_AES_256_CBC_SHA"
             ]
           }
+        },
+        "ecdhCurves": {
+          "type": "array",
+          "description": "Key-exchange groups, for 1.3 as well as 1.2. Empty leaves Envoy's own list (X25519:P-256), which cannot complete a TLS 1.2 handshake for a P-384 certificate.",
+          "items": {
+            "type": "string",
+            "enum": ["X25519", "P-256", "P-384", "P-521"]
+          }
         }
       }
     },
