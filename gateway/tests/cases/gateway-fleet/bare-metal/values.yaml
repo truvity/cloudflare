@@ -1,0 +1,53 @@
+# One operator, one cluster, no cloud load balancer: the shape a bare-metal
+# adopter has. The public exposure is reached through a tunnel that dials
+# out, so its Service needs no address at all; the private one is published
+# by an IPAM controller that reads an ANNOTATION for the address it should
+# hand out — there is no loadBalancerClass and no source-range list to put
+# it in, which is why annotations have to reach the Service.
+#
+# Two exposures, one class, mergeGateways false: the two ways in do not
+# share Envoy pods, so a public-side overload cannot take the operator's
+# own way in with it.
+classes:
+  edge:
+    namespace: envoy-gateway-system
+    mergeGateways: false
+
+exposures:
+  public:
+    class: edge
+    health:
+      hostname: gateway-health.example.com
+      directResponse:
+        enabled: true
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+    proxy:
+      service:
+        # Nothing dials in: the tunnel client connects outward and reaches
+        # this Service inside the cluster.
+        type: ClusterIP
+
+  private:
+    class: edge
+    health:
+      hostname: gateway-health.internal.example
+      directResponse:
+        enabled: true
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+    clientTrafficPolicy:
+      enabled: true
+    proxy:
+      service:
+        type: LoadBalancer
+        # Cilium LB-IPAM: the pool is chosen by annotation, and the
+        # controller is the cluster's own — so no loadBalancerClass.
+        annotations:
+          lbipam.cilium.io/ips: 192.0.2.40

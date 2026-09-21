@@ -1,0 +1,6 @@
+# A curve name Envoy does not know. It does not loosen TLS — the proxy
+# refuses the whole policy, so the floor this file exists to apply is the
+# thing that stops applying, quietly.
+tlsBaseline:
+  tls:
+    ecdhCurves: [P384]

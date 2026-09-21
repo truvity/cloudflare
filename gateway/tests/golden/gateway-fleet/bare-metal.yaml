@@ -1,0 +1,252 @@
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: private-health-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: private-health-tls
+  dnsNames:
+    - "gateway-health.internal.example"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: public-health-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: public-health-tls
+  dnsNames:
+    - "gateway-health.example.com"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: private-tls
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: private
+  tls:
+    minVersion: "1.3"
+    maxVersion: "1.3"
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: private-proxy
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    kubernetes:
+      envoyDeployment:
+        replicas: 2
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        annotations:
+          lbipam.cilium.io/ips: 192.0.2.40
+        name: gateway-private
+        type: LoadBalancer
+    type: Kubernetes
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: public-proxy
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    kubernetes:
+      envoyDeployment:
+        replicas: 2
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        name: gateway-public
+        type: ClusterIP
+    type: Kubernetes
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: private
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: edge
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: private-proxy
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "gateway-health.internal.example"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: private-health-tls
+      allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: edge
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: public-proxy
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "gateway-health.example.com"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: public-health-tls
+      allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+
+---
+# Source: gateway-fleet/templates/class.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: edge
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: private-health
+  namespace: envoy-gateway-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: private
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - "gateway-health.internal.example"
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /healthz
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: private-health
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: public-health
+  namespace: envoy-gateway-system
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: public
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - "gateway-health.example.com"
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /healthz
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: public-health
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: private-health
+  namespace: envoy-gateway-system
+spec:
+  directResponse:
+    statusCode: 200
+    contentType: text/plain
+    body:
+      type: Inline
+      inline: "ok"
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: public-health
+  namespace: envoy-gateway-system
+spec:
+  directResponse:
+    statusCode: 200
+    contentType: text/plain
+    body:
+      type: Inline
+      inline: "ok"

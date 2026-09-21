@@ -34,6 +34,10 @@ false, ciphers: []). Maps are merged key by key; everything else replaces.
 {{/*
 The TLS block of a ClientTrafficPolicy. Ciphers apply to TLS 1.2 and older
 only, and the API refuses them beside a 1.3 floor, so they are dropped there.
+
+ecdhCurves is NOT dropped at a 1.3 floor: it names the key-exchange groups,
+which 1.3 negotiates too. It is also the one TLS value whose default can
+refuse a certificate the rest of this chart accepts — see policies.curves.
 */}}
 {{- define "policies.tls" -}}
 {{- $t := . -}}
@@ -41,7 +45,19 @@ only, and the API refuses them beside a 1.3 floor, so they are dropped there.
 {{- with $t.minVersion }}{{- $_ := set $out "minVersion" (toString .) }}{{- end -}}
 {{- with $t.maxVersion }}{{- $_ := set $out "maxVersion" (toString .) }}{{- end -}}
 {{- if and $t.ciphers (ne (toString ($t.minVersion | default "")) "1.3") }}{{- $_ := set $out "ciphers" $t.ciphers }}{{- end -}}
+{{- with $t.ecdhCurves }}{{- $_ := set $out "ecdhCurves" . }}{{- end -}}
 {{- toYaml $out -}}
+{{- end -}}
+
+{{/*
+The curve names this chart will render. Envoy's default list is
+X25519:P-256, and a name it does not know is a configuration the proxy
+rejects — so a typo would not loosen TLS, it would leave the policy
+un-Accepted and the floor unapplied. Refusing the typo here says so at
+render time instead.
+*/}}
+{{- define "policies.curves" -}}
+X25519 P-256 P-384 P-521
 {{- end -}}
 
 {{/*
@@ -51,6 +67,12 @@ Refuse a TLS block whose floor is above its ceiling: no client could connect.
 */}}
 {{- define "policies.tlsCheck" -}}
 {{- $t := .tls -}}
+{{- $known := splitList " " (include "policies.curves" .) -}}
+{{- range $c := ($t.ecdhCurves | default list) -}}
+{{- if not (has (toString $c) $known) -}}
+{{- fail (printf "%s.ecdhCurves %q is not a curve Envoy names (%s) — the proxy refuses the whole policy, so the floor it carries never applies" $.where (toString $c) (join ", " $known)) -}}
+{{- end -}}
+{{- end -}}
 {{- if and $t.minVersion $t.maxVersion -}}
 {{- $min := get (dict "Auto" 0 "1.0" 1 "1.1" 2 "1.2" 3 "1.3" 4) (toString $t.minVersion) -}}
 {{- $max := get (dict "1.0" 1 "1.1" 2 "1.2" 3 "1.3" 4 "Auto" 5) (toString $t.maxVersion) -}}

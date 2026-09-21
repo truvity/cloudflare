@@ -1,0 +1,44 @@
+---
+# Source: gateway-policies/templates/tls-baseline.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-baseline
+  namespace: gateways
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: tls-baseline-exempt
+          operator: DoesNotExist
+  tls:
+    ciphers:
+    - ECDHE-ECDSA-AES128-GCM-SHA256
+    - ECDHE-RSA-AES128-GCM-SHA256
+    - ECDHE-ECDSA-AES256-GCM-SHA384
+    - ECDHE-RSA-AES256-GCM-SHA384
+    - ECDHE-ECDSA-CHACHA20-POLY1305
+    - ECDHE-RSA-CHACHA20-POLY1305
+    ecdhCurves:
+    - X25519
+    - P-384
+    minVersion: "1.2"
+
+---
+# Source: gateway-policies/templates/tls-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: p384-only
+  namespace: gateways
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: private
+      sectionName: mtls
+  tls:
+    ecdhCurves:
+    - P-384
+    minVersion: "1.3"

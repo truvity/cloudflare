@@ -4,6 +4,36 @@ What changed for a consumer, per version, newest first. A version with no
 heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. Every chart is released at every version.
 
+## v1.3.0
+
+The charts assumed a cloud and a certificate on a curve Envoy already
+prefers. Neither assumption is in the design; both were in the
+documentation and, for one of them, in a missing value.
+
+- **`gateway-policies`: `tls.ecdhCurves`**, on the baseline and on every
+  stricter policy. Envoy's own list is `X25519:P-256`, and under TLS 1.2
+  the server's signature is made on a group from that list — so an estate
+  whose certificates are **P-384 cannot complete a 1.2 handshake at all**,
+  while every 1.3 client works and nothing in the objects says why.
+  Raising `minVersion` does not help; the cipher list does not either.
+  `[]` keeps Envoy's default, so existing installs render as before. A
+  name Envoy does not know is refused at render: it is not a weaker floor,
+  it is a policy the proxy rejects whole, which stops the floor applying.
+- **`docs/adoption.md`: one operator, one cluster, no cloud.** The
+  bare-metal shape written down — a public exposure on a plain ClusterIP
+  because the tunnel dials outward, and a private one published by the
+  cluster's own IPAM controller, which takes its address from
+  `proxy.service.annotations` rather than a `loadBalancerClass`. The
+  annotations path already worked; nothing said so.
+- **`docs/adoption.md`: from one Gateway per service.** The shape every
+  0.x consumer has, converted without a hostname going dark: the mapping,
+  the order, the explicit check for "dark" (a route attached to nothing is
+  an error nowhere), and the one-deployment rule where a pruning
+  controller owns the objects.
+- Test cases for both: `gateway-fleet/bare-metal` and
+  `gateway-policies/p384-floor`, plus two negative fixtures for a curve
+  name that is not one.
+
 ## v1.2.0
 
 - **New chart: `gateway-policies`.** The Envoy Gateway policies that

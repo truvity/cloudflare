@@ -83,6 +83,31 @@ fails. `shutdown.healthCheckFailureDelay` fails the proxy's readiness that
 long **before** it starts draining, so the endpoint is removed first and
 in-flight connections are not cut.
 
+### A P-384 certificate cannot finish a TLS 1.2 handshake by default
+
+Envoy's key-exchange group list is `X25519:P-256`. Under TLS 1.2 the
+server's signature is made on a group from that list, so a **P-384
+certificate cannot complete a 1.2 handshake at all** — while every TLS 1.3
+client works, because 1.3 separates the signature from the key exchange.
+
+The failure is at the handshake, before any policy or route is consulted,
+and nothing in the objects says so: the certificate is valid, the listener
+is Ready, the floor is applied, and one class of client simply cannot
+connect. Raising `minVersion` does not help, and neither does the cipher
+list — the ciphers name the bulk encryption, not the curve.
+
+Set `tls.ecdhCurves` where the certificates are P-384:
+
+```yaml
+tlsBaseline:
+  tls:
+    ecdhCurves: [X25519, P-384]   # keep the fast path, admit P-384
+```
+
+`[P-384]` requires it instead. The chart refuses a name Envoy does not
+know, because a typo there is not a weaker TLS floor — it is a policy the
+proxy rejects whole, so the floor stops applying and nothing says why.
+
 ## gateway-policies
 
 A security policy fails in two directions, and both are quiet: a route
