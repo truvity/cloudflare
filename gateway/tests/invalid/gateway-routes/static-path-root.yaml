@@ -1,0 +1,8 @@
+# The whole point of the pattern: the public rule carries no policy, so a
+# prefix of / would serve the shell and the API to anyone.
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}
+    static: {paths: [/]}

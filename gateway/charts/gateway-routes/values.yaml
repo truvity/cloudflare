@@ -1,0 +1,42 @@
+# gateway-routes is a LIBRARY chart: it renders nothing of its own, and
+# this file is deliberately empty of values. Its inputs are the argument of
+# the template the consuming chart calls, not values of this chart — a
+# subchart's values would otherwise appear under `gateway-routes:` in the
+# application's own values file, one level away from where the route is
+# configured.
+#
+#   {{ include "gateway-routes.productRoute" (dict "root" $ "route" .Values.route) }}
+#
+# The input (`route` above). An unknown key fails the render, here as much
+# as in the other charts' values.schema.json.
+#
+#   enabled: true            false renders nothing
+#   name: ""                 required: the HTTPRoute's object name
+#   namespace: ""            default: the release namespace
+#   annotations: {}
+#   labels: {}
+#   hostnames: []            required: at least one; one leading "*." allowed
+#   parentRefs: []           required: at least one {group, kind, name,
+#                            namespace, sectionName, port}; group and kind
+#                            default to a Gateway of the standard group
+#   backend:                 the backend every rule sends to unless it
+#     name: ""               overrides it — {group, kind, name, port, weight}
+#     port: 0
+#   app:                     the GATED surface: the shell and the API
+#     paths: ["/"]           PathPrefix matches
+#     backend: {}            overrides route.backend for this rule
+#     filters: []            HTTPRoute filters, verbatim
+#     extra: {}              deep-merged over the rule, last: timeouts,
+#                            retry, sessionPersistence
+#   static:                  the PUBLIC surface: content-hashed assets
+#     paths: []              nothing is rendered while this is empty; "/"
+#                            is refused, it would publish the application
+#     backend: {}
+#     filters: []
+#     extra: {}
+#   extraRules: []           further anonymous surfaces on the same
+#                            hostname: [{name, paths, backend, filters,
+#                            extra}]. Public, because no policy names them
+#
+# See README.md for a worked caller, and ../../docs/reference.md for every
+# input in detail.

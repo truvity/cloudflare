@@ -1,0 +1,9 @@
+# Without paths the public rule is not rendered at all, so a backend or a
+# filter stated there is a surface someone believes exists.
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}
+    static:
+      backend: {name: example-app-assets, port: 8080}

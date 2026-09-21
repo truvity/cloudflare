@@ -1,0 +1,110 @@
+---
+# Source: gateway-routes-harness/templates/routes.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: example-shop
+  namespace: example-shop
+  annotations:
+    example.com/sync-wave: "25"
+  labels:
+    app.kubernetes.io/name: example-shop
+spec:
+  hostnames:
+  - shop.example
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: example
+    namespace: gateways
+    sectionName: shop
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: example-shop-web
+      port: 8080
+      weight: 1
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+    name: app
+    timeouts:
+      request: 30s
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: example-shop-web
+      port: 8080
+      weight: 1
+    filters:
+    - responseHeaderModifier:
+        set:
+        - name: cache-control
+          value: public, max-age=31536000, immutable
+      type: ResponseHeaderModifier
+    matches:
+    - path:
+        type: PathPrefix
+        value: /app/assets
+    - path:
+        type: PathPrefix
+        value: /hub/assets
+    name: static
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: example-shop-redirect
+      port: 8080
+      weight: 1
+    matches:
+    - path:
+        type: PathPrefix
+        value: /r
+    name: redirect
+
+---
+# Source: gateway-routes-harness/templates/routes.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: example-docs
+  namespace: default
+spec:
+  hostnames:
+  - docs.example
+  - '*.docs.example'
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public
+    namespace: gateways
+    sectionName: docs
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: example
+    namespace: gateways
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: example-docs
+      port: 3000
+      weight: 1
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+    name: app
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: example-docs
+      port: 3000
+      weight: 1
+    matches:
+    - path:
+        type: PathPrefix
+        value: /assets
+    name: static

@@ -1,0 +1,70 @@
+# The worked example: a product application whose shell and API are gated,
+# whose content-hashed assets are public and cached, and which also serves
+# an anonymous redirect surface on the same hostname. Plus a second
+# application on the same parents, to show that a route with a backend of
+# its own per rule is the same template.
+routes:
+  - name: example-shop
+    namespace: example-shop
+    annotations:
+      example.com/sync-wave: "25"
+    labels:
+      app.kubernetes.io/name: example-shop
+    hostnames:
+      - shop.example
+    parentRefs:
+      - kind: ListenerSet
+        name: example
+        namespace: gateways
+        sectionName: shop
+    backend:
+      name: example-shop-web
+      port: 8080
+    app:
+      # Everything not claimed by a more specific rule below: the shell,
+      # the API, and every endpoint added later.
+      paths:
+        - /
+      extra:
+        timeouts:
+          request: 30s
+    static:
+      # Content-hashed file names, so the origin may mark them immutable
+      # and the edge may keep them. Anonymous: nothing targets this rule.
+      paths:
+        - /app/assets
+        - /hub/assets
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: cache-control
+                value: public, max-age=31536000, immutable
+    extraRules:
+      # A short-link redirect: public by design, on a backend of its own.
+      - name: redirect
+        paths:
+          - /r
+        backend:
+          name: example-shop-redirect
+          port: 8080
+
+  # No namespace of its own: the release namespace.
+  - name: example-docs
+    hostnames:
+      - docs.example
+      - "*.docs.example"
+    parentRefs:
+      - name: public
+        namespace: gateways
+        sectionName: docs
+      - kind: ListenerSet
+        name: example
+        namespace: gateways
+    backend:
+      name: example-docs
+      port: 3000
+      weight: 1
+    static:
+      paths:
+        - /assets

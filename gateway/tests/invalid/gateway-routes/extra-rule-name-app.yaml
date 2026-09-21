@@ -1,0 +1,10 @@
+# `app` is the gated rule's name and the policy's target: a second rule
+# under that name would be either a duplicate or an unprotected surface.
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}
+    extraRules:
+      - name: app
+        paths: [/r]

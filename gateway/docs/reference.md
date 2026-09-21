@@ -390,3 +390,113 @@ EnvoyProxy has one (`gateway-fleet`: `proxy.backendTLS.clientCertificateRef`).
 `gateway-groups` can also render a BackendTLSPolicy per group
 (`groups.<n>.backendTLS`); use this chart for a backend that is not tied
 to one group, and never both for one Service.
+
+## gateway-routes
+
+A **library** chart: it renders nothing of its own and has no values. Its
+input is the argument of the template the application's chart calls, and an
+unknown key there fails the render exactly as `values.schema.json` does for
+the other charts.
+
+```yaml
+# the application's Chart.yaml
+dependencies:
+  - name: gateway-routes
+    version: 1.4.0
+    repository: oci://ghcr.io/truvity/charts
+```
+
+```yaml
+# the application's templates/httproute.yaml
+{{ include "gateway-routes.productRoute" (dict "root" $ "route" .Values.route) }}
+```
+
+`root` is the calling chart's context (`$`), used for the release namespace
+alone. `route` is everything below.
+
+### Worked example
+
+```yaml
+route:
+  name: example-shop
+  hostnames:
+    - shop.example
+  parentRefs:
+    - kind: ListenerSet
+      name: example
+      namespace: gateways
+      sectionName: shop
+  backend:
+    name: example-shop-web
+    port: 8080
+  app:
+    # The default. Everything no more specific rule claims — including
+    # every endpoint added next year — belongs to the gated surface.
+    paths: ["/"]
+    extra:
+      timeouts:
+        request: 30s
+  static:
+    # Content-hashed file names. Anonymous, because no policy names this
+    # rule; cacheable to the extent the origin's own Cache-Control says.
+    paths:
+      - /app/assets
+      - /hub/assets
+    filters:
+      - type: ResponseHeaderModifier
+        responseHeaderModifier:
+          set:
+            - name: cache-control
+              value: public, max-age=31536000, immutable
+  extraRules:
+    # Another anonymous surface of the same application, on a backend of
+    # its own: a redirect, a well-known document.
+    - name: redirect
+      paths: ["/r"]
+      backend:
+        name: example-shop-redirect
+        port: 8080
+```
+
+One HTTPRoute, three named rules. The estate gates the first of them by
+naming it:
+
+```yaml
+securityPolicies:
+  example-shop:
+    namespace: example-shop
+    targetRefs:
+      - name: example-shop
+        sectionName: app
+```
+
+### Top level
+
+| Value | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | `false` renders nothing |
+| `name` | *required* | the HTTPRoute's object name, a DNS subdomain |
+| `namespace` | the release namespace | |
+| `annotations`, `labels` | `{}` | |
+| `hostnames` | *required* | at least one; one leading `*.` is allowed |
+| `parentRefs` | *required* | at least one `{group, kind, name, namespace, sectionName, port}`. `group` defaults to `gateway.networking.k8s.io` and `kind` to `Gateway`; a ListenerSet parent states `kind: ListenerSet` |
+| `backend` | `{}` | the backend every rule sends to unless it names its own: `{group, kind, name, port, weight}`, defaulting to a `Service` of the core group with `weight: 1`. `name` and `port` are *required* somewhere — here or in each rule |
+| `app` | see below | the **gated** rule. Always rendered |
+| `static` | `{}` | the **public** rule. Rendered only when it has paths |
+| `extraRules` | `[]` | further public rules, each `{name, …}` as below |
+
+### A rule — `app`, `static`, and each of `extraRules`
+
+| Value | Default | Notes |
+|---|---|---|
+| `name` | — | `extraRules` only, *required*: unique, and neither `app` nor `static` |
+| `paths` | `["/"]` on `app`, none on `static` | `PathPrefix` matches. Absolute; `/` is refused on a public rule, which would publish the whole application |
+| `backend` | `route.backend` | overrides it for this rule |
+| `filters` | `[]` | HTTPRoute filters, verbatim |
+| `extra` | `{}` | deep-merged over the generated rule, last: `timeouts`, `retry`, `sessionPersistence` — anything this template does not model |
+
+The rule names `app` and `static` are a contract, not a label: whatever
+generates the policies targets `app` by that name (`sectionName: app` in a
+`gateway-policies` `targetRefs` entry). Envoy matches the **most specific**
+path prefix, so `static` wins over `app`'s `/` however the rules are
+ordered.

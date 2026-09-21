@@ -223,7 +223,12 @@
         "group": { "type": "string", "enum": ["gateway.networking.k8s.io"] },
         "kind": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
-        "sectionName": { "type": "string" }
+        "sectionName": {
+          "type": "string",
+          "description": "One section of the target instead of all of it: a listener of a Gateway or ListenerSet, or a RULE of a route, by the rule's own name. The target's other rules are left unprotected on purpose — that is how an application serves public assets from a gated route.",
+          "maxLength": 253,
+          "pattern": "^[A-Za-z0-9]([-A-Za-z0-9_.]{0,251}[A-Za-z0-9])?$"
+        }
       }
     },
     "backendRef": {

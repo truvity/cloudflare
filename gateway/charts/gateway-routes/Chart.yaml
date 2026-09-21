@@ -1,0 +1,27 @@
+apiVersion: v2
+name: gateway-routes
+description: >-
+  The route half of a gated application: one HTTPRoute whose rules are
+  NAMED, so a policy can attach to one of them. A library chart, included
+  by an application's own chart, exporting one template that renders the
+  rule `app` (the gated surface: the shell and the API) and, when the
+  application has public assets, the rule `static`. The names are the
+  contract: a SecurityPolicy targets the route with `sectionName: app`, and
+  what is not named there is served anonymously.
+type: library
+# Placeholder: the git tag is the sole version authority. The release
+# workflow stamps both fields from the tag (truvity/ci-workflows
+# release-public.yaml).
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/truvity/gateway
+sources:
+  - https://github.com/truvity/gateway
+keywords:
+  - envoy-gateway
+  - gateway-api
+  - httproute
+  - library
+maintainers:
+  - name: Truvity
+    url: https://github.com/truvity

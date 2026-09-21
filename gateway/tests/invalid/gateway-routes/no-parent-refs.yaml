@@ -1,0 +1,4 @@
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    backend: {name: example-app, port: 8080}

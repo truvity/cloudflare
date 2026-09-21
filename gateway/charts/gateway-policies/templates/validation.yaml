@@ -64,6 +64,14 @@ tests/invalid/gateway-policies/ that must fail.
 {{- if not (has $ref.kind (list "HTTPRoute" "GRPCRoute" "Gateway" "ListenerSet")) }}
 {{- fail (printf "%s.targetRefs kind %q must be HTTPRoute, GRPCRoute, Gateway or ListenerSet" $by $ref.kind) }}
 {{- end }}
+{{- /* A section name is a rule's `name` on a route and a listener's on a
+       Gateway. It is matched literally: one that matches nothing leaves
+       the policy unapplied and the target serving. */}}
+{{- with $ref.sectionName }}
+{{- if not (regexMatch "^[A-Za-z0-9]([-A-Za-z0-9_.]{0,251}[A-Za-z0-9])?$" .) }}
+{{- fail (printf "%s.targetRefs sectionName %q is not a section name — on a route it is a rule's own name, on a Gateway a listener's" $by .) }}
+{{- end }}
+{{- end }}
 {{- /* Two SecurityPolicies on one target: the controller applies the older
        and marks the newer Conflicted, so the one you just wrote does
        nothing. Refuse it here, where it is still a typo. */}}

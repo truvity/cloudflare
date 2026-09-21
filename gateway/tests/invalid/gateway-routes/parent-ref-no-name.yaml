@@ -1,0 +1,5 @@
+routes:
+  - name: example-app
+    hostnames: [app.example]
+    parentRefs: [{kind: ListenerSet, namespace: gateways}]
+    backend: {name: example-app, port: 8080}

@@ -3,6 +3,11 @@
 
 charts := "gateway-fleet gateway-groups gateway-policies"
 
+# Library charts: they render nothing by themselves, so every check that
+# needs a render goes through tests/harness/<chart>, the consumer chart
+# that stands in for the application including them.
+libraries := "gateway-routes"
+
 # Lint every chart.
 #
 # The schema is part of the lint: an unknown key must fail the render, not
@@ -32,6 +37,20 @@ lint:
       done
       echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
     done
+    for chart in {{ libraries }}; do
+      helm lint "charts/$chart"
+      # No values.schema.json can guard a library chart: its inputs are the
+      # argument of a template, not values of a chart. The template refuses
+      # an unknown key itself, and the fixtures below cover that rule like
+      # any other.
+      for values in tests/invalid/"$chart"/*.yaml; do
+        if helm template invalid "tests/harness/$chart" -f "$values" >/dev/null 2>&1; then
+          echo "RENDERED BUT SHOULD HAVE FAILED: $values" >&2
+          exit 1
+        fi
+      done
+      echo "$chart: $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
+    done
 
 # Golden renders: render every test case and compare with tests/golden.
 test:
@@ -49,7 +68,7 @@ leak-canary:
 package:
     #!/usr/bin/env bash
     set -euo pipefail
-    for chart in {{ charts }}; do helm package "charts/$chart" --destination dist/; done
+    for chart in {{ charts }} {{ libraries }}; do helm package "charts/$chart" --destination dist/; done
 
 # Everything CI runs on a pull request.
 check: lint test leak-canary

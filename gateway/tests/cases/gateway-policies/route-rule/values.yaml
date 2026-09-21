@@ -1,0 +1,25 @@
+# Sign-in on ONE RULE of a route. The application serves its shell and its
+# API on the route's `app` rule and its content-hashed assets on `static`
+# (the pair the gateway-routes library chart renders); the policy names
+# `app` as its section, so the assets are fetched anonymously — by a
+# browser that has not signed in yet, and by the edge cache — while
+# everything else still goes through the issuer.
+#
+# The rendered target is the contract the route half relies on:
+#   {group: gateway.networking.k8s.io, kind: HTTPRoute,
+#    name: example-shop, sectionName: app}
+tlsBaseline:
+  enabled: false
+
+securityPolicies:
+  shop:
+    namespace: example-shop
+    targetRefs:
+      - name: example-shop
+        sectionName: app
+    oidc:
+      issuer: https://id.example.com
+      clientID: example-shop
+      clientSecret:
+        name: example-shop-client
+      hostname: shop.example

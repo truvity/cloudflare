@@ -1,0 +1,7 @@
+# A misspelt key would render a route serving something other than what the
+# caller wrote — here, no hostname at all.
+routes:
+  - name: example-app
+    hostname: app.example
+    parentRefs: [{name: example}]
+    backend: {name: example-app, port: 8080}

@@ -1,6 +1,6 @@
 # Doctrine — the design rules
 
-## Three charts, along the lines that divide them
+## Four charts, along the lines that divide them
 
 **gateway-fleet is the vendor half.** GatewayClass and EnvoyProxy are
 Envoy Gateway's; the Gateway per exposure, its baseline
@@ -22,6 +22,14 @@ and CSRF watches in shadow, because their absence is invisible; sign-in and
 token checks render nothing until given an issuer, and CSRF is never
 enforced by default, because a wrong guess there refuses real traffic.
 
+**gateway-routes is the application's side, and the only one.** A library
+chart, included by the application's own chart, that renders one HTTPRoute
+whose rules are named. It is here rather than in each application because
+the names are what the policies target: `app` for the gated surface,
+`static` for the public assets. Standard Gateway API only, like the groups
+half — it is separate from it because a group is a grant the platform
+makes and a route is what the project does with it.
+
 The controller itself is none of them: it is upstream's `gateway-helm`,
 and these charts own what it reconciles.
 
@@ -41,6 +49,13 @@ parent. Who may use the route — sign-in, token validation, a groups
 allow-list, CSRF — is a `gateway-policies` value, stated by whoever owns
 the grant, usually the platform; traffic policy such as rate limits stays
 with the route.
+
+The two owners meet at the rule names. The project names its route's
+rules (`gateway-routes`: `app`, `static`), the platform names the rule its
+policy gates (`sectionName: app`), and neither has to know the other's
+values — only the two words. That is the whole interface, and it is why
+they are fixed: a rule renamed on one side leaves the policy unapplied and
+the surface serving.
 
 The fleet chart therefore never grows a list of the estate's domains, and
 adding a project is a group, never an edit to an exposure.
