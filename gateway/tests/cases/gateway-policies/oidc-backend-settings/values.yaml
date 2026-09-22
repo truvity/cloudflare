@@ -1,0 +1,65 @@
+# An issuer the gateway reaches across a NAT or a stateful firewall. Such a
+# device forgets an idle TCP flow after its own idle timeout, usually
+# without telling either end, so a pooled connection can be dead while the
+# pool believes it is alive and the next request on it hangs.
+#
+# The shared block gives every sign-in route a keepalive below such a
+# device's timeout, a retry, and a request timeout short enough to notice.
+# One route needs longer than the shared timeout and says only that: the
+# blocks merge key by key, so its keepalive and retry are the shared ones.
+defaults:
+  namespace: example-apps
+  oidc:
+    issuer: https://id.example.com
+    tokenEndpoint: https://id.example.com/token
+    clientSecret:
+      name: example-client
+    scopes: [openid, email, profile, offline_access]
+    backendSettings:
+      tcpKeepalive:
+        idleTime: 60s
+        interval: 15s
+        probes: 3
+      retry:
+        numRetries: 2
+        retryOn:
+          triggers:
+            - reset
+            - connect-failure
+      timeout:
+        http:
+          requestTimeout: 10s
+
+securityPolicies:
+  console:
+    targetRefs:
+      - name: console
+    oidc:
+      clientID: example-console
+      hostname: console.example.com
+
+  reports:
+    targetRefs:
+      - name: reports
+    oidc:
+      clientID: example-reports
+      hostname: reports.example.com
+      backendSettings:
+        timeout:
+          http:
+            requestTimeout: 30s
+
+  # A machine route. backendSettings is an oidc value, so the shared block
+  # reaches no jwt provider: the gateway makes no upstream call of its own
+  # for a bearer token, only for the JWKS, which has backendRefs.
+  api:
+    type: jwt
+    targetRefs:
+      - kind: GRPCRoute
+        name: api
+    jwt:
+      issuer: https://id.example.com
+      audiences:
+        - example-api
+      remoteJWKS:
+        uri: https://id.example.com/keys

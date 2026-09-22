@@ -132,6 +132,7 @@ should serve. Neither shows in the object; both show only in traffic.
 | a TLS floor above its ceiling; an unquoted version (`1.2`, a number); an unknown cipher (schema) | a listener no client can reach, or a version the API server reads as something else |
 | an empty `tlsBaseline.exemptLabel` | a baseline no Gateway can opt out of |
 | a `backendTLSPolicies` entry with no target, no hostname, neither or both of `caCertificateRefs` and `wellKnownCACertificates`, or a CA ref that is not a ConfigMap or Secret | TLS to a backend that is never verified, or verified against nothing |
+| an `oidc.backendSettings` block Envoy Gateway does not define (schema) | a name the API server prunes away while applying the rest: an Accepted policy missing exactly the setting that was added to stop a silent failure |
 | any unknown key (`values.schema.json`) | a misspelt security setting read as "use the default" |
 
 ### Defaults chosen because the other one failed
@@ -224,6 +225,58 @@ In YAML 1.1, which Helm reads, an unquoted `off` (like `no`, `yes`, `on`)
 is a boolean. `csrf.mode: off` would reach the chart as `false`; the
 schema refuses it rather than read it as unset and fall back to shadow.
 Quote it: `mode: "off"`.
+
+### An idle connection to the issuer can be dead without saying so
+
+The gateway calls the issuer itself — once per sign-in and once per token
+refresh — over pooled upstream connections it keeps between calls. If that
+path crosses a NAT gateway, a stateful firewall or a load balancer, the
+device holds the flow's state only while the flow is used: most drop an
+idle one after a few minutes, and many drop it **without sending a reset**
+to either end. Nothing tells the proxy. The connection stays in the pool,
+the pool believes it is healthy, and the next request written to it is
+answered by nobody.
+
+What that looks like is worth recognising, because none of it points at the
+network:
+
+- sign-in completes and then the session is gone — the code was exchanged
+  on a good connection, the refresh was not;
+- the failure is **intermittent and unrelated to load**, since it depends
+  only on how long the pool sat idle;
+- the proxy's own counters for the issuer's cluster show
+  `upstream_rq_timeout` rising with `upstream_cx_connect_fail` at **zero**,
+  and `upstream_cx_destroy_local_with_active_rq` tracking the timeouts:
+  new connections are fine, old ones are graves;
+- the successful requests are fast, so a latency percentile reads healthy.
+
+`oidc.backendSettings` is where to answer it. The estate's numbers are its
+own — read the idle timeout of whatever sits on the path — but the shape is
+always the same three:
+
+```yaml
+defaults:
+  oidc:
+    backendSettings:
+      tcpKeepalive:
+        idleTime: 60s        # below the device's idle timeout
+      retry:
+        numRetries: 2
+        retryOn:
+          triggers: [reset, connect-failure]
+      timeout:
+        http:
+          requestTimeout: 10s
+```
+
+The keepalive stops the flow going idle long enough to be forgotten; the
+retry spends an attempt, rather than someone's session, on a connection
+that was dropped anyway; the request timeout decides how long a request on
+a dead one waits before the retry can happen, so a long one hides the fix.
+
+None of this is a default. A keepalive interval is a property of the path,
+not of the chart, and a retry on a token exchange is a decision the estate
+makes — so an install that sets nothing renders exactly as before.
 
 ## gateway-routes
 

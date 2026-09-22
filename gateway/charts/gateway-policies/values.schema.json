@@ -256,6 +256,23 @@
         }
       }
     },
+    "backendSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Envoy Gateway BackendSettings for the connection to the provider, passed through verbatim. Only the block NAMES are closed: a misspelt one is refused here, because the API server would prune it away and apply the rest — leaving the setting missing and nothing saying so. What each block contains is the vendor's own API, checked by the API server.",
+      "properties": {
+        "circuitBreaker": { "type": "object" },
+        "connection": { "type": "object" },
+        "dns": { "type": "object" },
+        "healthCheck": { "type": "object" },
+        "http2": { "type": "object" },
+        "loadBalancer": { "type": "object" },
+        "proxyProtocol": { "type": "object" },
+        "retry": { "type": "object" },
+        "tcpKeepalive": { "type": "object" },
+        "timeout": { "type": "object" }
+      }
+    },
     "claimToHeaders": {
       "type": "array",
       "items": {
@@ -292,6 +309,7 @@
             "authorizationEndpoint": { "$ref": "#/definitions/httpsURL" },
             "tokenEndpoint": { "$ref": "#/definitions/httpsURL" },
             "endSessionEndpoint": { "$ref": "#/definitions/httpsURL" },
+            "backendSettings": { "$ref": "#/definitions/backendSettings" },
             "clientID": { "type": "string" },
             "clientSecret": {
               "type": "object",

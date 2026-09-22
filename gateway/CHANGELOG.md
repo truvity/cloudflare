@@ -4,6 +4,35 @@ What changed for a consumer, per version, newest first. A version with no
 heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. Every chart is released at every version.
 
+## v1.5.0
+
+The gateway calls the issuer itself, and nothing said how it should hold
+that connection open.
+
+- **`gateway-policies`: `oidc.backendSettings`**, on `defaults` and on
+  every entry, passed through verbatim to the SecurityPolicy's
+  `oidc.provider.backendSettings` — Envoy Gateway's own `BackendSettings`
+  (`circuitBreaker`, `connection`, `dns`, `healthCheck`, `http2`,
+  `loadBalancer`, `proxyProtocol`, `retry`, `tcpKeepalive`, `timeout`).
+  This is how the gateway **reaches** the issuer, as against what it asks
+  for, and it matters most when the issuer is across a NAT or a stateful
+  firewall: such a device forgets an idle TCP flow after its own timeout
+  and usually forgets it *silently*, so a pooled connection stays in the
+  pool looking healthy and the next sign-in or token refresh written to it
+  hangs until a timeout — an intermittent failure whose only symptom is
+  people bounced back to sign-in, with no connect failure anywhere.
+  `tcpKeepalive` keeps the flow from going idle that long, `retry` spends
+  an attempt rather than a session on one that was dropped anyway. The
+  values are the estate's: the chart names no number and renders nothing
+  until asked. A block name that is not one of the ten is refused at
+  render, because the API server would prune it and Accept the rest.
+  See [docs/reference.md](docs/reference.md#oidc--browser-sign-in) and
+  [docs/safety.md](docs/safety.md#an-idle-connection-to-the-issuer-can-be-dead-without-saying-so).
+- New test case `gateway-policies/oidc-backend-settings` (shared block,
+  one entry merging over it key by key, and a `jwt` entry that gets
+  neither) and a negative fixture for the misspelt block name.
+- Every existing values file renders byte-for-byte as in 1.4.0.
+
 ## v1.4.0
 
 - **New chart: `gateway-routes`, a library chart for the application's

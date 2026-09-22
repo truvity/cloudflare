@@ -186,6 +186,9 @@ The SecurityPolicy spec for one resolved entry.
 {{- with $o.authorizationEndpoint }}{{- $_ := set $provider "authorizationEndpoint" . }}{{- end -}}
 {{- with $o.tokenEndpoint }}{{- $_ := set $provider "tokenEndpoint" . }}{{- end -}}
 {{- with $o.endSessionEndpoint }}{{- $_ := set $provider "endSessionEndpoint" . }}{{- end -}}
+{{- /* How the gateway reaches the issuer, not what it asks for. Passed
+       through verbatim; the block names are checked by the schema. */ -}}
+{{- with $o.backendSettings }}{{- $_ := set $provider "backendSettings" . }}{{- end -}}
 {{- /* group and kind are written out: an undeclared API-server default is
        a permanent GitOps diff. */ -}}
 {{- $oidc := dict
