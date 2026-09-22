@@ -278,6 +278,51 @@ None of this is a default. A keepalive interval is a property of the path,
 not of the chart, and a retry on a token exchange is a decision the estate
 makes — so an install that sets nothing renders exactly as before.
 
+### ...and stating it in one place may not be enough
+
+`oidc.backendSettings` can be set, Accepted, visible in the rendered
+policy, and still absent from the proxy. The reason is naming.
+
+Envoy Gateway derives an upstream cluster from each URL the gateway has to
+call — the token endpoint, the JWKS URI — and names that cluster after the
+**host and port** alone. When the issuer serves its keys from the host it
+serves tokens from, which is the ordinary arrangement, both sides resolve
+to the same cluster name. Only one cluster is built: the translator keeps
+the first one and returns early for the second, on the assumption that two
+requests for the same name ask for the same thing. Settings on the side
+that lost are dropped, and nothing reports it — the policy's status says
+`Accepted`, and the rendered YAML still shows the block that was ignored.
+
+What that looks like: the filter-scoped parts of `backendSettings` —
+`retry` and `timeout` — take effect, because they live in the OIDC filter's
+own configuration rather than the cluster, while `tcpKeepalive` and the
+other cluster-scoped blocks silently do not. In a config dump the issuer's
+cluster carries an empty `upstream_connection_options`, and its
+`last_updated` never moves when the policy changes.
+
+The fix is not to pick a winner but to make the race not matter: state the
+same settings on `oidc.idToken.remoteJWKS.backendSettings` (and on
+`jwt.remoteJWKS.backendSettings`, for a machine route against the same
+host) as on `oidc.backendSettings`. A YAML anchor keeps them honest:
+
+```yaml
+defaults:
+  oidc:
+    backendSettings: &issuerPath
+      tcpKeepalive:
+        idleTime: 60s
+    idToken:
+      remoteJWKS:
+        uri: https://id.example.com/keys
+        backendSettings: *issuerPath
+```
+
+Giving the JWKS side `backendRefs` — fetching the keys from an in-cluster
+Service — also separates the two, because a cluster built from a backend
+reference is named for that backend and never collides. Either answer
+works; what does not work is assuming the token endpoint speaks for the
+whole host.
+
 ## gateway-routes
 
 A route whose rules are named fails in one direction that matters: the

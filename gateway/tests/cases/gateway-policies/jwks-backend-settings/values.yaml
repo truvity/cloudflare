@@ -1,0 +1,65 @@
+# An issuer whose token endpoint and JWKS URI share a host, reached across
+# a NAT or a stateful firewall.
+#
+# Envoy Gateway derives an upstream cluster from each URL it has to call
+# and names that cluster after the host and the port. The token endpoint
+# and the key set therefore resolve to ONE cluster, built from whichever
+# side the translator reaches first, and the settings on the other side
+# are dropped without a word: the policy is Accepted, the render looks
+# right, and the cluster carries no keepalive.
+#
+# So the shared block is stated on BOTH sides. They agree, which makes the
+# order the translator happens to use stop mattering.
+defaults:
+  namespace: example-apps
+  oidc:
+    issuer: https://id.example.com
+    tokenEndpoint: https://id.example.com/token
+    clientSecret:
+      name: example-client
+    scopes: [openid, email, profile, offline_access]
+    backendSettings: &path
+      tcpKeepalive:
+        idleTime: 60s
+        interval: 15s
+        probes: 3
+      timeout:
+        http:
+          requestTimeout: 10s
+    idToken:
+      enabled: true
+      providerName: id
+      remoteJWKS:
+        uri: https://id.example.com/keys
+        backendSettings: *path
+
+securityPolicies:
+  console:
+    targetRefs:
+      - name: console
+    oidc:
+      clientID: example-console
+      hostname: console.example.com
+
+  # A machine route against the same issuer. Its JWKS is fetched from an
+  # in-cluster Service, so it builds a cluster of its own and shares
+  # nothing with the sign-in path above.
+  api:
+    type: jwt
+    targetRefs:
+      - kind: GRPCRoute
+        name: api
+    jwt:
+      issuer: https://id.example.com
+      audiences:
+        - example-api
+      remoteJWKS:
+        uri: https://id.example.com/keys
+        backendRefs:
+          - name: id-keys
+            namespace: example-apps
+            port: 8443
+        backendSettings:
+          timeout:
+            http:
+              requestTimeout: 5s
