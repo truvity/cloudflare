@@ -114,6 +114,9 @@ controller never diffs its render against the API server's defaults.
 {{- $out := dict "uri" .uri -}}
 {{- with .cacheDuration }}{{- $_ := set $out "cacheDuration" . }}{{- end -}}
 {{- with .backendRefs }}{{- $_ := set $out "backendRefs" (include "policies.backendRefs" . | fromYamlArray) }}{{- end -}}
+{{- /* How the gateway reaches the keys, not which keys it asks for.
+       Passed through verbatim; the block names are checked by the schema. */ -}}
+{{- with .backendSettings }}{{- $_ := set $out "backendSettings" . }}{{- end -}}
 {{- toYaml $out -}}
 {{- end -}}
 

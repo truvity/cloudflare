@@ -1,0 +1,24 @@
+# tcpKeepAlive is not a block Envoy Gateway defines — the name is
+# tcpKeepalive. The API server would prune the misspelt block from the
+# JWKS settings and apply everything else, so the policy would be
+# Accepted and be missing the one setting that keeps the key fetch from
+# hanging on a connection a middlebox has already forgotten.
+defaults:
+  namespace: example-apps
+securityPolicies:
+  console:
+    targetRefs:
+      - name: console
+    oidc:
+      issuer: https://id.example.com
+      clientID: example-console
+      clientSecret:
+        name: example-client
+      hostname: console.example.com
+      idToken:
+        enabled: true
+        remoteJWKS:
+          uri: https://id.example.com/keys
+          backendSettings:
+            tcpKeepAlive:
+              idleTime: 60s

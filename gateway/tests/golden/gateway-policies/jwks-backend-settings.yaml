@@ -1,0 +1,121 @@
+---
+# Source: gateway-policies/templates/tls-baseline.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: tls-baseline
+  namespace: default
+spec:
+  targetSelectors:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      matchExpressions:
+        - key: tls-baseline-exempt
+          operator: DoesNotExist
+  tls:
+    ciphers:
+    - ECDHE-ECDSA-AES128-GCM-SHA256
+    - ECDHE-RSA-AES128-GCM-SHA256
+    - ECDHE-ECDSA-AES256-GCM-SHA384
+    - ECDHE-RSA-AES256-GCM-SHA384
+    - ECDHE-ECDSA-CHACHA20-POLY1305
+    - ECDHE-RSA-CHACHA20-POLY1305
+    minVersion: "1.2"
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: api
+  namespace: example-apps
+spec:
+  jwt:
+    providers:
+    - audiences:
+      - example-api
+      issuer: https://id.example.com
+      name: jwt
+      remoteJWKS:
+        backendRefs:
+        - group: ""
+          kind: Service
+          name: id-keys
+          namespace: example-apps
+          port: 8443
+        backendSettings:
+          timeout:
+            http:
+              requestTimeout: 5s
+        cacheDuration: 300s
+        uri: https://id.example.com/keys
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: GRPCRoute
+    name: api
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: console
+  namespace: example-apps
+spec:
+  csrf:
+    shadowFraction:
+      denominator: 100
+      numerator: 100
+  jwt:
+    providers:
+    - audiences:
+      - example-console
+      extractFrom:
+        headers:
+        - name: x-id-token
+      issuer: https://id.example.com
+      name: id
+      remoteJWKS:
+        backendSettings:
+          tcpKeepalive:
+            idleTime: 60s
+            interval: 15s
+            probes: 3
+          timeout:
+            http:
+              requestTimeout: 10s
+        cacheDuration: 300s
+        uri: https://id.example.com/keys
+  oidc:
+    clientID: example-console
+    clientSecret:
+      group: ""
+      kind: Secret
+      name: example-client
+    cookieConfig:
+      sameSite: Lax
+    forwardIDToken:
+      header: x-id-token
+    logoutPath: /oauth2/logout
+    provider:
+      backendSettings:
+        tcpKeepalive:
+          idleTime: 60s
+          interval: 15s
+          probes: 3
+        timeout:
+          http:
+            requestTimeout: 10s
+      issuer: https://id.example.com
+      tokenEndpoint: https://id.example.com/token
+    redirectURL: https://console.example.com/oauth2/callback
+    refreshToken: true
+    scopes:
+    - openid
+    - email
+    - profile
+    - offline_access
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: console

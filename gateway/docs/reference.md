@@ -331,6 +331,7 @@ cookie key to manage.
 | `oidc.idToken.remoteJWKS.uri` | `""` | *required* when enabled |
 | `oidc.idToken.remoteJWKS.cacheDuration` | `300s` | |
 | `oidc.idToken.remoteJWKS.backendRefs` | `[]` | `{name, namespace, port}`: fetch the keys from an in-cluster Service instead of the public URL (`uri` still names the path) |
+| `oidc.idToken.remoteJWKS.backendSettings` | `{}` | as `oidc.backendSettings`, for the connection that fetches the keys. Worth stating whenever the key URI and the token endpoint share a host: Envoy Gateway names a derived cluster after host and port alone, so both collapse onto ONE cluster and the first built wins — a keepalive given only to `oidc.backendSettings` is then dropped in silence. See [safety.md](safety.md#and-stating-it-in-one-place-may-not-be-enough) |
 | `oidc.idToken.claimToHeaders` | `[]` | `{header, claim}`: set from the verified token, overwriting whatever the request carried under that name |
 
 #### `jwt` — machine routes
@@ -343,6 +344,7 @@ cookie key to manage.
 | `jwt.remoteJWKS.uri` | `""` | *required* |
 | `jwt.remoteJWKS.cacheDuration` | `300s` | |
 | `jwt.remoteJWKS.backendRefs` | `[]` | as for `oidc.idToken` — the in-cluster issuer's Service |
+| `jwt.remoteJWKS.backendSettings` | `{}` | as for `oidc.idToken` — how the gateway reaches the keys, and the same cluster-name collision to watch for |
 | `jwt.extractFrom` | `{}` | `{}` is Envoy Gateway's default, `Authorization: Bearer`. Otherwise `{headers: [{name, valuePrefix}], cookies, params}` |
 | `jwt.claimToHeaders` | `[]` | |
 

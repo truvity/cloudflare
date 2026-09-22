@@ -4,6 +4,35 @@ What changed for a consumer, per version, newest first. A version with no
 heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. Every chart is released at every version.
 
+## v1.5.1
+
+`oidc.backendSettings` could be stated, Accepted and still not reach the
+proxy. This is the other half of it.
+
+- **`gateway-policies`: `backendSettings` on `remoteJWKS`**, both
+  `oidc.idToken.remoteJWKS` and `jwt.remoteJWKS`, in the same pass-through
+  form and with the same closed block names as `oidc.backendSettings`.
+- **Why it is needed.** Envoy Gateway derives an upstream cluster from
+  each URL the gateway must call and names it after the **host and port**
+  alone. An issuer that serves its keys from the host it serves tokens
+  from — the ordinary arrangement — therefore collapses both onto one
+  cluster, and the translator keeps the first built and returns early for
+  the second, on the assumption that one name means one set of settings.
+  The losing side's settings are dropped with nothing reported: the policy
+  is `Accepted`, the rendered YAML still shows the block, and the cluster
+  carries none of it. The filter-scoped parts (`retry`, `timeout`) survive
+  either way, because they live in the OIDC filter rather than the
+  cluster; `tcpKeepalive` and the other cluster-scoped blocks do not.
+  Stating the same settings on both sides makes the order stop mattering.
+  Giving the JWKS side `backendRefs` also separates them, since a cluster
+  built from a backend reference is named for that backend.
+- New test case `gateway-policies/jwks-backend-settings` (one host shared
+  by the token endpoint and the key set, settings on both sides via a YAML
+  anchor, plus a machine route whose keys come from a Service) and a
+  negative fixture for a misspelt block name under `remoteJWKS`.
+- Every existing values file renders byte-for-byte as in 1.5.0.
+  See [docs/safety.md](docs/safety.md#and-stating-it-in-one-place-may-not-be-enough).
+
 ## v1.5.0
 
 The gateway calls the issuer itself, and nothing said how it should hold

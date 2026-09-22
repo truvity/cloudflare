@@ -198,6 +198,15 @@ defaults:
         # Fetch the keys from an in-cluster Service instead of the public
         # URL; uri still names the path and the Host. [{name, namespace, port}]
         backendRefs: []
+        # How the gateway reaches the keys, in the same form as
+        # oidc.backendSettings above. Worth setting whenever the key URI
+        # and the token endpoint share a host: Envoy Gateway derives an
+        # upstream cluster from each URL and names it after host and port,
+        # so both land on ONE cluster, and the first one built wins. A
+        # keepalive stated only on oidc.backendSettings is therefore
+        # silently dropped when the JWKS side is built first. State the
+        # same settings on both and the collision cannot matter.
+        backendSettings: {}
       # [{header, claim}]: set from the verified token, overwriting whatever
       # the request carried under that name.
       claimToHeaders: []
@@ -212,6 +221,8 @@ defaults:
       uri: ""                     # required
       cacheDuration: 300s
       backendRefs: []
+      # How the gateway reaches the keys; see oidc.idToken.remoteJWKS.
+      backendSettings: {}
     # Where the token is read from. {} is Envoy Gateway's default, the
     # Authorization header with the Bearer prefix. Verbatim otherwise:
     # {headers: [{name, valuePrefix}], cookies: [...], params: [...]}

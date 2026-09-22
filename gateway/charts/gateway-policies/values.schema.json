@@ -253,7 +253,8 @@
           "type": "array",
           "maxItems": 16,
           "items": { "$ref": "#/definitions/backendRef" }
-        }
+        },
+        "backendSettings": { "$ref": "#/definitions/backendSettings" }
       }
     },
     "backendSettings": {
