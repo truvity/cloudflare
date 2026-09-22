@@ -121,6 +121,36 @@ defaults:
     # cookie is cleared, the issuer session lives on, and the next page
     # load signs the person straight back in.
     endSessionEndpoint: ""
+    # How the gateway reaches the issuer, as opposed to what it asks for:
+    # Envoy Gateway's BackendSettings for the provider's upstream cluster,
+    # passed through verbatim. One or more of circuitBreaker, connection,
+    # dns, healthCheck, http2, loadBalancer, proxyProtocol, retry,
+    # tcpKeepalive, timeout; a block name that is not one of those is
+    # refused at render, because the API server would prune it and apply
+    # the rest. {} renders nothing and Envoy Gateway's defaults apply.
+    #
+    # READ THIS IF THE ISSUER IS REACHED ACROSS A NAT OR A STATEFUL
+    # FIREWALL. Such a device forgets an idle TCP flow after its own idle
+    # timeout, and many forget it *silently* — no RST ever reaches the
+    # proxy. The pooled connection therefore stays in the pool looking
+    # healthy, and the next request on it hangs until a timeout instead of
+    # failing fast: sign-ins and token refreshes that fail for no visible
+    # reason, while the cluster reports no connect failures at all. A
+    # keepalive whose idleTime is below the device's timeout keeps the flow
+    # alive; a retry spends an attempt, rather than someone's session, on
+    # the one that was dropped anyway.
+    #
+    #   backendSettings:
+    #     tcpKeepalive:
+    #       idleTime: 60s           # below the device's idle timeout
+    #     retry:
+    #       numRetries: 2
+    #       retryOn:
+    #         triggers: [reset, connect-failure]
+    #     timeout:
+    #       http:
+    #         requestTimeout: 10s   # notice a dead flow in seconds
+    backendSettings: {}
     clientID: ""
     # An Opaque Secret in the policy's namespace with the key
     # `client-secret`. The Secret is yours to deliver; the chart only

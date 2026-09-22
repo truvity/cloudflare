@@ -1,0 +1,19 @@
+# tcpKeepAlive is not a block Envoy Gateway defines — the name is
+# tcpKeepalive. The API server would prune the misspelt block and apply
+# everything else, so the policy would be Accepted, look right, and be
+# missing exactly the setting that was added to stop a silent failure.
+defaults:
+  namespace: example-apps
+securityPolicies:
+  console:
+    targetRefs:
+      - name: console
+    oidc:
+      issuer: https://id.example.com
+      clientID: example-console
+      clientSecret:
+        name: example-client
+      hostname: console.example.com
+      backendSettings:
+        tcpKeepAlive:
+          idleTime: 60s
