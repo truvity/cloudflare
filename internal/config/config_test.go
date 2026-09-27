@@ -126,15 +126,9 @@ func TestValidate(t *testing.T) {
 			}, "ttlSeconds must be > 0",
 		},
 		{
-			"conflicting duplicate group+bucket", func(c *Config) {
-				c.Grants = []Grant{
-					{Group: "g", Bucket: "b", Permission: PermissionReadOnly, TTLSeconds: 900},
-					{Group: "g", Bucket: "b", Permission: PermissionReadWrite, TTLSeconds: 900},
-				}
-			}, "more than one grant row",
-		},
-		{
-			"conflicting ttl on duplicate group+bucket", func(c *Config) {
+			// Same group+bucket+prefixes, different ttlSeconds: nothing
+			// in a request can choose between them — a real conflict.
+			"conflicting ttl on otherwise-identical rows", func(c *Config) {
 				c.Grants = []Grant{
 					{Group: "g", Bucket: "b", Permission: PermissionReadOnly, TTLSeconds: 900},
 					{Group: "g", Bucket: "b", Permission: PermissionReadOnly, TTLSeconds: 60},
@@ -142,20 +136,47 @@ func TestValidate(t *testing.T) {
 			}, "more than one grant row",
 		},
 		{
-			"conflicting prefixes on duplicate group+bucket", func(c *Config) {
+			// The estate's one-prefix-per-row convention: several rows,
+			// same group+bucket, differing ONLY by prefix. This is
+			// normal, not a conflict — internal/decide resolves it from
+			// the request's own prefixes.
+			"several rows, same group+bucket, differing only by prefix is fine", func(c *Config) {
 				c.Grants = []Grant{
 					{Group: "g", Bucket: "b", Prefixes: []string{"a/"}, Permission: PermissionReadOnly, TTLSeconds: 900},
 					{Group: "g", Bucket: "b", Prefixes: []string{"b/"}, Permission: PermissionReadOnly, TTLSeconds: 900},
 				}
-			}, "more than one grant row",
+			}, "",
 		},
 		{
-			"exact duplicate group+bucket is redundant, not a conflict", func(c *Config) {
+			// Same group+bucket+prefixes, differing ONLY by permission
+			// (a reader row and a writer row for the same scope): also
+			// fine — a request disambiguates with an explicit
+			// permission (internal/decide).
+			"same group+bucket+prefixes, differing only by permission is fine", func(c *Config) {
+				c.Grants = []Grant{
+					{Group: "g", Bucket: "b", Prefixes: []string{"a/"}, Permission: PermissionReadOnly, TTLSeconds: 900},
+					{Group: "g", Bucket: "b", Prefixes: []string{"a/"}, Permission: PermissionReadWrite, TTLSeconds: 900},
+				}
+			}, "",
+		},
+		{
+			"exact duplicate row is redundant, not a conflict", func(c *Config) {
 				c.Grants = []Grant{
 					{Group: "g", Bucket: "b", Prefixes: []string{"a/"}, Permission: PermissionReadOnly, TTLSeconds: 900},
 					{Group: "g", Bucket: "b", Prefixes: []string{"a/"}, Permission: PermissionReadOnly, TTLSeconds: 900},
 				}
 			}, "",
+		},
+		{
+			// Same prefix SET, written in a different order: still the
+			// same identity, so a ttl disagreement here must also be
+			// caught (grantIdentity sorts before comparing).
+			"conflicting ttl survives a differently-ordered prefix list", func(c *Config) {
+				c.Grants = []Grant{
+					{Group: "g", Bucket: "b", Prefixes: []string{"a/", "b/"}, Permission: PermissionReadOnly, TTLSeconds: 900},
+					{Group: "g", Bucket: "b", Prefixes: []string{"b/", "a/"}, Permission: PermissionReadOnly, TTLSeconds: 60},
+				}
+			}, "more than one grant row",
 		},
 		{
 			"same group, different bucket is fine", func(c *Config) {

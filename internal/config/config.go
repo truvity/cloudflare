@@ -17,13 +17,17 @@
 //   - Refuse rather than guess. Loading is strict (an unknown key fails
 //     the load, it is not silently ignored) and Validate rejects
 //     anything a broker could not safely act on: an empty group, an
-//     unrecognized permission, a non-positive TTL, or two grant rows for
-//     the same group and bucket that disagree with each other.
+//     unrecognized permission, a non-positive TTL, or two rows identical
+//     in every field a request could disambiguate by (group, bucket,
+//     prefixes, permission) that still disagree on how long a credential
+//     from them should live.
 package config
 
 import (
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -203,6 +207,21 @@ func (c *Config) Validate() error {
 	return c.validateGrants()
 }
 
+// validateGrants checks each row on its own, then checks for rows that
+// disagree about the SAME thing.
+//
+// The estate's own convention is one prefix per row per cache tool, so
+// one group commonly owns several rows in the same bucket that differ
+// only by Prefixes (internal/decide resolves which one a request means
+// by what it asks for) — that is normal, not a conflict, and two rows
+// may also legitimately share group, bucket AND prefixes while differing
+// only in Permission (a reader row and a writer row for the same scope;
+// a request disambiguates with an explicit permission, per
+// internal/decide). What IS a conflict is two rows identical in every
+// field decide can be asked to disambiguate by (group, bucket, prefixes,
+// permission) that still disagree on ttlSeconds: nothing in a request
+// can choose between them, so whichever the config happens to list first
+// would win silently.
 func (c *Config) validateGrants() error {
 	seen := make(map[string]Grant, len(c.Grants))
 
@@ -224,7 +243,7 @@ func (c *Config) validateGrants() error {
 			return fmt.Errorf("config: grants[%d] (group %q): ttlSeconds must be > 0, got %d", i, g.Group, g.TTLSeconds)
 		}
 
-		key := g.Group + "\x00" + g.Bucket
+		key := grantIdentity(g)
 
 		prev, ok := seen[key]
 		if !ok {
@@ -233,9 +252,9 @@ func (c *Config) validateGrants() error {
 			continue
 		}
 
-		if !grantsAgree(prev, g) {
+		if prev.TTLSeconds != g.TTLSeconds {
 			return fmt.Errorf(
-				"config: group %q and bucket %q appear in more than one grant row with different permission, prefixes or ttlSeconds — "+
+				"config: group %q, bucket %q with this prefix list and permission appear in more than one grant row with different ttlSeconds — "+
 					"one row would win and this file does not say which", g.Group, g.Bucket)
 		}
 	}
@@ -243,23 +262,15 @@ func (c *Config) validateGrants() error {
 	return nil
 }
 
-// grantsAgree reports whether two grant rows for the same group and
-// bucket are exact duplicates (redundant, but not a conflict) rather than
-// disagreeing about what the group may do.
-func grantsAgree(a, b Grant) bool {
-	if a.Permission != b.Permission || a.TTLSeconds != b.TTLSeconds {
-		return false
-	}
+// grantIdentity is everything internal/decide can be asked to
+// disambiguate a row by: group, bucket, its prefix SET (order does not
+// matter — decide matches by containment, not position) and permission.
+// Two rows sharing this identity are either exact duplicates (redundant,
+// not an error) or disagree on ttlSeconds (a real conflict — see
+// validateGrants).
+func grantIdentity(g Grant) string {
+	prefixes := slices.Clone(g.Prefixes)
+	slices.Sort(prefixes)
 
-	if len(a.Prefixes) != len(b.Prefixes) {
-		return false
-	}
-
-	for i := range a.Prefixes {
-		if a.Prefixes[i] != b.Prefixes[i] {
-			return false
-		}
-	}
-
-	return true
+	return g.Group + "\x00" + g.Bucket + "\x00" + strings.Join(prefixes, "\x00") + "\x00" + string(g.Permission)
 }
