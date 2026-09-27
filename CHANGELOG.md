@@ -17,6 +17,18 @@ together at every version.
   permission, never by naming a group or a row directly). No service,
   CLI, chart, or release artifact ships yet — this change has no
   consumer-visible effect.
+- **Fix: `pkg/r2`'s permission-group lookup, and `pkg/tunnel`'s token
+  lookup, now carry the account's explicit Cloudflare provider.** Neither
+  invoke had one: a resource inherits its parent component's provider
+  automatically, but a plain invoke does not, so both fell back to the
+  DEFAULT Cloudflare provider regardless of what `opts` gave `New`. An
+  estate that disables that default provider saw the whole apply fail at
+  preview the moment an R2 bucket's token was enabled, before touching a
+  single resource. `account.InvokeOptionsFromResourceOptions(opts...)`
+  (and the new `Account.Invoke()`, `Use()`'s invoke-side counterpart) now
+  threads the same explicit provider the sibling resources use into both
+  invokes. A caller who already passes `acct.Use()` needs no code change.
+  See [safety.md](docs/safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does).
 
 ## v2.2.0
 
