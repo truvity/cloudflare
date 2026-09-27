@@ -34,23 +34,30 @@ type mocks struct {
 	mu      sync.Mutex
 	res     map[string]resource.PropertyMap // "type/name" -> inputs
 	regRPCs map[string]*pulumirpc.RegisterResourceRequest
-	groups  map[string]string // permission group name -> id
+	groups  map[string][]string // permission group name -> ids (more than one = ambiguous)
 
 	// lastPermissionGroupProvider records the provider ref the mock most
 	// recently saw on the permission-group invoke — "" if none. Tests
 	// assert on this to prove the invoke resolved the SAME provider its
 	// sibling resources did, not the (possibly disabled) default one.
 	lastPermissionGroupProvider string
+
+	// lastNameArg is the exact "name" arg the invoke was last called with,
+	// so tests can assert it stays the plain, unencoded name — the
+	// provider URL-encodes the query parameter itself, so a pre-encoded
+	// name here would arrive double-encoded and match nothing.
+	lastNameArg string
 }
 
 func newMocks() *mocks {
 	return &mocks{
 		res:     map[string]resource.PropertyMap{},
 		regRPCs: map[string]*pulumirpc.RegisterResourceRequest{},
-		groups: map[string]string{
-			"Workers R2 Storage Bucket Item Write": "group-write-id",
-			"Workers R2 Storage Bucket Item Read":  "group-read-id",
-			"Custom R2 Group":                      "group-custom-id",
+		groups: map[string][]string{
+			"Workers R2 Storage Bucket Item Write": {"group-write-id"},
+			"Workers R2 Storage Bucket Item Read":  {"group-read-id"},
+			"Custom R2 Group":                      {"group-custom-id"},
+			"Ambiguous Group":                      {"group-dup-1", "group-dup-2"},
 		},
 	}
 }
@@ -100,42 +107,31 @@ func (m *mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 		return resource.PropertyMap{}, assertionError("getAccountApiTokenPermissionGroupsList invoked with no accountId")
 	}
 
-	encoded := args.Args["name"].StringValue()
-	name := decodeSpaces(encoded)
+	name := args.Args["name"].StringValue()
 
-	id, ok := m.groups[name]
+	m.mu.Lock()
+	m.lastNameArg = name
+	m.mu.Unlock()
+
+	ids, ok := m.groups[name]
 	if !ok {
 		return resource.PropertyMap{
 			"results": resource.NewArrayProperty([]resource.PropertyValue{}),
 		}, nil
 	}
 
-	return resource.PropertyMap{
-		"results": resource.NewArrayProperty([]resource.PropertyValue{
-			resource.NewObjectProperty(resource.PropertyMap{
-				"id":     resource.NewStringProperty(id),
-				"name":   resource.NewStringProperty(name),
-				"scopes": resource.NewArrayProperty([]resource.PropertyValue{}),
-			}),
-		}),
-	}, nil
-}
-
-// decodeSpaces reverses urlEncodeName for the mock's own bookkeeping.
-func decodeSpaces(s string) string {
-	out := make([]rune, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		if s[i] == '%' && i+2 < len(s) && s[i+1] == '2' && s[i+2] == '0' {
-			out = append(out, ' ')
-			i += 2
-
-			continue
-		}
-
-		out = append(out, rune(s[i]))
+	results := make([]resource.PropertyValue, 0, len(ids))
+	for _, id := range ids {
+		results = append(results, resource.NewObjectProperty(resource.PropertyMap{
+			"id":     resource.NewStringProperty(id),
+			"name":   resource.NewStringProperty(name),
+			"scopes": resource.NewArrayProperty([]resource.PropertyValue{}),
+		}))
 	}
 
-	return string(out)
+	return resource.PropertyMap{
+		"results": resource.NewArrayProperty(results),
+	}, nil
 }
 
 func baseConfig() Config {
@@ -338,6 +334,39 @@ func TestUnknownPermissionGroupNameFails(t *testing.T) {
 	}, pulumi.WithMocks("proj", "stack", m))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestPermissionGroupLookupPassesPlainUnencodedName guards the double-
+// encoding bug this package used to have: the provider URL-encodes the
+// Name query parameter itself, so a name pre-encoded here (spaces as
+// "%20") arrived on the wire as "%2520" and matched nothing. The name
+// passed to the invoke must be exactly the plain string.
+func TestPermissionGroupLookupPassesPlainUnencodedName(t *testing.T) {
+	m, _ := run(t, baseConfig())
+
+	m.mu.Lock()
+	name := m.lastNameArg
+	m.mu.Unlock()
+
+	assert.Equal(t, "Workers R2 Storage Bucket Item Write", name)
+	assert.NotContains(t, name, "%20", "the name must never be pre-encoded — the provider encodes it itself")
+}
+
+// TestAmbiguousPermissionGroupNameFails asserts the lookup refuses rather
+// than silently picking one when the (undocumented-as-exact) Name filter
+// returns more than one entry whose name matches exactly.
+func TestAmbiguousPermissionGroupNameFails(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Token.PermissionGroupName = "Ambiguous Group"
+	m := newMocks()
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := New(ctx, "cache", cfg, withAccountProvider(t, ctx, cfg.AccountID))
+
+		return err
+	}, pulumi.WithMocks("proj", "stack", m))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous")
 }
 
 // TestPermissionGroupLookupCarriesTheExplicitProvider is the regression

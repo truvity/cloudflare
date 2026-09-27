@@ -5,6 +5,19 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **Fix: `pkg/r2`'s permission-group lookup no longer double-encodes the
+  Name filter.** It pre-encoded spaces as `%20` before calling
+  `getAccountApiTokenPermissionGroupsList`, but the provider URL-encodes
+  that argument itself — the request arrived as
+  `name=Workers%2520R2%2520Storage%2520Bucket%2520Item%2520Write`,
+  Cloudflare filtered by that literal string, and the lookup found
+  nothing even when the token had the permission. The name is now passed
+  plain. The lookup also now refuses rather than guesses when the
+  (undocumented-as-exact) filter returns zero or more than one entry
+  whose name matches exactly.
+
 ## v2.3.0
 
 - **Internal groundwork for an R2 temporary-credentials broker**, under
