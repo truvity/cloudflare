@@ -90,7 +90,8 @@ func (m *mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	// a future regression is caught the moment it is introduced rather
 	// than at "kernel diff" time in a downstream repo.
 	if args.Provider == "" {
-		return resource.PropertyMap{}, assertionError("getAccountApiTokenPermissionGroupsList invoked with no explicit provider — thread the account's Cloudflare provider into this invoke, not just the bucket/token resources")
+		return resource.PropertyMap{}, assertionError("getAccountApiTokenPermissionGroupsList invoked with no explicit provider — " +
+			"thread the account's Cloudflare provider into this invoke, not just the bucket/token resources")
 	}
 
 	// The lookup MUST be account-scoped: assert the invoke always carries

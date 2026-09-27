@@ -122,7 +122,8 @@ func TestInvokeBindsProvider(t *testing.T) {
 func TestInvokeOptionsFromResourceOptionsEmptyWithNoProvider(t *testing.T) {
 	opts, err := InvokeOptionsFromResourceOptions()
 	require.NoError(t, err)
-	assert.Empty(t, opts, "no explicit provider in opts means no invoke option — the lookup falls back to the default, exactly as the resources built from the same opts would")
+	assert.Empty(t, opts, "no explicit provider in opts means no invoke option — "+
+		"the lookup falls back to the default, exactly as the resources built from the same opts would")
 }
 
 func TestInvokeOptionsFromResourceOptionsCarriesTheProvider(t *testing.T) {
