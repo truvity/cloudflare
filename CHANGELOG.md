@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.3.1
 
 - **Fix: `pkg/r2`'s permission-group lookup no longer double-encodes the
   Name filter.** It pre-encoded spaces as `%20` before calling
