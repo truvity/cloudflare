@@ -9,6 +9,7 @@ tunnel as a Helm chart.
 | `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with | shipped |
 | `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
 | `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
+| `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | new |
 | `charts/cloudflared` | `cloudflared` as a plain Deployment: token from a Secret, optional origin CA from a Secret, one install per account | shipped |
 
 The chart publishes to `oci://ghcr.io/truvity/charts/cloudflared` on every

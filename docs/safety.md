@@ -111,6 +111,37 @@ An exact rule never shadows a wildcard, and sibling wildcards
 (`*.a.example.com`, `*.b.example.com`) never shadow each other, so neither
 is refused.
 
+### pkg/r2
+
+| Refusal | What it prevents |
+| --- | --- |
+| no `accountId` or no `bucket` | a bucket, and a token, with nothing to be scoped to |
+| a `bucket` outside Cloudflare's own naming rules (3-63 characters; lowercase letters, digits, hyphens; no leading or trailing hyphen) | a bucket name the API would refuse at apply time instead of before it |
+| a `jurisdiction` other than `""`, `default`, `eu`, `fedramp`, `us` | a value outside the set Cloudflare accepts |
+| `lifecycle.expireAfterDays` not greater than zero | a rule that expires everything immediately or nothing at all; omit `lifecycle` instead |
+| `token.permission` other than `object-read-write` or `object-read-only` | a permission the two known permission groups do not name, found during the apply instead of before it |
+| `token.expiresOn` not RFC3339, or not in the future | a token that is already expired, or a value the API rejects |
+| `token.rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
+| an unknown `token.permissionGroupName` (or the default name, if Cloudflare has renamed it) | New refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
+
+### Rotation is a REPLACE, not an update
+
+`Token.Rotation` is not a Cloudflare field. It is embedded in the token's
+Cloudflare-visible `Name` — a real, mutable field Cloudflare would
+otherwise let the provider rename **in place**, leaving the token's id and
+value untouched. That would not be a rotation at all: a caller asking for
+a fresh credential would get the same one back, relabeled.
+
+`pkg/r2` calls `pulumi.ReplaceOnChanges([]string{"name"})` on the token
+resource, so any change to that field — in practice, any change to
+`Rotation` — is treated as a replacement regardless of what the provider's
+own diff would have done: the old token is deleted and a new one created,
+with a genuinely new id and value. Nothing else changes `Name`, so nothing
+else triggers a rotation by accident. The value of `Rotation` itself has
+no meaning here beyond "different from before" — a date, a counter, or a
+reason all work equally well as the estate's own audit trail for why a
+rotation happened.
+
 ## Defaults chosen because the other one failed
 
 **Zone settings are opt-in, field by field.** An unset field is a setting

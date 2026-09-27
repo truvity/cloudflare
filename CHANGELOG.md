@@ -5,6 +5,17 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`pkg/r2`**: a Pulumi component for one R2 bucket, an opt-in expiry
+  lifecycle, and an API token scoped to exactly that bucket, plus the
+  S3-compatible credential pair (access key id, secret access key)
+  Cloudflare derives from it. The permission group named in the token's
+  policy is looked up by name at apply time, never a hard-coded id.
+  `Token.Rotation` forces the token to be replaced — a fresh id and value
+  — when changed to any new value, never an in-place rename. No consumer
+  currently references it; additive.
+
 ## v2.1.0
 
 - **`pkg/zone` gains `cache`: which hostnames a zone may cache at all.**
