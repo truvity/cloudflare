@@ -97,6 +97,8 @@ kubectl -n cloudflare-system create secret generic cloudflared-origin-ca \
 ```go
 func New(ctx *pulumi.Context, name string, args Args, token pulumi.StringInput, opts ...pulumi.ResourceOption) (*Account, error)
 func (a *Account) Use() pulumi.ResourceOption
+func (a *Account) Invoke() pulumi.InvokeOption
+func InvokeOptionsFromResourceOptions(opts ...pulumi.ResourceOption) ([]pulumi.InvokeOption, error)
 ```
 
 ### Args
@@ -117,6 +119,8 @@ so it never lands in plain state.
 | `Account.AccountID` | the id as supplied, for resources that take it as an argument (`tunnel.Args.AccountID`) |
 | `Account.Provider` | the `cloudflare.Provider` scoped to the token |
 | `Use()` | `pulumi.Provider(a.Provider)`: pass it to every zone, tunnel and record in this account; a component's children inherit it |
+| `Invoke()` | `Use()`'s invoke-side counterpart: pass it to a `Lookup*`/`Get*` data-source call directly. A component RESOURCE inherits its parent's provider automatically; a plain invoke does not, so it needs this (or `InvokeOptionsFromResourceOptions`, below) explicitly — see [safety.md](safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does) |
+| `InvokeOptionsFromResourceOptions(opts...)` | extracts the explicit provider already present in a `New`-style `opts` list (`pulumi.Provider(...)`, or `Account.Use()`) and returns it as an `[]pulumi.InvokeOption`, empty if `opts` carried none. What `pkg/r2` and `pkg/tunnel` call internally so their own `New`'s single `opts` list drives both the resources it registers and any invoke it makes on the side |
 | child | one provider named `provider-<name>`; `opts` are passed to it, so an existing provider can be aliased onto that name |
 
 An Account is not a component resource and creates nothing but the
@@ -221,7 +225,10 @@ DNS records and Advanced Certificate packs. `secret` is the tunnel secret,
 32 random bytes in base64, supplied by the caller (pulumi-random's
 `RandomBytes.Base64` is the usual source); it is required, never derived,
 and marked secret. Pass the account's provider (`acct.Use()`) and any
-transformations in `opts`; children inherit them.
+transformations in `opts`; children inherit them, and the tunnel-token
+lookup (a plain invoke, not a child resource) carries the same explicit
+provider explicitly rather than relying on that inheritance — see
+[safety.md](safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does).
 
 ### Args
 
@@ -369,6 +376,14 @@ These are distinct from `Workers R2 Storage Bucket Write`/`…Bucket Read`,
 names that do not appear on that page as of the date above. If Cloudflare
 renames a group before this package catches up, set
 `Token.PermissionGroupName` rather than waiting for a release.
+
+The lookup itself carries whatever explicit Cloudflare provider `opts`
+gave `New` (`acct.Use()`, typically) — not just the bucket and token
+resources. See
+[safety.md](safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does)
+for why that needs saying: an invoke does not inherit a provider from its
+component the way a resource does, and v2.2.0 shipped this one without
+either.
 
 ### The token's scope
 

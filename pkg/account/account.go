@@ -89,3 +89,54 @@ func New(ctx *pulumi.Context, name string, args Args, token pulumi.StringInput, 
 func (a *Account) Use() pulumi.ResourceOption {
 	return pulumi.Provider(a.Provider)
 }
+
+// Invoke is Use's invoke-side counterpart: the option that binds a plain
+// data-source lookup (a ctx.Invoke, or a generated Lookup*/Get* call) to
+// this account's provider.
+//
+// A component RESOURCE inherits its parent's provider automatically —
+// that is what makes Use() enough for everything this module registers
+// as a resource. A plain invoke does not: with no explicit provider (and
+// no parent already carrying one), it falls back to the default
+// Cloudflare provider, which an estate that disables that default (as
+// gitops does, so every Cloudflare call is accountable to a named
+// account) cannot satisfy — the failure this method exists to prevent.
+// Pass it explicitly to any Lookup*/Get* call this module or a caller
+// makes directly:
+//
+//	res, err := cloudflare.LookupSomething(ctx, args, acct.Invoke())
+func (a *Account) Invoke() pulumi.InvokeOption {
+	return pulumi.Provider(a.Provider)
+}
+
+// InvokeOptionsFromResourceOptions extracts the explicit Cloudflare
+// provider passed via opts — pulumi.Provider(...), or Account.Use() —
+// and returns it as an InvokeOption slice, empty (never nil-containing)
+// if opts carried none.
+//
+// A package whose New builds both resources and a plain data-source
+// lookup from the same opts (pkg/r2's permission-group lookup, pkg/
+// tunnel's token lookup) cannot rely on resource-to-parent provider
+// inheritance for the lookup the way it can for a child resource — see
+// Invoke's doc. Splice this into the Lookup/Get call instead, so it
+// resolves the SAME provider the component's own resources do:
+//
+//	invokeOpts, err := account.InvokeOptionsFromResourceOptions(opts...)
+//	...
+//	res, err := cloudflare.LookupSomething(ctx, args, invokeOpts...)
+//
+// Nil opts, or opts with no explicit provider, resolve to an empty
+// slice: the lookup then falls back to the default provider, exactly as
+// the resources built from the same opts would.
+func InvokeOptionsFromResourceOptions(opts ...pulumi.ResourceOption) ([]pulumi.InvokeOption, error) {
+	ro, err := pulumi.NewResourceOptions(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("resolving provider from resource options: %w", err)
+	}
+
+	if ro.Provider == nil {
+		return nil, nil
+	}
+
+	return []pulumi.InvokeOption{pulumi.Provider(ro.Provider)}, nil
+}
