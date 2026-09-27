@@ -102,6 +102,8 @@ import (
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/truvity/cloudflare/v2/pkg/account"
 )
 
 // Permission levels TokenConfig.Permission accepts.
@@ -356,14 +358,21 @@ func urlEncodeName(name string) string {
 // wrong thing under a different account) and never the global, non-
 // account-scoped list (an account-owned token's own permission groups are
 // looked up per account it belongs to).
-func lookupPermissionGroupID(ctx *pulumi.Context, accountID, groupName string) (string, error) {
+//
+// invokeOpts carries the SAME explicit provider New's own resources use
+// (see account.InvokeOptionsFromResourceOptions) — an invoke does not
+// inherit one from a parent component the way a child resource does, so
+// without this the lookup falls back to the default Cloudflare provider
+// regardless of what opts gave New, which fails outright wherever that
+// default is disabled.
+func lookupPermissionGroupID(ctx *pulumi.Context, accountID, groupName string, invokeOpts ...pulumi.InvokeOption) (string, error) {
 	encoded := urlEncodeName(groupName)
 	acct := accountID
 
 	res, err := cloudflare.LookupAccountApiTokenPermissionGroupsList(ctx, &cloudflare.LookupAccountApiTokenPermissionGroupsListArgs{
 		AccountId: &acct,
 		Name:      &encoded,
-	})
+	}, invokeOpts...)
 	if err != nil {
 		return "", fmt.Errorf("permission group %q: %w", groupName, err)
 	}
@@ -441,7 +450,12 @@ func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOp
 	if cfg.Token.Enabled {
 		groupName := permissionGroupName(cfg.Token)
 
-		groupID, err := lookupPermissionGroupID(ctx, cfg.AccountID, groupName)
+		invokeOpts, err := account.InvokeOptionsFromResourceOptions(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("r2 %q: token: %w", cfg.Bucket, err)
+		}
+
+		groupID, err := lookupPermissionGroupID(ctx, cfg.AccountID, groupName, invokeOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("r2 %q: token: %w", cfg.Bucket, err)
 		}

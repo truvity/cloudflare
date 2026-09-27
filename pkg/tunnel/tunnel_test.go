@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"errors"
 	"sync"
 	"testing"
 
@@ -8,7 +9,11 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/truvity/cloudflare/v2/pkg/account"
 )
+
+const tunnelTokenType = "cloudflare:index/getZeroTrustTunnelCloudflaredToken:getZeroTrustTunnelCloudflaredToken"
 
 // mocks records every registered resource so tests can assert on the
 // exact child names, types and inputs — the names are a documented
@@ -16,6 +21,10 @@ import (
 type mocks struct {
 	mu  sync.Mutex
 	res map[string]resource.PropertyMap // "type/name" → inputs
+
+	// lastTokenProvider records the provider ref the mock most recently
+	// saw on the tunnel-token invoke — "" if none.
+	lastTokenProvider string
 }
 
 func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
@@ -32,18 +41,46 @@ func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.Prop
 }
 
 func (m *mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
-	if args.Token == "cloudflare:index/getZeroTrustTunnelCloudflaredToken:getZeroTrustTunnelCloudflaredToken" {
+	if args.Token == tunnelTokenType {
+		m.mu.Lock()
+		m.lastTokenProvider = args.Provider
+		m.mu.Unlock()
+
+		// The token invoke MUST carry an explicit provider — the same
+		// class of bug pkg/r2 shipped in gitops#1700: a plain invoke
+		// does not inherit one from its parent component the way a
+		// resource does, so a missing provider ref here must fail the
+		// test, not just log it.
+		if args.Provider == "" {
+			return resource.PropertyMap{}, assertionError("getZeroTrustTunnelCloudflaredToken invoked with no explicit provider")
+		}
+
 		return resource.PropertyMap{"token": resource.NewStringProperty("token-abc")}, nil
 	}
 
 	return resource.PropertyMap{}, nil
 }
 
+func assertionError(msg string) error { return errors.New(msg) }
+
+// withAccountProvider builds a real (mocked) Cloudflare provider and
+// returns the option that binds it — the same pulumi.Provider(...)
+// account.Use() returns — so tests exercise the actual path a real
+// caller takes.
+func withAccountProvider(t *testing.T, ctx *pulumi.Context, accountID string) pulumi.ResourceOption {
+	t.Helper()
+
+	acct, err := account.New(ctx, "acct", account.Args{AccountID: accountID}, pulumi.String("token-"+accountID))
+	require.NoError(t, err)
+
+	return acct.Use()
+}
+
 func run(t *testing.T, args Args) *mocks {
 	t.Helper()
 	m := &mocks{res: map[string]resource.PropertyMap{}}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		tun, err := New(ctx, "cluster-a", args, pulumi.String("c2VjcmV0"))
+		tun, err := New(ctx, "cluster-a", args, pulumi.String("c2VjcmV0"), withAccountProvider(t, ctx, args.AccountID))
 		if err != nil {
 			return err
 		}
@@ -197,6 +234,34 @@ func TestValidate(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.want)
 		})
 	}
+}
+
+// TestTokenLookupCarriesTheExplicitProvider is the regression test for
+// the same class of bug pkg/r2 shipped in gitops#1700: New with an
+// explicit provider in opts (the account.Use() every real caller passes)
+// must thread that SAME provider into the token invoke, not rely solely
+// on Parent-based inheritance.
+func TestTokenLookupCarriesTheExplicitProvider(t *testing.T) {
+	m := run(t, baseArgs())
+
+	assert.NotEmpty(t, m.lastTokenProvider, "the token invoke must carry the account's explicit provider")
+}
+
+// TestTokenLookupWithNoExplicitProviderFails is the mirror case: with no
+// provider anywhere in opts, the token invoke has no explicit provider
+// and no inherited one either — the mock refuses that, and the refusal
+// must surface as New's own error rather than silently resolving against
+// a default provider.
+func TestTokenLookupWithNoExplicitProviderFails(t *testing.T) {
+	m := &mocks{res: map[string]resource.PropertyMap{}}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := New(ctx, "cluster-a", baseArgs(), pulumi.String("c2VjcmV0"))
+
+		return err
+	}, pulumi.WithMocks("proj", "stack", m))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no explicit provider")
 }
 
 func TestSecretIsRequired(t *testing.T) {

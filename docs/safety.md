@@ -225,3 +225,32 @@ The chart renders no NetworkPolicy. The pod needs egress to Cloudflare's
 edge (7844 over UDP and TCP, and 443/TCP) and to the origins its tunnel
 routes to, and only the estate knows those. A default-deny namespace
 without that egress leaves every replica unable to connect.
+
+### An invoke does not inherit a provider the way a resource does
+
+A child RESOURCE registered with `pulumi.Parent(comp)` picks up `comp`'s
+own provider automatically if it names none of its own — that is the
+whole reason `Account.Use()` in `opts` is enough for every bucket, token,
+tunnel or DNS record `pkg/r2` and `pkg/tunnel` register. A plain data-
+source lookup (`ctx.Invoke`, or a generated `Lookup*`/`Get*` call) is
+different: with no explicit `pulumi.Provider(...)` of its own, it falls
+back to the caller's DEFAULT Cloudflare provider, `Parent` or no `Parent`.
+
+`pkg/r2` shipped exactly this gap in v2.2.0: `lookupPermissionGroupID`
+called `cloudflare.LookupAccountApiTokenPermissionGroupsList` with no
+invoke option at all. Every estate that keeps the default Cloudflare
+provider enabled never saw it — the invoke fell back to a provider that
+existed and worked. An estate that DISABLES the default provider (so
+every Cloudflare call is accountable to a named account, rather than to
+whichever one Pulumi picks) saw its whole Cloudflare stack fail at
+preview the moment `Token.Enabled` was turned on: `Default provider for
+'cloudflare' disabled ... must use an explicit provider`, with no
+resource yet touched.
+
+Fixed in v2.3.0: `pkg/r2`'s permission-group lookup and `pkg/tunnel`'s
+token lookup now both thread the SAME explicit provider their sibling
+resources use — via `account.InvokeOptionsFromResourceOptions(opts...)`
+— into the invoke as well. A caller who already passes `acct.Use()` needs
+no code change to pick up the fix. A caller building a `Lookup*`/`Get*`
+call of its own, anywhere, should pass `acct.Invoke()` rather than assume
+`pulumi.Parent(...)` alone is enough.

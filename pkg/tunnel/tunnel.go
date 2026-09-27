@@ -33,6 +33,8 @@ import (
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/truvity/cloudflare/v2/pkg/account"
 )
 
 type (
@@ -267,6 +269,17 @@ func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput,
 
 	child := []pulumi.ResourceOption{pulumi.Parent(comp)}
 
+	// The token lookup below is a plain invoke, not a resource: it does
+	// not inherit a provider from comp the way tun and the other child
+	// RESOURCES do (see account.InvokeOptionsFromResourceOptions). Carry
+	// opts' own explicit provider, if any, into it explicitly, in
+	// addition to Parent — belt and suspenders, and consistent with
+	// pkg/r2's own token lookup.
+	invokeOpts, err := account.InvokeOptionsFromResourceOptions(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("tunnel %q: %w", args.Name, err)
+	}
+
 	tun, err := cloudflare.NewZeroTrustTunnelCloudflared(ctx, "tunnel-"+name, &cloudflare.ZeroTrustTunnelCloudflaredArgs{
 		AccountId: pulumi.String(args.AccountID),
 		Name:      pulumi.String(args.Name),
@@ -284,7 +297,7 @@ func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput,
 	comp.Token = pulumi.ToSecret(cloudflare.GetZeroTrustTunnelCloudflaredTokenOutput(ctx, cloudflare.GetZeroTrustTunnelCloudflaredTokenOutputArgs{
 		AccountId: pulumi.String(args.AccountID),
 		TunnelId:  tun.ID(),
-	}, pulumi.Parent(comp)).Token()).(pulumi.StringOutput)
+	}, append([]pulumi.InvokeOption{pulumi.Parent(comp)}, invokeOpts...)...).Token()).(pulumi.StringOutput)
 
 	if args.DNS != nil {
 		for _, host := range args.DNS.Names {

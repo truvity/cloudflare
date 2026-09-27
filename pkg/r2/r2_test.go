@@ -13,6 +13,8 @@ import (
 	pulumirpc "github.com/pulumi/pulumi/sdk/v3/proto/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/truvity/cloudflare/v2/pkg/account"
 )
 
 func assertionError(msg string) error { return errors.New(msg) }
@@ -33,6 +35,12 @@ type mocks struct {
 	res     map[string]resource.PropertyMap // "type/name" -> inputs
 	regRPCs map[string]*pulumirpc.RegisterResourceRequest
 	groups  map[string]string // permission group name -> id
+
+	// lastPermissionGroupProvider records the provider ref the mock most
+	// recently saw on the permission-group invoke — "" if none. Tests
+	// assert on this to prove the invoke resolved the SAME provider its
+	// sibling resources did, not the (possibly disabled) default one.
+	lastPermissionGroupProvider string
 }
 
 func newMocks() *mocks {
@@ -69,6 +77,20 @@ func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.Prop
 func (m *mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	if args.Token != permissionGroupToken {
 		return resource.PropertyMap{}, nil
+	}
+
+	m.mu.Lock()
+	m.lastPermissionGroupProvider = args.Provider
+	m.mu.Unlock()
+
+	// The lookup MUST carry the caller's explicit Cloudflare provider —
+	// gitops#1700 shipped this invoke with none at all, which fails
+	// outright wherever the default provider is disabled (INF-r2-invoke).
+	// A missing provider ref here must fail the test, not just log it, so
+	// a future regression is caught the moment it is introduced rather
+	// than at "kernel diff" time in a downstream repo.
+	if args.Provider == "" {
+		return resource.PropertyMap{}, assertionError("getAccountApiTokenPermissionGroupsList invoked with no explicit provider — thread the account's Cloudflare provider into this invoke, not just the bucket/token resources")
 	}
 
 	// The lookup MUST be account-scoped: assert the invoke always carries
@@ -126,13 +148,27 @@ func baseConfig() Config {
 	}
 }
 
+// withAccountProvider builds a real (mocked) Cloudflare provider for
+// accountID and returns the option that binds it — the same
+// pulumi.Provider(...) account.Use() returns — so tests exercise the
+// actual path a real caller takes (an explicit, named account), not an
+// implicit default one.
+func withAccountProvider(t *testing.T, ctx *pulumi.Context, accountID string) pulumi.ResourceOption {
+	t.Helper()
+
+	acct, err := account.New(ctx, "acct", account.Args{AccountID: accountID}, pulumi.String("token-"+accountID))
+	require.NoError(t, err)
+
+	return acct.Use()
+}
+
 func run(t *testing.T, cfg Config) (*mocks, *R2) {
 	t.Helper()
 	m := newMocks()
 
 	var out *R2
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		r, err := New(ctx, "cache", cfg)
+		r, err := New(ctx, "cache", cfg, withAccountProvider(t, ctx, cfg.AccountID))
 		if err != nil {
 			return err
 		}
@@ -295,12 +331,40 @@ func TestUnknownPermissionGroupNameFails(t *testing.T) {
 	m := newMocks()
 
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		_, err := New(ctx, "cache", cfg)
+		_, err := New(ctx, "cache", cfg, withAccountProvider(t, ctx, cfg.AccountID))
 
 		return err
 	}, pulumi.WithMocks("proj", "stack", m))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+}
+
+// TestPermissionGroupLookupCarriesTheExplicitProvider is the regression
+// test for gitops#1700 / INF-r2-invoke: New with an explicit provider in
+// opts (the account.Use() every real caller passes) must thread that SAME
+// provider into the permission-group invoke, not just into the bucket and
+// token resources.
+func TestPermissionGroupLookupCarriesTheExplicitProvider(t *testing.T) {
+	m, _ := run(t, baseConfig())
+
+	assert.NotEmpty(t, m.lastPermissionGroupProvider, "the invoke must carry the account's explicit provider")
+}
+
+// TestPermissionGroupLookupWithNoExplicitProviderFails is the mirror
+// case: New called with NO provider in opts at all (the exact shape of
+// gitops#1700's call site before the fix) must not silently succeed
+// against a default provider — mocks.Call refuses an empty provider ref
+// on this invoke, and that refusal must surface as New's own error.
+func TestPermissionGroupLookupWithNoExplicitProviderFails(t *testing.T) {
+	m := newMocks()
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := New(ctx, "cache", baseConfig())
+
+		return err
+	}, pulumi.WithMocks("proj", "stack", m))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no explicit provider")
 }
 
 func TestSecretOutputsAreMarkedSecret(t *testing.T) {

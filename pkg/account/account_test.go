@@ -105,6 +105,45 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestInvokeBindsProvider(t *testing.T) {
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		acct, err := New(ctx, "platform", Args{AccountID: "acct"}, pulumi.String("token-value"))
+		if err != nil {
+			return err
+		}
+
+		assert.NotNil(t, acct.Invoke(), "Invoke binds a data-source lookup to this account's provider")
+
+		return nil
+	}, pulumi.WithMocks("proj", "stack", &mocks{res: map[string]resource.PropertyMap{}}))
+	require.NoError(t, err)
+}
+
+func TestInvokeOptionsFromResourceOptionsEmptyWithNoProvider(t *testing.T) {
+	opts, err := InvokeOptionsFromResourceOptions()
+	require.NoError(t, err)
+	assert.Empty(t, opts, "no explicit provider in opts means no invoke option — the lookup falls back to the default, exactly as the resources built from the same opts would")
+}
+
+func TestInvokeOptionsFromResourceOptionsCarriesTheProvider(t *testing.T) {
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		acct, err := New(ctx, "platform", Args{AccountID: "acct"}, pulumi.String("token-value"))
+		if err != nil {
+			return err
+		}
+
+		opts, err := InvokeOptionsFromResourceOptions(acct.Use())
+		if err != nil {
+			return err
+		}
+
+		require.Len(t, opts, 1, "acct.Use() in opts must resolve to exactly one explicit invoke option")
+
+		return nil
+	}, pulumi.WithMocks("proj", "stack", &mocks{res: map[string]resource.PropertyMap{}}))
+	require.NoError(t, err)
+}
+
 func TestTokenIsRequired(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := New(ctx, "platform", Args{AccountID: "acct"}, nil)
