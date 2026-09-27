@@ -97,7 +97,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
@@ -342,22 +341,28 @@ func permissionGroupName(tok TokenConfig) string {
 	return defaultPermissionGroup[tok.Permission]
 }
 
-// urlEncodeName encodes a permission group name the way
-// getAccountApiTokenPermissionGroupsList's own example does (spaces as
-// "%20"): https://developers.cloudflare.com/r2/api/tokens/ names its Name
-// filter "the value must be URL-encoded" and the generated SDK's own
-// example (getAccountApiTokenPermissionGroupsList.go) passes
-// "Account%20Settings%20Write".
-func urlEncodeName(name string) string {
-	return strings.ReplaceAll(name, " ", "%20")
-}
-
 // lookupPermissionGroupID resolves groupName to its id for THIS account,
 // via the provider's ACCOUNT-scoped data source — never a hard-coded id
 // (per-account, so a hard-coded one would either grant nothing or the
 // wrong thing under a different account) and never the global, non-
 // account-scoped list (an account-owned token's own permission groups are
 // looked up per account it belongs to).
+//
+// The Name filter is passed PLAIN, never pre-encoded: the generated SDK's
+// doc comment ("the value must be URL-encoded") describes the raw
+// Cloudflare REST parameter, but the provider builds and encodes the HTTP
+// query itself from this Go-level string argument. A pre-encoded name
+// (e.g. spaces as "%20") is therefore encoded a second time on the wire
+// ("%20" becomes "%2520"), Cloudflare filters by that literal garbage
+// string, and the lookup finds nothing even when the token has the
+// permission — confirmed live: a preview with the name pre-encoded here
+// sent `?name=Workers%2520R2%2520Storage%2520Bucket%2520Item%2520Write`
+// and got a 403 back, not merely an empty result.
+//
+// Cloudflare's Name filter is not documented as an exact match, so the
+// result is matched EXACTLY, client side, against every entry the list
+// returns: zero exact matches or more than one is refused with a clear
+// error rather than guessed at (e.g. by taking the first).
 //
 // invokeOpts carries the SAME explicit provider New's own resources use
 // (see account.InvokeOptionsFromResourceOptions) — an invoke does not
@@ -366,25 +371,31 @@ func urlEncodeName(name string) string {
 // regardless of what opts gave New, which fails outright wherever that
 // default is disabled.
 func lookupPermissionGroupID(ctx *pulumi.Context, accountID, groupName string, invokeOpts ...pulumi.InvokeOption) (string, error) {
-	encoded := urlEncodeName(groupName)
-	acct := accountID
-
 	res, err := cloudflare.LookupAccountApiTokenPermissionGroupsList(ctx, &cloudflare.LookupAccountApiTokenPermissionGroupsListArgs{
-		AccountId: &acct,
-		Name:      &encoded,
+		AccountId: &accountID,
+		Name:      &groupName,
 	}, invokeOpts...)
 	if err != nil {
 		return "", fmt.Errorf("permission group %q: %w", groupName, err)
 	}
 
+	var matches []string
 	for _, r := range res.Results {
 		if r.Name == groupName {
-			return r.Id, nil
+			matches = append(matches, r.Id)
 		}
 	}
 
-	return "", fmt.Errorf("permission group %q: not found via getAccountApiTokenPermissionGroupsList for account %q — check the exact name "+
-		"Cloudflare uses today, or set Config.Token.PermissionGroupName", groupName, accountID)
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("permission group %q: not found via getAccountApiTokenPermissionGroupsList for account %q — check the exact name "+
+			"Cloudflare uses today, or set Config.Token.PermissionGroupName", groupName, accountID)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("permission group %q: %d exact matches via getAccountApiTokenPermissionGroupsList for account %q — ambiguous, "+
+			"set Config.Token.PermissionGroupName to a name that resolves to exactly one group", groupName, len(matches), accountID)
+	}
 }
 
 // New provisions the bucket, its optional lifecycle, and its optional
