@@ -284,6 +284,104 @@ does not need them.
 `Slug(host)` renders a hostname as a name fragment: `*` becomes `star`
 and `.` becomes `-`, so `*.team.example.com` is `star-team-example-com`.
 
+## pkg/r2
+
+`github.com/truvity/cloudflare/v2/pkg/r2`
+
+```go
+func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOption) (*R2, error)
+```
+
+A component of type `truvity:cloudflare:R2`: one R2 bucket, an opt-in
+expiry lifecycle, and an opt-in API token scoped to exactly that bucket —
+plus the S3-compatible credential pair Cloudflare derives from it, so a
+caller never re-implements the derivation.
+
+```go
+r, err := r2.New(ctx, "cache", r2.Config{
+	AccountID: acct.AccountID,
+	Bucket:    "example-cache-bucket",
+	Lifecycle: &r2.Lifecycle{ExpireAfterDays: 14},
+	Token: r2.TokenConfig{
+		Enabled:    true,
+		Permission: r2.PermissionObjectReadWrite,
+	},
+}, acct.Use())
+```
+
+### Config
+
+| Field | YAML key | Required | Notes |
+| --- | --- | --- | --- |
+| `AccountID` | `accountId` | yes | the account owning the bucket; take it from `Account.AccountID` |
+| `Bucket` | `bucket` | yes | the R2 bucket name; refused if it does not follow Cloudflare's own naming rules (3-63 characters, lowercase letters, digits and hyphens, no leading or trailing hyphen) |
+| `Jurisdiction` | `jurisdiction` | no | `""`/`"default"`, `"eu"`, `"fedramp"` or `"us"`; sets the bucket's data-residency jurisdiction AND the segment used when scoping the token's policy to this bucket, so the two can never disagree |
+| `Lifecycle` | `lifecycle` | no | see below; nil expires nothing |
+| `Token` | `token` | yes (block always present; `Enabled` decides) | see below |
+
+`Lifecycle`:
+
+| Field | YAML key | Notes |
+| --- | --- | --- |
+| `ExpireAfterDays` | `expireAfterDays` | required when `lifecycle` is set; must be greater than zero |
+| `Prefix` | `prefix` | restricts the rule to objects whose key starts with it; empty is every object |
+
+`TokenConfig`:
+
+| Field | YAML key | Notes |
+| --- | --- | --- |
+| `Enabled` | `enabled` | false creates the bucket (and its lifecycle) only; every `Token*`/`S3*` output resolves to `""` |
+| `Permission` | `permission` | `object-read-write` (`r2.PermissionObjectReadWrite`) or `object-read-only` (`r2.PermissionObjectReadOnly`); required when `Enabled` |
+| `ExpiresOn` | `expiresOn` | an RFC3339 timestamp after which Cloudflare refuses the token; optional, must be in the future when set — for a scratch or test token that should not outlive its errand |
+| `Rotation` | `rotation` | changing it to any new value forces the token to be replaced — a fresh id and value, never an in-place rename. See [safety.md](safety.md#rotation-is-a-replace-not-an-update) |
+| `PermissionGroupName` | `permissionGroupName` | overrides the permission group name looked up for `Permission` (see below); empty uses the documented default |
+
+### The token's permission group
+
+The policy naming the token's one permission group is resolved **by
+name**, through the provider's `getApiTokenPermissionGroupsList` data
+source, at apply time — never a hard-coded id, which is per-account and
+would either grant nothing or the wrong thing under a different account.
+The two names this package knows, confirmed against
+[developers.cloudflare.com/r2/api/tokens/](https://developers.cloudflare.com/r2/api/tokens/)
+(accessed 2026-09-27):
+
+| `Permission` | Permission group name | Grants |
+| --- | --- | --- |
+| `object-read-write` | `Workers R2 Storage Bucket Item Write` | read, write and list on objects in the named bucket |
+| `object-read-only` | `Workers R2 Storage Bucket Item Read` | read and list on objects in the named bucket |
+
+These are distinct from `Workers R2 Storage Bucket Write`/`…Bucket Read`,
+names that do not appear on that page as of the date above. If Cloudflare
+renames a group before this package catches up, set
+`Token.PermissionGroupName` rather than waiting for a release.
+
+### The token's scope
+
+The policy's `Resources` map names exactly one resource, Cloudflare's own
+name for "this one bucket":
+`com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>`,
+jurisdiction `default` for a non-jurisdictional bucket — confirmed on the
+same page. A token this package creates can therefore never reach a
+second bucket, however `Config` changes.
+
+### Outputs and names
+
+| | |
+| --- | --- |
+| `R2.BucketName` | the bucket name, as created |
+| `R2.TokenID` | the parent token's id; `""` when `Token.Enabled` is false |
+| `R2.TokenValue` | the parent token's secret value; a secret output; `""` when `Token.Enabled` is false |
+| `R2.S3AccessKeyID` | equals `TokenID` — Cloudflare's R2-to-S3 mapping uses the token id as the access key id ([developers.cloudflare.com/r2/api/s3/tokens/](https://developers.cloudflare.com/r2/api/s3/tokens/), accessed 2026-09-27) |
+| `R2.S3SecretAccessKey` | the SHA-256 hash of `TokenValue`, hex encoded, per the same page; a secret output; `""` when `Token.Enabled` is false |
+| `R2.S3Endpoint` | `https://<accountId>.r2.cloudflarestorage.com`, this account's R2 S3-compatible endpoint |
+| children | `bucket-<name>` (`cloudflare.R2Bucket`), `lifecycle-<name>` (`cloudflare.R2BucketLifecycle`, only when `Lifecycle` is set), `token-<name>` (`cloudflare.ApiToken`, only when `Token.Enabled`) |
+
+This package creates no secret store entry and no chart Secret; where the
+token value and its derived S3 credentials are stored (a Pulumi config
+secret today, OpenBAO KV tomorrow) is the caller's decision, matching
+`pkg/tunnel`'s existing precedent for `Tunnel.Token`.
+
 ## Child names are a contract
 
 Every child name above is documented because an estate that already has
