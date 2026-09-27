@@ -8,10 +8,11 @@ together at every version.
 ## Unreleased
 
 - **`pkg/r2`**: a Pulumi component for one R2 bucket, an opt-in expiry
-  lifecycle, and an API token scoped to exactly that bucket, plus the
-  S3-compatible credential pair (access key id, secret access key)
-  Cloudflare derives from it. The permission group named in the token's
-  policy is looked up by name at apply time, never a hard-coded id.
+  lifecycle, and an account-owned API token scoped to exactly that bucket,
+  plus the S3-compatible credential pair (access key id, secret access
+  key) Cloudflare derives from it. The permission group named in the
+  token's policy is looked up by name, through the account-scoped
+  permission-group list, at apply time — never a hard-coded id.
   `Token.Rotation` forces the token to be replaced — a fresh id and value
   — when changed to any new value, never an in-place rename. No consumer
   currently references it; additive.

@@ -113,6 +113,13 @@ is refused.
 
 ### pkg/r2
 
+The parent token is account-owned (`cloudflare.AccountToken`,
+`/accounts/{account_id}/tokens`), not a user token: it is not tied to a
+person who might leave, and its permission group is looked up through the
+**account-scoped** `getAccountApiTokenPermissionGroupsList` data source —
+never the global, user-token-scoped list, which would look up the right
+name in the wrong catalog.
+
 | Refusal | What it prevents |
 | --- | --- |
 | no `accountId` or no `bucket` | a bucket, and a token, with nothing to be scoped to |
@@ -126,21 +133,26 @@ is refused.
 
 ### Rotation is a REPLACE, not an update
 
-`Token.Rotation` is not a Cloudflare field. It is embedded in the token's
-Cloudflare-visible `Name` — a real, mutable field Cloudflare would
-otherwise let the provider rename **in place**, leaving the token's id and
-value untouched. That would not be a rotation at all: a caller asking for
-a fresh credential would get the same one back, relabeled.
+`Token.Rotation` is not a Cloudflare field. It is embedded in the
+account-owned token's Cloudflare-visible `Name` — a real, mutable field:
+Cloudflare's account-token update endpoint, like its user-token one,
+changes name, policies, status and dates in place, never the secret value,
+which only a fresh create produces. Left alone, a `Name` change would
+therefore not be a rotation at all: a caller asking for a fresh credential
+would get the same one back, relabeled.
 
 `pkg/r2` calls `pulumi.ReplaceOnChanges([]string{"name"})` on the token
 resource, so any change to that field — in practice, any change to
 `Rotation` — is treated as a replacement regardless of what the provider's
 own diff would have done: the old token is deleted and a new one created,
-with a genuinely new id and value. Nothing else changes `Name`, so nothing
-else triggers a rotation by accident. The value of `Rotation` itself has
-no meaning here beyond "different from before" — a date, a counter, or a
-reason all work equally well as the estate's own audit trail for why a
-rotation happened.
+with a genuinely new id and value. This does not depend on how the
+generated `AccountToken` resource's own diff treats `Name` — the vendored
+`pulumi-cloudflare` Go SDK ships no ForceNew/replace metadata to inspect
+either way, so `pkg/r2` forces the behavior itself rather than assuming
+it. Nothing else changes `Name`, so nothing else triggers a rotation by
+accident. The value of `Rotation` itself has no meaning here beyond
+"different from before" — a date, a counter, or a reason all work equally
+well as the estate's own audit trail for why a rotation happened.
 
 ## Defaults chosen because the other one failed
 
