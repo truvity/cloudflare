@@ -5,6 +5,19 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **Internal groundwork for an R2 temporary-credentials broker**, under
+  `internal/`: OIDC verification behind a small `Verifier` interface
+  (`github.com/coreos/go-oidc/v3`), a group-only config schema
+  (`group → bucket/prefixes/permission`, no claim-matching fields), a
+  `Minter` that signs temporary credentials locally per Cloudflare's
+  documented HS256 mechanism with an API-mode fallback, and pure
+  group-to-grant decision logic (a request selects by bucket/prefixes/
+  permission, never by naming a group or a row directly). No service,
+  CLI, chart, or release artifact ships yet — this change has no
+  consumer-visible effect.
+
 ## v2.2.0
 
 - **`pkg/r2`**: a Pulumi component for one R2 bucket, an opt-in expiry
