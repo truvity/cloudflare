@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.2.0
 
 - **`pkg/r2`**: a Pulumi component for one R2 bucket, an opt-in expiry
   lifecycle, and an account-owned API token scoped to exactly that bucket,
