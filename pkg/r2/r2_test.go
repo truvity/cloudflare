@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 
@@ -14,11 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func assertionError(msg string) error { return errors.New(msg) }
+
 const (
-	apiTokenType         = "cloudflare:index/apiToken:ApiToken"
+	accountTokenType     = "cloudflare:index/accountToken:AccountToken"
 	bucketType           = "cloudflare:index/r2Bucket:R2Bucket"
 	lifecycleType        = "cloudflare:index/r2BucketLifecycle:R2BucketLifecycle"
-	permissionGroupToken = "cloudflare:index/getApiTokenPermissionGroupsList:getApiTokenPermissionGroupsList"
+	permissionGroupToken = "cloudflare:index/getAccountApiTokenPermissionGroupsList:getAccountApiTokenPermissionGroupsList"
 )
 
 // mocks records every registered resource so tests can assert on the exact
@@ -55,7 +58,7 @@ func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.Prop
 	out := args.Inputs.Copy()
 	id := args.Name + "-id"
 
-	if args.TypeToken == apiTokenType {
+	if args.TypeToken == accountTokenType {
 		id = "token-id-123"
 		out["value"] = resource.NewStringProperty("tok-value-abc123")
 	}
@@ -66,6 +69,12 @@ func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.Prop
 func (m *mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	if args.Token != permissionGroupToken {
 		return resource.PropertyMap{}, nil
+	}
+
+	// The lookup MUST be account-scoped: assert the invoke always carries
+	// an accountId, never just a bare name filter against the global list.
+	if !args.Args.HasValue("accountId") || args.Args["accountId"].StringValue() == "" {
+		return resource.PropertyMap{}, assertionError("getAccountApiTokenPermissionGroupsList invoked with no accountId")
 	}
 
 	encoded := args.Args["name"].StringValue()
@@ -150,7 +159,7 @@ func TestChildNamesAreTheDocumentedContract(t *testing.T) {
 	m, _ := run(t, baseConfig())
 
 	assert.Contains(t, m.res, bucketType+"/bucket-cache")
-	assert.Contains(t, m.res, apiTokenType+"/token-cache")
+	assert.Contains(t, m.res, accountTokenType+"/token-cache")
 
 	for k := range m.res {
 		assert.NotContains(t, k, "r2BucketLifecycle", "no lifecycle unless Config.Lifecycle is set")
@@ -175,7 +184,7 @@ func TestJurisdictionSetsBucketAndResourceKey(t *testing.T) {
 	b := m.res[bucketType+"/bucket-cache"]
 	assert.Equal(t, "eu", b["jurisdiction"].StringValue())
 
-	tok := m.res[apiTokenType+"/token-cache"]
+	tok := m.res[accountTokenType+"/token-cache"]
 	policies := tok["policies"].ArrayValue()
 	require.Len(t, policies, 1)
 
@@ -187,7 +196,7 @@ func TestJurisdictionSetsBucketAndResourceKey(t *testing.T) {
 func TestDefaultJurisdictionIsDefaultInResourceKey(t *testing.T) {
 	m, _ := run(t, baseConfig())
 
-	tok := m.res[apiTokenType+"/token-cache"]
+	tok := m.res[accountTokenType+"/token-cache"]
 	policies := tok["policies"].ArrayValue()
 
 	var resources map[string]string
@@ -227,7 +236,7 @@ func TestNoLifecycleWhenUnset(t *testing.T) {
 func TestTokenPolicyIsExactlyOneBucket(t *testing.T) {
 	m, _ := run(t, baseConfig())
 
-	tok := m.res[apiTokenType+"/token-cache"]
+	tok := m.res[accountTokenType+"/token-cache"]
 	policies := tok["policies"].ArrayValue()
 	require.Len(t, policies, 1, "exactly one policy")
 
@@ -244,12 +253,28 @@ func TestTokenPolicyIsExactlyOneBucket(t *testing.T) {
 	assert.Equal(t, "*", resources["com.cloudflare.edge.r2.bucket.example-account-id_default_example-bucket"])
 }
 
+func TestTokenIsAccountOwned(t *testing.T) {
+	m, r := run(t, baseConfig())
+
+	tok := m.res[accountTokenType+"/token-cache"]
+	require.True(t, tok.HasValue("accountId"), "an account-owned token must carry accountId, unlike a user token")
+	assert.Equal(t, "example-account-id", tok["accountId"].StringValue())
+	assert.Equal(t, "example-account-id", resolveString(t, r.Token.AccountId))
+
+	// A user token (cloudflare:index/apiToken:ApiToken) must never appear:
+	// the estate's provisioning token is scoped to create ACCOUNT-owned
+	// tokens (Account API Tokens Write), not user ones.
+	for k := range m.res {
+		assert.NotContains(t, k, "apiToken:ApiToken")
+	}
+}
+
 func TestPermissionGroupLookupByNamePicksReadOnly(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Token.Permission = PermissionObjectReadOnly
 	m, _ := run(t, cfg)
 
-	tok := m.res[apiTokenType+"/token-cache"]
+	tok := m.res[accountTokenType+"/token-cache"]
 	groups := tok["policies"].ArrayValue()[0].ObjectValue()["permissionGroups"].ArrayValue()
 	assert.Equal(t, "group-read-id", groups[0].ObjectValue()["id"].StringValue())
 }
@@ -259,7 +284,7 @@ func TestPermissionGroupNameOverride(t *testing.T) {
 	cfg.Token.PermissionGroupName = "Custom R2 Group"
 	m, _ := run(t, cfg)
 
-	tok := m.res[apiTokenType+"/token-cache"]
+	tok := m.res[accountTokenType+"/token-cache"]
 	groups := tok["policies"].ArrayValue()[0].ObjectValue()["permissionGroups"].ArrayValue()
 	assert.Equal(t, "group-custom-id", groups[0].ObjectValue()["id"].StringValue())
 }
@@ -311,7 +336,7 @@ func TestTokenDisabledCreatesNoTokenAndEmptyOutputs(t *testing.T) {
 	cfg.Token = TokenConfig{Enabled: false}
 	m, r := run(t, cfg)
 
-	assert.NotContains(t, m.res, apiTokenType+"/token-cache")
+	assert.NotContains(t, m.res, accountTokenType+"/token-cache")
 	assert.Nil(t, r.Token)
 
 	assert.Equal(t, "", resolveString(t, r.TokenID))
@@ -325,7 +350,7 @@ func TestExpiresOnIsPassedThrough(t *testing.T) {
 	cfg.Token.ExpiresOn = "2099-01-01T00:00:00Z"
 	m, _ := run(t, cfg)
 
-	tok := m.res[apiTokenType+"/token-cache"]
+	tok := m.res[accountTokenType+"/token-cache"]
 	assert.Equal(t, "2099-01-01T00:00:00Z", tok["expiresOn"].StringValue())
 }
 
@@ -342,18 +367,18 @@ func TestRotationChangesNameAndIsReplaceOnChange(t *testing.T) {
 	cfg2.Token.Rotation = "2026-10-01"
 	m2, _ := run(t, cfg2)
 
-	name1 := m1.res[apiTokenType+"/token-cache"]["name"].StringValue()
-	name2 := m2.res[apiTokenType+"/token-cache"]["name"].StringValue()
+	name1 := m1.res[accountTokenType+"/token-cache"]["name"].StringValue()
+	name2 := m2.res[accountTokenType+"/token-cache"]["name"].StringValue()
 	assert.NotEqual(t, name1, name2, "changing Rotation must change the token's Name")
 	assert.Contains(t, name1, "2026-09-01")
 	assert.Contains(t, name2, "2026-10-01")
 
-	rpc1 := m1.regRPCs[apiTokenType+"/token-cache"]
+	rpc1 := m1.regRPCs[accountTokenType+"/token-cache"]
 	require.NotNil(t, rpc1)
 	assert.Contains(t, rpc1.GetReplaceOnChanges(), "name",
 		"a Name change must be a REPLACE, not an update, or rotation would relabel the old token instead of minting a new one")
 
-	rpc2 := m2.regRPCs[apiTokenType+"/token-cache"]
+	rpc2 := m2.regRPCs[accountTokenType+"/token-cache"]
 	require.NotNil(t, rpc2)
 	assert.Contains(t, rpc2.GetReplaceOnChanges(), "name")
 }
@@ -361,7 +386,7 @@ func TestRotationChangesNameAndIsReplaceOnChange(t *testing.T) {
 func TestNoRotationStillSetsReplaceOnChanges(t *testing.T) {
 	m, _ := run(t, baseConfig())
 
-	rpc := m.regRPCs[apiTokenType+"/token-cache"]
+	rpc := m.regRPCs[accountTokenType+"/token-cache"]
 	require.NotNil(t, rpc)
 	assert.Contains(t, rpc.GetReplaceOnChanges(), "name")
 }

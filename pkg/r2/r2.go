@@ -1,7 +1,14 @@
 // Package r2 provisions one R2 bucket, its optional expiry lifecycle, and
-// an API token scoped to EXACTLY that bucket — plus the S3-compatible
-// credential pair Cloudflare derives from that token, so a consumer does
-// not have to re-implement the derivation itself.
+// an ACCOUNT-OWNED API token scoped to EXACTLY that bucket — plus the
+// S3-compatible credential pair Cloudflare derives from that token, so a
+// consumer does not have to re-implement the derivation itself.
+//
+// The token is account-owned (`cloudflare.AccountToken`,
+// `/accounts/{account_id}/tokens`), not a user token
+// (`cloudflare.ApiToken`, `/user/tokens`): an account-owned token is not
+// tied to a person who might leave the estate, and it is what the
+// provisioning token this package's own caller runs as is scoped to
+// create — see "Provisioning permissions" below.
 //
 // The library's contract, shared by every public truvity module:
 //
@@ -31,31 +38,58 @@
 // reach a second bucket, however Config changes.
 //
 // The permission group named in the policy is looked up BY NAME through
-// the provider's `getApiTokenPermissionGroupsList` data source at apply
-// time, never hard-coded as an id: ids are per-account, so a hard-coded
-// one silently either grants nothing (wrong account) or the wrong grant.
-// The two names this package knows, confirmed on the same page: "Workers
-// R2 Storage Bucket Item Write" (read, write and list on objects in the
-// named bucket) for TokenConfig.Permission "object-read-write", and
-// "Workers R2 Storage Bucket Item Read" (read and list) for
-// "object-read-only". These are distinct from "Workers R2 Storage Bucket
-// Write"/"…Bucket Read", names that do not appear on that page as of the
-// date above; TokenConfig.PermissionGroupName overrides the lookup if
-// Cloudflare renames a group before this package catches up.
+// the provider's ACCOUNT-scoped `getAccountApiTokenPermissionGroupsList`
+// data source at apply time, never hard-coded as an id: ids are
+// per-account, so a hard-coded one silently either grants nothing (wrong
+// account) or the wrong grant. The account-scoped list, not the global
+// `getApiTokenPermissionGroupsList` one, is the correct lookup for an
+// account-owned token's own permission groups. The two names this package
+// knows, confirmed against
+// https://developers.cloudflare.com/r2/api/tokens/#permissions (accessed
+// 2026-09-27; R2 is listed as compatible with account-owned tokens on
+// https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/,
+// same date): "Workers R2 Storage Bucket Item Write" (read, write and
+// list on objects in the named bucket) for TokenConfig.Permission
+// "object-read-write", and "Workers R2 Storage Bucket Item Read" (read
+// and list) for "object-read-only". These are distinct from "Workers R2
+// Storage Bucket Write"/"…Bucket Read", names that do not appear on that
+// page as of the date above; TokenConfig.PermissionGroupName overrides
+// the lookup if Cloudflare renames a group before this package catches
+// up, or if a given account's list ever disagrees with the name above —
+// New fails loudly with the name it looked up rather than silently
+// falling back to something broader.
+//
+// # Provisioning permissions
+//
+// The Cloudflare API token this package's OWN caller (the Pulumi program)
+// runs as needs, on the account being managed: "Account API Tokens Write"
+// (dashboard: Account API Tokens — Edit) to create and manage the
+// account-owned token, and "Workers R2 Storage Write" (dashboard: Workers
+// R2 Storage — Edit) to create the bucket and its lifecycle and to read
+// the account's own permission-group list. Both are Accepted Permissions
+// on the generated `cloudflare.AccountToken`/`cloudflare.R2Bucket`
+// resources themselves (see their doc comments in this package's vendored
+// `pulumi-cloudflare` SDK).
 //
 // # Rotation
 //
 // TokenConfig.Rotation is not a Cloudflare field. Changing it changes the
-// token's Cloudflare-visible Name (an actual, mutable field Cloudflare
-// would otherwise let the provider update in place, which would rename
-// the token WITHOUT changing its id or value — not a rotation at all), and
-// pulumi.ReplaceOnChanges("name") on the token resource tells Pulumi to
-// treat that change as a replacement rather than an update regardless: the
-// old token is deleted and a new one created, so its id and value are
-// genuinely fresh. Nothing else changes Name, so nothing else triggers a
-// rotation by accident. A caller asks for a rotation declaratively by
-// changing Rotation to any new value (a date, a counter, a reason) — the
-// value itself has no meaning here beyond "different from before".
+// token's Cloudflare-visible Name (an actual, mutable field: account-owned
+// tokens, like user tokens, support renaming without regenerating the
+// token — Cloudflare's update endpoint for both changes name, policies,
+// status and dates in place, never the secret value, which only a fresh
+// create produces), and pulumi.ReplaceOnChanges("name") on the token
+// resource tells Pulumi to treat that change as a replacement rather than
+// an update regardless of what the provider's own diff would otherwise
+// do: the old token is deleted and a new one created, so its id and value
+// are genuinely fresh. This holds independently of whichever way the
+// generated `AccountToken` resource's own diff treats Name — the vendored
+// SDK ships no ForceNew/replace metadata for either token resource to
+// inspect, so this package does not rely on it either way. Nothing else
+// changes Name, so nothing else triggers a rotation by accident. A caller
+// asks for a rotation declaratively by changing Rotation to any new value
+// (a date, a counter, a reason) — the value itself has no meaning here
+// beyond "different from before".
 package r2
 
 import (
@@ -155,7 +189,7 @@ type (
 
 		Bucket    *cloudflare.R2Bucket
 		Lifecycle *cloudflare.R2BucketLifecycle
-		Token     *cloudflare.ApiToken
+		Token     *cloudflare.AccountToken
 
 		// BucketName as created.
 		BucketName pulumi.StringOutput `pulumi:"bucketName"`
@@ -168,7 +202,13 @@ type (
 		// S3AccessKeyID equals TokenID: Cloudflare's R2-to-S3 credential
 		// mapping uses the token id as the access key id
 		// (https://developers.cloudflare.com/r2/api/s3/tokens/, accessed
-		// 2026-09-27: "Access Key ID: The `id` of the API token.").
+		// 2026-09-27: "Access Key ID: The `id` of the API token."). The
+		// same page describes account-owned tokens as a token type in its
+		// own right ("Create Account API token") without restricting this
+		// mapping to user tokens, and an account-owned token's id and
+		// value are the same two fields (`AccountToken.ID()`,
+		// `AccountToken.Value`) a user token has, so the mapping holds
+		// unchanged.
 		S3AccessKeyID pulumi.StringOutput `pulumi:"s3AccessKeyId"`
 		// S3SecretAccessKey is the SHA-256 hash of TokenValue, hex
 		// encoded — the same page: "Secret Access Key: The SHA-256 hash
@@ -301,23 +341,28 @@ func permissionGroupName(tok TokenConfig) string {
 }
 
 // urlEncodeName encodes a permission group name the way
-// getApiTokenPermissionGroupsList's own example does (spaces as "%20"):
-// https://developers.cloudflare.com/r2/api/tokens/ names its Name filter
-// "the value must be URL-encoded" and its Go example passes
+// getAccountApiTokenPermissionGroupsList's own example does (spaces as
+// "%20"): https://developers.cloudflare.com/r2/api/tokens/ names its Name
+// filter "the value must be URL-encoded" and the generated SDK's own
+// example (getAccountApiTokenPermissionGroupsList.go) passes
 // "Account%20Settings%20Write".
 func urlEncodeName(name string) string {
 	return strings.ReplaceAll(name, " ", "%20")
 }
 
-// lookupPermissionGroupID resolves groupName to its id for this account,
-// via the provider's data source — never a hard-coded id, which is
-// per-account and would either grant nothing or the wrong thing under a
-// different account.
-func lookupPermissionGroupID(ctx *pulumi.Context, groupName string) (string, error) {
+// lookupPermissionGroupID resolves groupName to its id for THIS account,
+// via the provider's ACCOUNT-scoped data source — never a hard-coded id
+// (per-account, so a hard-coded one would either grant nothing or the
+// wrong thing under a different account) and never the global, non-
+// account-scoped list (an account-owned token's own permission groups are
+// looked up per account it belongs to).
+func lookupPermissionGroupID(ctx *pulumi.Context, accountID, groupName string) (string, error) {
 	encoded := urlEncodeName(groupName)
+	acct := accountID
 
-	res, err := cloudflare.LookupApiTokenPermissionGroupsList(ctx, &cloudflare.LookupApiTokenPermissionGroupsListArgs{
-		Name: &encoded,
+	res, err := cloudflare.LookupAccountApiTokenPermissionGroupsList(ctx, &cloudflare.LookupAccountApiTokenPermissionGroupsListArgs{
+		AccountId: &acct,
+		Name:      &encoded,
 	})
 	if err != nil {
 		return "", fmt.Errorf("permission group %q: %w", groupName, err)
@@ -329,8 +374,8 @@ func lookupPermissionGroupID(ctx *pulumi.Context, groupName string) (string, err
 		}
 	}
 
-	return "", fmt.Errorf("permission group %q: not found via getApiTokenPermissionGroupsList — check the exact name Cloudflare uses today, "+
-		"or set Config.Token.PermissionGroupName", groupName)
+	return "", fmt.Errorf("permission group %q: not found via getAccountApiTokenPermissionGroupsList for account %q — check the exact name "+
+		"Cloudflare uses today, or set Config.Token.PermissionGroupName", groupName, accountID)
 }
 
 // New provisions the bucket, its optional lifecycle, and its optional
@@ -396,7 +441,7 @@ func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOp
 	if cfg.Token.Enabled {
 		groupName := permissionGroupName(cfg.Token)
 
-		groupID, err := lookupPermissionGroupID(ctx, groupName)
+		groupID, err := lookupPermissionGroupID(ctx, cfg.AccountID, groupName)
 		if err != nil {
 			return nil, fmt.Errorf("r2 %q: token: %w", cfg.Bucket, err)
 		}
@@ -416,13 +461,14 @@ func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOp
 			tokenName = tokenName + "-" + cfg.Token.Rotation
 		}
 
-		tokenArgs := &cloudflare.ApiTokenArgs{
-			Name: pulumi.String(tokenName),
-			Policies: cloudflare.ApiTokenPolicyArray{
-				&cloudflare.ApiTokenPolicyArgs{
+		tokenArgs := &cloudflare.AccountTokenArgs{
+			AccountId: pulumi.String(cfg.AccountID),
+			Name:      pulumi.String(tokenName),
+			Policies: cloudflare.AccountTokenPolicyArray{
+				&cloudflare.AccountTokenPolicyArgs{
 					Effect: pulumi.String("allow"),
-					PermissionGroups: cloudflare.ApiTokenPolicyPermissionGroupArray{
-						&cloudflare.ApiTokenPolicyPermissionGroupArgs{Id: pulumi.String(groupID)},
+					PermissionGroups: cloudflare.AccountTokenPolicyPermissionGroupArray{
+						&cloudflare.AccountTokenPolicyPermissionGroupArgs{Id: pulumi.String(groupID)},
 					},
 					Resources: pulumi.String(string(resources)),
 				},
@@ -434,15 +480,16 @@ func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOp
 
 		tokenOpts := []pulumi.ResourceOption{
 			pulumi.Parent(comp),
-			// A Name change is otherwise an in-place UPDATE (Cloudflare
-			// allows renaming a token without touching its id or value):
-			// force a REPLACE instead, so a Rotation change actually
-			// mints a new id and value rather than relabeling the old
-			// ones.
+			// A Name change is otherwise an in-place UPDATE (Cloudflare's
+			// account-token update endpoint, like its user-token one,
+			// changes name/policies/status/dates without touching id or
+			// value): force a REPLACE instead, so a Rotation change
+			// actually mints a new id and value rather than relabeling
+			// the old ones. See the package doc.
 			pulumi.ReplaceOnChanges([]string{"name"}),
 		}
 
-		token, err := cloudflare.NewApiToken(ctx, "token-"+name, tokenArgs, tokenOpts...)
+		token, err := cloudflare.NewAccountToken(ctx, "token-"+name, tokenArgs, tokenOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("r2 %q: token: %w", cfg.Bucket, err)
 		}

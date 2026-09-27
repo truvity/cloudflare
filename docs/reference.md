@@ -293,9 +293,18 @@ func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOp
 ```
 
 A component of type `truvity:cloudflare:R2`: one R2 bucket, an opt-in
-expiry lifecycle, and an opt-in API token scoped to exactly that bucket —
-plus the S3-compatible credential pair Cloudflare derives from it, so a
-caller never re-implements the derivation.
+expiry lifecycle, and an opt-in **account-owned** API token
+(`cloudflare.AccountToken`, `/accounts/{account_id}/tokens` — not a user
+token, which is tied to a person who might leave) scoped to exactly that
+bucket, plus the S3-compatible credential pair Cloudflare derives from it,
+so a caller never re-implements the derivation.
+
+**Provisioning permissions.** The Cloudflare API token the Pulumi program
+itself runs as needs, on the account being managed: `Account API Tokens
+Write` (dashboard: **Account API Tokens — Edit**) to create and manage the
+account-owned token, and `Workers R2 Storage Write` (dashboard: **Workers
+R2 Storage — Edit**) to create the bucket and its lifecycle and to read
+the account's own permission-group list.
 
 ```go
 r, err := r2.New(ctx, "cache", r2.Config{
@@ -339,12 +348,17 @@ r, err := r2.New(ctx, "cache", r2.Config{
 ### The token's permission group
 
 The policy naming the token's one permission group is resolved **by
-name**, through the provider's `getApiTokenPermissionGroupsList` data
-source, at apply time — never a hard-coded id, which is per-account and
-would either grant nothing or the wrong thing under a different account.
-The two names this package knows, confirmed against
+name**, through the provider's **account-scoped**
+`getAccountApiTokenPermissionGroupsList` data source, at apply time — never
+a hard-coded id, which is per-account, and never the global (user-token)
+`getApiTokenPermissionGroupsList` list, which is the wrong lookup for an
+account-owned token's own permission groups. The two names this package
+knows, confirmed against
 [developers.cloudflare.com/r2/api/tokens/](https://developers.cloudflare.com/r2/api/tokens/)
-(accessed 2026-09-27):
+(accessed 2026-09-27; R2 is listed as compatible with account-owned tokens
+on
+[developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/),
+same date):
 
 | `Permission` | Permission group name | Grants |
 | --- | --- | --- |
@@ -372,10 +386,10 @@ second bucket, however `Config` changes.
 | `R2.BucketName` | the bucket name, as created |
 | `R2.TokenID` | the parent token's id; `""` when `Token.Enabled` is false |
 | `R2.TokenValue` | the parent token's secret value; a secret output; `""` when `Token.Enabled` is false |
-| `R2.S3AccessKeyID` | equals `TokenID` — Cloudflare's R2-to-S3 mapping uses the token id as the access key id ([developers.cloudflare.com/r2/api/s3/tokens/](https://developers.cloudflare.com/r2/api/s3/tokens/), accessed 2026-09-27) |
+| `R2.S3AccessKeyID` | equals `TokenID` — Cloudflare's R2-to-S3 mapping uses the token id as the access key id ([developers.cloudflare.com/r2/api/s3/tokens/](https://developers.cloudflare.com/r2/api/s3/tokens/), accessed 2026-09-27; the same page names account-owned tokens as a token type in their own right, without restricting the mapping to user tokens, and an account-owned token has the same id/value shape) |
 | `R2.S3SecretAccessKey` | the SHA-256 hash of `TokenValue`, hex encoded, per the same page; a secret output; `""` when `Token.Enabled` is false |
 | `R2.S3Endpoint` | `https://<accountId>.r2.cloudflarestorage.com`, this account's R2 S3-compatible endpoint |
-| children | `bucket-<name>` (`cloudflare.R2Bucket`), `lifecycle-<name>` (`cloudflare.R2BucketLifecycle`, only when `Lifecycle` is set), `token-<name>` (`cloudflare.ApiToken`, only when `Token.Enabled`) |
+| children | `bucket-<name>` (`cloudflare.R2Bucket`), `lifecycle-<name>` (`cloudflare.R2BucketLifecycle`, only when `Lifecycle` is set), `token-<name>` (`cloudflare.AccountToken`, only when `Token.Enabled`) |
 
 This package creates no secret store entry and no chart Secret; where the
 token value and its derived S3 credentials are stored (a Pulumi config
