@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.6.0
 
 - **`pkg/account` gains `NewChildTokenSet`: the "one root token mints
   every least-privilege child" pattern, reusable instead of hand-written
