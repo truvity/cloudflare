@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.4.0
 
 - **`pkg/account` gains `NewChildToken`: a generic, least-privilege
   child-token helper.** It mints one account-owned Cloudflare API token
