@@ -61,6 +61,12 @@ Pulumi run. Each rule is covered by the package's tests.
 | `Rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
 | an unknown permission group name | `NewChildToken` refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
 
+`NewChildTokenSet` adds no refusal of its own: it calls `NewChildToken`
+once per entry, in sorted key order, so every row above applies per entry
+exactly as it would to a hand-written `NewChildToken` call, and the first
+entry (in that sorted order) that fails stops the whole set before
+anything later in the order is registered.
+
 #### Child tokens never hold Account API Tokens
 
 Only the root, account-owned token an estate's Pulumi program itself runs

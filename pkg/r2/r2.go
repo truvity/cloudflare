@@ -74,13 +74,31 @@
 //
 // The Cloudflare API token this package's OWN caller (the Pulumi program)
 // runs as needs, on the account being managed: "Account API Tokens Write"
-// (dashboard: Account API Tokens — Edit) to create and manage the
-// account-owned token, and "Workers R2 Storage Write" (dashboard: Workers
-// R2 Storage — Edit) to create the bucket and its lifecycle and to read
-// the account's own permission-group list. Both are Accepted Permissions
-// on the generated `cloudflare.AccountToken`/`cloudflare.R2Bucket`
-// resources themselves (see their doc comments in this package's vendored
-// `pulumi-cloudflare` SDK).
+// to create and manage the account-owned token, and "Workers R2 Storage
+// Write" to create the bucket and its lifecycle and to read the account's
+// own permission-group list — both the account's own
+// getAccountApiTokenPermissionGroupsList names, confirmed live, never the
+// dashboard's own (differently worded) labels for the same grants. Both
+// are Accepted Permissions on the generated
+// `cloudflare.AccountToken`/`cloudflare.R2Bucket` resources themselves
+// (see their doc comments in this package's vendored `pulumi-cloudflare`
+// SDK).
+//
+// # Deprecated: Config.Token
+//
+// Config.Token — a bucket-scoped parent token minted inline by this same
+// component — is deprecated since v2.6.0. Mint it separately instead,
+// with `account.NewChildToken` (one bucket) or `account.NewChildTokenSet`
+// (several children, including this one, from one root token) and
+// `account.R2BucketParentPolicies(cfg.Jurisdiction, cfg.Bucket)` — the
+// same permission group and the same resource key Config.Token has always
+// used — then call New with Token.Enabled false. See
+// docs/layout.md#recommended-layout for why: a bucket's own admin token
+// (`account.R2AdminPolicies`, account-wide) and a consumer's object-level
+// token are two different blast radii and two different rotation
+// schedules, and bundling the second into the component that creates the
+// bucket makes that separation harder to see, not easier. Config.Token
+// itself is unchanged and keeps working; removing it is a major version.
 //
 // # Rotation
 //
@@ -156,6 +174,11 @@ type (
 	// exactly one bucket. Enabled is required to be explicit: a bucket
 	// with no token block is a bucket this package does not hand out
 	// credentials for at all.
+	//
+	// Deprecated: see Config.Token's own doc for the replacement
+	// (account.NewChildToken/NewChildTokenSet plus
+	// account.R2BucketParentPolicies) and why this stays rather than
+	// being removed.
 	TokenConfig struct {
 		// Enabled turns the token on. False creates the bucket (and its
 		// lifecycle, if set) and nothing else; every Token* and
@@ -197,6 +220,23 @@ type (
 		// Lifecycle expires objects after a fixed age. Nil creates none.
 		Lifecycle *Lifecycle `json:"lifecycle,omitempty" yaml:"lifecycle,omitempty"`
 		// Token is the parent API token scoped to this bucket.
+		//
+		// Deprecated: mint the bucket's parent token separately instead,
+		// with account.NewChildToken (a single bucket) or
+		// account.NewChildTokenSet (several children at once, including
+		// this one) and account.R2BucketParentPolicies(cfg.Jurisdiction,
+		// cfg.Bucket) — the exact same permission group and resource key
+		// this field has always used — then call New with Token.Enabled
+		// false. This keeps a bucket's admin credential (account.
+		// R2AdminPolicies, scoped to the whole account) and its consumers'
+		// object-level credentials on separate tokens with separate
+		// rotation, the shape docs/layout.md#recommended-layout
+		// describes, rather than bundling one bucket-scoped token into the
+		// same component that creates the bucket. Left in place, not
+		// removed: removing a field is a major version
+		// (docs/reference.md#child-names-are-a-contract's own rule for
+		// child names applies just as much to a Config field a caller's
+		// YAML already sets), and Token keeps working exactly as before.
 		Token TokenConfig `json:"token" yaml:"token"`
 	}
 

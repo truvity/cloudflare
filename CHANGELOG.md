@@ -5,6 +5,41 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`pkg/account` gains `NewChildTokenSet`: the "one root token mints
+  every least-privilege child" pattern, reusable instead of hand-written
+  once per estate.** It mints one child token per entry of a
+  `map[string]ChildTokenConfig`, in sorted key order, and returns them
+  keyed by the same name. It is a plain iteration convenience over
+  `NewChildToken`: every minted resource's Pulumi name, type and provider
+  come entirely from the map's own keys, exactly as they would from the
+  equivalent hand-written `NewChildToken` calls, so migrating several such
+  calls onto one `NewChildTokenSet` call is a zero-diff change in Pulumi's
+  state as long as the map's keys are the names those calls already used.
+  Three optional presets — `EdgePolicies(zoneIDs...)`, `R2AdminPolicies()`
+  and `R2BucketParentPolicies(jurisdiction, bucket)` — build the
+  `[]ChildTokenPolicy` for a common child role from Cloudflare's own live
+  permission-group names. See
+  [docs/reference.md#newchildtokenset](docs/reference.md#newchildtokenset)
+  and the new [docs/layout.md](docs/layout.md), a worked root/edge/r2
+  split using this and `NewChildToken` together.
+- **`pkg/r2`'s `Config.Token` (and `TokenConfig`) is deprecated.** Mint a
+  bucket's parent token separately instead, with `NewChildToken`/
+  `NewChildTokenSet` and the new `R2BucketParentPolicies`, then call `New`
+  with `Token.Enabled: false` — see
+  [docs/reference.md#token-is-deprecated](docs/reference.md#token-is-deprecated).
+  `Config.Token` is unchanged and keeps working; this is a documentation
+  change only, not a removal.
+- **Docs: two stale "(dashboard: … — Edit)" cross-references, in `pkg/r2`'s
+  package doc and `docs/reference.md`, are corrected.** Cloudflare's own
+  `getAccountApiTokenPermissionGroupsList` names every group this library
+  grants with "Write"/"Read" (`Cloudflare Tunnel Write`, `DNS Write`, `SSL
+  and Certificates Write`, `Zone Settings Write`, `Cache Settings Write`,
+  `Workers R2 Storage Write`, `Workers R2 Storage Bucket Item Write`);
+  there is no "Cache Rules" group. No permission-group name this library
+  actually looks up changed — only the doc text describing it.
+
 ## v2.5.0
 
 - **`r2broker`: the R2 temporary-credentials broker's service, CLI and
