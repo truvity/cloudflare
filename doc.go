@@ -8,7 +8,9 @@
 //     zones in several accounts writes the account as data, not as code.
 //     NewChildToken mints a least-privilege, account-owned token scoped to
 //     one zone, one R2 bucket or the whole account, under the root token
-//     the estate's Pulumi program runs as.
+//     the estate's Pulumi program runs as; NewChildTokenSet mints a whole
+//     map of them in one call, in sorted order — see docs/layout.md for
+//     the recommended root/edge/r2 split this makes reusable.
 //   - pkg/zone — the handful of zone-level settings an estate decides:
 //     how Cloudflare reaches the origin, the floor it negotiates with a
 //     browser, and Total TLS, which issues a certificate per proxied

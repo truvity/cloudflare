@@ -6,7 +6,7 @@ tunnel as a Helm chart.
 
 | Artifact | What | Status |
 | --- | --- | --- |
-| `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with; `NewChildToken` mints a least-privilege, account-owned token scoped to one zone, one R2 bucket or the whole account | shipped |
+| `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with; `NewChildToken` mints a least-privilege, account-owned token scoped to one zone, one R2 bucket or the whole account, and `NewChildTokenSet` mints a whole map of them at once, in sorted order, with zero-diff naming | shipped |
 | `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
 | `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
 | `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | shipped |
@@ -233,6 +233,10 @@ and every Go field.
 
 ## Documentation
 
+- [docs/layout.md](docs/layout.md): the recommended root/edge/r2(/status)
+  split — one root token that only mints child tokens, one stack per
+  child, and why delivering a minted token onward is the installation's
+  job, never this library's
 - [docs/adoption.md](docs/adoption.md): prerequisites, install order, the
   zero-diff gate, adopting existing objects, and upgrading across the
   v2.0.0 breaking changes

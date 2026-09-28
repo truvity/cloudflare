@@ -208,6 +208,91 @@ had the caller registered the `AccountToken` itself. This is what makes
 existing deployment: no new parent type joins the resource's URN, so
 nothing is replaced.
 
+### NewChildTokenSet
+
+```go
+func NewChildTokenSet(ctx *pulumi.Context, name string, acct *Account, cfgs map[string]ChildTokenConfig, opts ...pulumi.ResourceOption) (map[string]*ChildToken, error)
+```
+
+Mints one child token per entry of `cfgs`, and returns them keyed by the
+same name — "one root token mints N least-privilege children, one stack
+per child", made reusable instead of hand-written once per estate (see
+[docs/layout.md](layout.md#recommended-layout)).
+
+```go
+tokens, err := account.NewChildTokenSet(ctx, "root", acct, map[string]account.ChildTokenConfig{
+	"edge": {
+		Name:     "cloudflare-edge",
+		Policies: account.EdgePolicies("0123456789abcdef0123456789abcdef"),
+	},
+	"r2-admin": {
+		Name:     "cloudflare-r2-admin",
+		Policies: account.R2AdminPolicies(),
+	},
+	"r2-parent-example-bucket": {
+		Name:     "cloudflare-r2-parent-example-bucket",
+		Policies: account.R2BucketParentPolicies("", "example-bucket"),
+	},
+})
+```
+
+It is a plain iteration convenience over `NewChildToken`, nothing more:
+for each key `k` (in **sorted** order — `cfgs`' keys are sorted before
+minting, so two runs register resources in the same order regardless of
+Go's randomized map iteration), it calls
+`NewChildToken(ctx, k, acct, cfgs[k], opts...)` exactly as a caller would
+writing out one such call per child by hand.
+
+**This is the naming-preservation contract.** `name` (`NewChildTokenSet`'s
+own second argument) plays NO part in any minted resource's own Pulumi
+name — every resource's name, type and provider in Pulumi's state come
+entirely from `cfgs`' own keys and `acct`, exactly as they would from the
+equivalent hand-written `NewChildToken` calls; `name` exists only to
+prefix this function's own error messages. An estate migrating N
+hand-written `NewChildToken` calls onto one `NewChildTokenSet` call — for
+example, four calls named `"edge"`, `"status"`, `"r2-admin"` and
+`"r2-parent-<bucket>"` becoming one map with those same four keys — is
+therefore a **zero-diff** change in Pulumi's state: nothing is replaced,
+nothing is renamed, nothing new joins any URN, as long as the map's keys
+are exactly the names the original calls used.
+
+A nil or empty `cfgs` mints nothing and returns an empty, non-nil map.
+Every `ChildTokenConfig`'s own `Validate` (refusing `Account API Tokens`
+groups, an empty `Policies` list, and so on — see
+[`NewChildToken`](#newchildtoken) above) applies per entry, unchanged; the
+first entry (in sorted order) that fails stops the whole call before
+anything later in that order is registered.
+
+`NewChildTokenSet` knows nothing about where the returned tokens are
+stored — exactly like `NewChildToken`, it returns each `ChildToken`'s `ID`
+and secret `Value` and stops there. Delivering them to a consumer (a
+secret store, a chart, a Pulumi export) is the caller's job.
+
+### Role presets
+
+Three optional functions build a `[]ChildTokenPolicy` for a common child
+role, using the exact live Cloudflare permission-group names documented
+above — nothing broader, nothing hidden:
+
+```go
+func EdgePolicies(zoneIDs ...string) []ChildTokenPolicy
+func R2AdminPolicies() []ChildTokenPolicy
+func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
+```
+
+| Preset | Grants |
+| --- | --- |
+| `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write` and `Cache Settings Write` on each zone in `zoneIDs` — a stack that manages zones (`pkg/zone`) and runs a tunnel (`pkg/tunnel`) |
+| `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`pkg/r2`, called with `Config.Token.Enabled: false`) |
+| `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `pkg/r2`'s deprecated `Config.Token` (see [pkg/r2](#pkgr2)) |
+
+Each is a plain `[]ChildTokenPolicy` value: use it as `Policies` in a
+`ChildTokenConfig` directly, or edit the slice it returns before passing
+it on. No preset exists for a "status" or backup-tunnel-only child, since
+that grant is closer to an estate-specific trade-off (how much of `edge`'s
+own grant a backup token should be handed) than a shape this library can
+name once and reuse everywhere; write that one policy by hand.
+
 ## pkg/zone
 
 `github.com/truvity/cloudflare/v2/pkg/zone`
@@ -390,10 +475,11 @@ so a caller never re-implements the derivation.
 
 **Provisioning permissions.** The Cloudflare API token the Pulumi program
 itself runs as needs, on the account being managed: `Account API Tokens
-Write` (dashboard: **Account API Tokens — Edit**) to create and manage the
-account-owned token, and `Workers R2 Storage Write` (dashboard: **Workers
-R2 Storage — Edit**) to create the bucket and its lifecycle and to read
-the account's own permission-group list.
+Write` to create and manage the account-owned token, and `Workers R2
+Storage Write` to create the bucket and its lifecycle and to read the
+account's own permission-group list — both the account's own
+`getAccountApiTokenPermissionGroupsList` names, confirmed live, never the
+dashboard's own (differently worded) labels for the same grants.
 
 ```go
 r, err := r2.New(ctx, "cache", r2.Config{
@@ -415,7 +501,7 @@ r, err := r2.New(ctx, "cache", r2.Config{
 | `Bucket` | `bucket` | yes | the R2 bucket name; refused if it does not follow Cloudflare's own naming rules (3-63 characters, lowercase letters, digits and hyphens, no leading or trailing hyphen) |
 | `Jurisdiction` | `jurisdiction` | no | `""`/`"default"`, `"eu"`, `"fedramp"` or `"us"`; sets the bucket's data-residency jurisdiction AND the segment used when scoping the token's policy to this bucket, so the two can never disagree |
 | `Lifecycle` | `lifecycle` | no | see below; nil expires nothing |
-| `Token` | `token` | yes (block always present; `Enabled` decides) | see below |
+| `Token` | `token` | yes (block always present; `Enabled` decides) | **deprecated since v2.6.0** — see below |
 
 `Lifecycle`:
 
@@ -433,6 +519,23 @@ r, err := r2.New(ctx, "cache", r2.Config{
 | `ExpiresOn` | `expiresOn` | an RFC3339 timestamp after which Cloudflare refuses the token; optional, must be in the future when set — for a scratch or test token that should not outlive its errand |
 | `Rotation` | `rotation` | changing it to any new value forces the token to be replaced — a fresh id and value, never an in-place rename. See [safety.md](safety.md#rotation-is-a-replace-not-an-update) |
 | `PermissionGroupName` | `permissionGroupName` | overrides the permission group name looked up for `Permission` (see below); empty uses the documented default |
+
+### `Token` is deprecated
+
+Since v2.6.0, minting a bucket's parent token inline (`Config.Token`) is
+deprecated in favour of minting it separately with
+[`account.NewChildToken`](#newchildtoken) or
+[`account.NewChildTokenSet`](#newchildtokenset) and
+`account.R2BucketParentPolicies(cfg.Jurisdiction, cfg.Bucket)` — the exact
+same permission group and resource key `Config.Token` has always used —
+then calling `New` with `Token.Enabled: false`. See
+[docs/layout.md](layout.md#recommended-layout) for why: a bucket's own
+admin token (`account.R2AdminPolicies`, account-wide) and a bucket
+consumer's object-level token are two different blast radii and two
+different rotation schedules, and minting the second inside the component
+that creates the bucket makes that separation harder to see. `Config.Token`
+itself is unchanged and keeps working — removing it would be a major
+version (see [Child names are a contract](#child-names-are-a-contract)).
 
 ### The token's permission group
 
