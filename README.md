@@ -6,7 +6,7 @@ tunnel as a Helm chart.
 
 | Artifact | What | Status |
 | --- | --- | --- |
-| `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with | shipped |
+| `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with; `NewChildToken` mints a least-privilege, account-owned token scoped to one zone, one R2 bucket or the whole account | shipped |
 | `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
 | `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
 | `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | new |

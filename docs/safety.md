@@ -45,6 +45,36 @@ Pulumi run. Each rule is covered by the package's tests.
 | no `accountId` | a provider with no account to bind resources to |
 | a nil `token` | a credential derived or defaulted by the library; the token is always the caller's input |
 
+`NewChildToken`'s `ChildTokenConfig`:
+
+| Refusal | What it prevents |
+| --- | --- |
+| a nil `acct`, or an `acct` with no `AccountID` | a token with no account to belong to |
+| no `Name` | a token Cloudflare's own API would refuse for an empty `name` |
+| an empty `Policies` list | a token minted holding nothing, which is never what a caller means to ask for |
+| a policy with an empty `PermissionGroups` list, or an empty group name in it | the same, one policy at a time |
+| `"Account API Tokens Read"` or `"Account API Tokens Write"` named in any `PermissionGroups` | a child token that could itself create, read or manage other tokens — see [Child tokens never hold Account API Tokens](#child-tokens-never-hold-account-api-tokens) |
+| a nil, or otherwise unrecognized, `Scope` | a policy with no resource to be scoped to. `ChildTokenScope`'s own methods are unexported, so only `WholeAccountScope`, `ZoneScope` and `R2BucketScope` — the types this package has reviewed — can ever implement it from outside the package; a nil interface is therefore the only "unknown" scope reachable at all |
+| a `ZoneScope.ZoneID` that is not a 32-character lowercase hex string | a zone id the API would refuse, or a resource key that matches no zone at all |
+| an `R2BucketScope.Bucket`/`Jurisdiction` outside pkg/r2's own bucket-naming and jurisdiction rules | the same "a bucket name the API would refuse" refusal pkg/r2's own `Config.Bucket` has always made, now made identically wherever a bucket is named as a scope |
+| `ExpiresOn` not RFC3339, or not in the future | a token that is already expired, or a value the API rejects |
+| `Rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
+| an unknown permission group name | `NewChildToken` refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
+
+#### Child tokens never hold Account API Tokens
+
+Only the root, account-owned token an estate's Pulumi program itself runs
+as should ever hold `Account API Tokens Read` or `Account API Tokens
+Write` — the permissions that let a token create, read or manage other
+tokens on the account. A child token minted by `NewChildToken` never
+holds either: `ChildTokenConfig.Validate` refuses a `PermissionGroups`
+entry naming either one outright, rather than minting a token that could
+mint its own siblings, or its own replacement once this program stops
+managing it. This is a refusal, not a sanitization — a caller that
+genuinely needs to manage tokens should mint that token as the estate's
+root token, outside this package, not ask `NewChildToken` to make an
+exception.
+
 ### pkg/zone
 
 | Refusal | What it prevents |
@@ -118,7 +148,12 @@ The parent token is account-owned (`cloudflare.AccountToken`,
 person who might leave, and its permission group is looked up through the
 **account-scoped** `getAccountApiTokenPermissionGroupsList` data source —
 never the global, user-token-scoped list, which would look up the right
-name in the wrong catalog.
+name in the wrong catalog. Since v2.4.0 the token itself is minted by
+`account.NewChildToken` (see [pkg/account](#pkgaccount)); the rows below
+that are genuinely `account.ChildTokenConfig`'s own refusals (jurisdiction,
+`expiresOn`, `rotation`) are enforced twice — once by `Config.Validate`
+below, before anything is registered, and again inside `NewChildToken` —
+so they can never drift apart.
 
 | Refusal | What it prevents |
 | --- | --- |
@@ -133,26 +168,30 @@ name in the wrong catalog.
 
 ### Rotation is a REPLACE, not an update
 
-`Token.Rotation` is not a Cloudflare field. It is embedded in the
-account-owned token's Cloudflare-visible `Name` — a real, mutable field:
-Cloudflare's account-token update endpoint, like its user-token one,
-changes name, policies, status and dates in place, never the secret value,
-which only a fresh create produces. Left alone, a `Name` change would
-therefore not be a rotation at all: a caller asking for a fresh credential
-would get the same one back, relabeled.
+`Rotation` (`ChildTokenConfig.Rotation`; `pkg/r2`'s own `TokenConfig.
+Rotation` is the same field, one level up) is not a Cloudflare field. It
+is embedded in the account-owned token's Cloudflare-visible `Name` — a
+real, mutable field: Cloudflare's account-token update endpoint, like its
+user-token one, changes name, policies, status and dates in place, never
+the secret value, which only a fresh create produces. Left alone, a `Name`
+change would therefore not be a rotation at all: a caller asking for a
+fresh credential would get the same one back, relabeled.
 
-`pkg/r2` calls `pulumi.ReplaceOnChanges([]string{"name"})` on the token
-resource, so any change to that field — in practice, any change to
-`Rotation` — is treated as a replacement regardless of what the provider's
-own diff would have done: the old token is deleted and a new one created,
-with a genuinely new id and value. This does not depend on how the
-generated `AccountToken` resource's own diff treats `Name` — the vendored
-`pulumi-cloudflare` Go SDK ships no ForceNew/replace metadata to inspect
-either way, so `pkg/r2` forces the behavior itself rather than assuming
-it. Nothing else changes `Name`, so nothing else triggers a rotation by
-accident. The value of `Rotation` itself has no meaning here beyond
-"different from before" — a date, a counter, or a reason all work equally
-well as the estate's own audit trail for why a rotation happened.
+`account.NewChildToken` calls `pulumi.ReplaceOnChanges([]string{"name"})`
+on the token resource, so any change to that field — in practice, any
+change to `Rotation` — is treated as a replacement regardless of what the
+provider's own diff would have done: the old token is deleted and a new
+one created, with a genuinely new id and value. This does not depend on
+how the generated `AccountToken` resource's own diff treats `Name` — the
+vendored `pulumi-cloudflare` Go SDK ships no ForceNew/replace metadata to
+inspect either way, so `NewChildToken` forces the behavior itself rather
+than assuming it. Nothing else changes `Name`, so nothing else triggers a
+rotation by accident. The value of `Rotation` itself has no meaning here
+beyond "different from before" — a date, a counter, or a reason all work
+equally well as the estate's own audit trail for why a rotation happened.
+`pkg/r2` (since v2.2.0) and any other caller of `NewChildToken` get this
+for free — it is `NewChildToken` that sets `ReplaceOnChanges`, never the
+caller.
 
 ## Defaults chosen because the other one failed
 
@@ -254,3 +293,13 @@ resources use — via `account.InvokeOptionsFromResourceOptions(opts...)`
 no code change to pick up the fix. A caller building a `Lookup*`/`Get*`
 call of its own, anywhere, should pass `acct.Invoke()` rather than assume
 `pulumi.Parent(...)` alone is enough.
+
+Since v2.4.0, `account.NewChildToken` closes this class of bug
+structurally for its own permission-group lookup: it takes `acct
+*Account` as a required argument, not just an `opts` list a caller might
+forget to populate, and binds `acct.Provider` onto the lookup invoke
+itself — there is no `opts`-shaped way to call `NewChildToken` and get the
+v2.2.0 gap back. `pkg/r2` rebuilds the `*Account` its own `New` never
+received directly (its own public signature still takes `AccountID` and
+`opts`, unchanged) from `opts`' provider, once, right where the old
+`InvokeOptionsFromResourceOptions` call used to sit.
