@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.5.0
 
 - **`r2broker`: the R2 temporary-credentials broker's service, CLI and
   chart.** One binary, two modes, sharing the `internal/mint`,
