@@ -16,9 +16,11 @@ import (
 	"syscall"
 	"time"
 
+	auditpkg "github.com/truvity/cloudflare/v2/internal/audit"
 	"github.com/truvity/cloudflare/v2/internal/broker"
 	"github.com/truvity/cloudflare/v2/internal/config"
 	"github.com/truvity/cloudflare/v2/internal/mint"
+	"github.com/truvity/cloudflare/v2/internal/version"
 )
 
 // requestTimeout bounds one /v1/credentials call: OIDC signature checks
@@ -31,6 +33,10 @@ func serve(args []string) error {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	configPath := flags.String("config", os.Getenv("R2BROKER_CONFIG"), "path to the broker's config file (or $R2BROKER_CONFIG)")
 	addr := flags.String("addr", envOr("R2BROKER_ADDR", ":8080"), "address to listen on (or $R2BROKER_ADDR)")
+	auditReceiverURL := flags.String("audit-receiver-url", os.Getenv("R2BROKER_AUDIT_RECEIVER_URL"),
+		"the audit installation's receiver (or $R2BROKER_AUDIT_RECEIVER_URL); empty logs records and keeps them nowhere else")
+	auditTokenFile := flags.String("audit-token-file", os.Getenv("R2BROKER_AUDIT_TOKEN_FILE"),
+		"this pod's projected ServiceAccount token, audience \"audit\" (or $R2BROKER_AUDIT_TOKEN_FILE)")
 
 	if err := flags.Parse(args); err != nil {
 		return usageError{err}
@@ -77,9 +83,18 @@ func serve(args []string) error {
 		return err
 	}
 
+	trail, err := auditpkg.Open(ctx, auditpkg.Config{
+		ReceiverURL: *auditReceiverURL, TokenFile: *auditTokenFile,
+		Version: version.Version, Logger: logger,
+	})
+	if err != nil {
+		return fmt.Errorf("opening the audit trail: %w", err)
+	}
+	defer func() { _ = trail.Close() }()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
-	mux.Handle("POST /v1/credentials", &credentialsHandler{broker: b, logger: logger})
+	mux.Handle("POST /v1/credentials", &credentialsHandler{broker: b, logger: logger, trail: trail})
 
 	server := &http.Server{
 		Addr:              *addr,
@@ -118,6 +133,12 @@ func handleHealthz(w http.ResponseWriter, _ *http.Request) {
 type credentialsHandler struct {
 	broker *broker.Broker
 	logger *slog.Logger
+	// trail records every mint and refusal (design §2.8/R4). Never nil in
+	// practice — serve always opens one, logging-only when no
+	// installation is configured — but a nil trail is also handled
+	// (Trail.Record is a no-op on it), which is what keeps every test
+	// that builds a bare credentialsHandler without one working.
+	trail *auditpkg.Trail
 }
 
 func (h *credentialsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +157,8 @@ func (h *credentialsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	result := h.broker.Mint(ctx, broker.Request{
 		Token: token, Bucket: body.Bucket, Prefixes: body.Prefixes, Permission: body.Permission,
 	})
+
+	h.record(ctx, result, body)
 
 	switch result.Outcome {
 	case broker.OutcomeMinted:
@@ -156,6 +179,35 @@ func (h *credentialsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, result.Err)
 	default:
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("unhandled outcome"))
+	}
+}
+
+// record tells the audit trail what result was, matching whichever of
+// this catalogue's two actions fits (design §2.8): OutcomeMinted is
+// r2broker.credential.minted, everything else is
+// r2broker.credential.refused — an unauthenticated caller has no known
+// actor or scope; a decide refusal has an actor and whatever the request
+// itself asked for; a mint failure has both an actor and a fully resolved
+// decision, since it was authorized right up to the mint call itself.
+func (h *credentialsHandler) record(ctx context.Context, result broker.Result, body credentialsRequestBody) {
+	switch result.Outcome {
+	case broker.OutcomeMinted:
+		h.trail.Record(ctx, auditpkg.CredentialMinted(auditpkg.Identified(result.Subject), auditpkg.Grant{
+			Group: result.Decision.Group, Bucket: result.Decision.Bucket, Prefixes: result.Decision.Prefixes,
+			Permission: string(result.Decision.Permission), TTLSeconds: result.Decision.TTLSeconds,
+			MintMode: string(result.MintPath),
+		}))
+	case broker.OutcomeUnauthenticated:
+		h.trail.Record(ctx, auditpkg.CredentialRefused(auditpkg.Anonymous(), auditpkg.Grant{}, errString(result.Err)))
+	case broker.OutcomeRefused:
+		h.trail.Record(ctx, auditpkg.CredentialRefused(auditpkg.Identified(result.Subject), auditpkg.Grant{
+			Bucket: body.Bucket, Prefixes: body.Prefixes, Permission: string(body.Permission),
+		}, errString(result.Err)))
+	case broker.OutcomeMintFailed:
+		h.trail.Record(ctx, auditpkg.CredentialRefused(auditpkg.Identified(result.Subject), auditpkg.Grant{
+			Group: result.Decision.Group, Bucket: result.Decision.Bucket, Prefixes: result.Decision.Prefixes,
+			Permission: string(result.Decision.Permission),
+		}, errString(result.Err)))
 	}
 }
 

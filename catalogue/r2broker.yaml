@@ -1,0 +1,53 @@
+# What r2broker records: every action, what it carries, who it concerns,
+# which profile keeps it, and how it reads as a sentence.
+#
+# This is the contract with the audit trail (github.com/truvity/audit),
+# following access-roster's own catalogue/roster.yaml conventions. Every
+# action here is emitted by a constructor in internal/audit/events.go, and
+# `just audit-catalogue` holds the two together: an action emitted and not
+# declared, or declared and not emitted, fails the gate.
+#
+# Its OWN catalogue, independent of access-roster's roster.yaml (design
+# decision R4): the broker is its own audit installation, so it never
+# shares source or version with `roster`.
+source: r2broker
+version: "1.0.0"
+locales: [en]
+
+actor_kinds:
+  ci:
+    category: machine
+    description: A CI job, by the repository the presented token's issuer named it for (e.g. github:<owner>/<repo>).
+  workload:
+    category: machine
+    description: A cluster workload, by the service account the presented token's issuer named it for (e.g. system:serviceaccount:<namespace>:<name>).
+  anonymous:
+    category: external
+    description: A caller refused before its token could be verified at all — no bearer token, or one that failed signature, issuer, audience or expiry checks.
+
+target_types:
+  bucket:
+    description: An R2 bucket, by name, as the request or the resolved grant named it.
+
+actions:
+  r2broker.credential.minted:
+    summary: A temporary R2 credential was minted. Never the credential itself.
+    operation: create
+    categories: [credential_lifecycle]
+    profiles: [security]
+    target_types: [bucket]
+    delivery: async
+    data_schema: https://schemas.example/r2broker/v1/credential-minted.json
+    message:
+      en: "{actor} was minted a credential for {targets_0_id}"
+
+  r2broker.credential.refused:
+    summary: A request for a temporary R2 credential was refused — an unverifiable token, no matching group, an ambiguous request, or the mint itself failing after a request was otherwise authorized.
+    operation: create
+    categories: [credential_lifecycle, authorization_decision]
+    profiles: [security]
+    target_types: [bucket]
+    delivery: async
+    data_schema: https://schemas.example/r2broker/v1/credential-refused.json
+    message:
+      en: "{outcome, select, denied {{actor} was refused a credential: {outcome_reason}} other {{actor} could not be given a credential: {outcome_reason}}}"

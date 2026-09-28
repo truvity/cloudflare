@@ -68,8 +68,8 @@ const (
 	OutcomeMintFailed
 )
 
-// Result is everything a caller needs to answer a request and, once a
-// later change wires audit emission, record it.
+// Result is everything a caller needs to answer a request and to audit
+// it.
 type Result struct {
 	Outcome Outcome
 	// Subject and Groups are set whenever verification succeeded
@@ -82,6 +82,11 @@ type Result struct {
 	Decision decide.Decision
 	// Credential is set only on OutcomeMinted.
 	Credential mint.Credential
+	// MintPath says which minter actually produced Credential, set only
+	// on OutcomeMinted — the audit record's own mint_mode field (design
+	// §2.8), and the same signal mint.CompositeMinter.Observe exists for,
+	// surfaced per-request rather than only to a long-lived log hook.
+	MintPath mint.Path
 	// Err is set on every outcome except OutcomeMinted.
 	Err error
 }
@@ -168,7 +173,9 @@ func (b *Broker) Mint(ctx context.Context, req Request) Result {
 		return Result{Outcome: OutcomeRefused, Subject: verified.Subject, Groups: verified.Groups, Err: err}
 	}
 
-	cred, err := b.Minter.Mint(ctx, mint.Request{
+	minter, path := perCallMinter(b.Minter)
+
+	cred, err := minter.Mint(ctx, mint.Request{
 		AccountID:  b.AccountID,
 		Bucket:     decision.Bucket,
 		Prefixes:   decision.Prefixes,
@@ -184,6 +191,46 @@ func (b *Broker) Mint(ctx context.Context, req Request) Result {
 
 	return Result{
 		Outcome: OutcomeMinted, Subject: verified.Subject, Groups: verified.Groups,
-		Decision: decision, Credential: cred,
+		Decision: decision, Credential: cred, MintPath: *path,
+	}
+}
+
+// perCallMinter reports which path actually produced a credential, for
+// Result.MintPath — the audit record's mint_mode field. A bare
+// LocalMinter or APIMinter is single-path by construction; a
+// CompositeMinter's path varies per call depending on whether local
+// signing errored, so this builds a request-scoped copy of it (cheap: it
+// only holds two Minter interface values and a func) whose Observe writes
+// into a variable this call alone owns, then chains to whatever
+// long-lived Observe the broker was built with (buildMinter's
+// drift-detection log hook) so that still fires exactly as before.
+func perCallMinter(m mint.Minter) (mint.Minter, *mint.Path) {
+	path := new(mint.Path)
+
+	switch m := m.(type) {
+	case *mint.CompositeMinter:
+		outer := m.Observe
+		cp := *m
+		cp.Observe = func(p mint.Path, err error) {
+			*path = p
+			if outer != nil {
+				outer(p, err)
+			}
+		}
+
+		return &cp, path
+
+	case *mint.APIMinter:
+		*path = mint.PathAPI
+
+		return m, path
+
+	default:
+		// A LocalMinter used bare (no config path builds one that way
+		// today, but Minter is a public interface a caller could satisfy
+		// some other way) is, by construction, always the local path.
+		*path = mint.PathLocal
+
+		return m, path
 	}
 }

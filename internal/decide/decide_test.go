@@ -57,7 +57,7 @@ func TestDecide(t *testing.T) {
 			name: "single-row group, no narrowing",
 			req:  Request{Groups: []string{"ci:cache:reader"}},
 			want: Decision{
-				Bucket: "example-bucket", Prefixes: []string{"go-build/"},
+				Group: "ci:cache:reader", Bucket: "example-bucket", Prefixes: []string{"go-build/"},
 				Permission: config.PermissionReadOnly, TTLSeconds: 900,
 			},
 		},
@@ -65,14 +65,14 @@ func TestDecide(t *testing.T) {
 			name: "unrestricted grant with no prefixes at all",
 			req:  Request{Groups: []string{"ci:artifacts:writer"}},
 			want: Decision{
-				Bucket: "artifacts-bucket", Permission: config.PermissionReadWrite, TTLSeconds: 600,
+				Group: "ci:artifacts:writer", Bucket: "artifacts-bucket", Permission: config.PermissionReadWrite, TTLSeconds: 600,
 			},
 		},
 		{
 			name: "multi-row group: the right row is chosen by prefix",
 			req:  Request{Groups: []string{"ci:cache:writer"}, Prefixes: []string{"bazel-remote/"}},
 			want: Decision{
-				Bucket: "example-bucket", Prefixes: []string{"bazel-remote/"},
+				Group: "ci:cache:writer", Bucket: "example-bucket", Prefixes: []string{"bazel-remote/"},
 				Permission: config.PermissionReadWrite, TTLSeconds: 300,
 			},
 		},
@@ -80,7 +80,7 @@ func TestDecide(t *testing.T) {
 			name: "several groups, only one is held",
 			req:  Request{Groups: []string{"some-other-group", "ci:cache:reader"}},
 			want: Decision{
-				Bucket: "example-bucket", Prefixes: []string{"go-build/"},
+				Group: "ci:cache:reader", Bucket: "example-bucket", Prefixes: []string{"go-build/"},
 				Permission: config.PermissionReadOnly, TTLSeconds: 900,
 			},
 		},
@@ -90,7 +90,7 @@ func TestDecide(t *testing.T) {
 				Groups: []string{"ci:cache:writer", "ci:artifacts:writer"}, Bucket: "artifacts-bucket",
 			},
 			want: Decision{
-				Bucket: "artifacts-bucket", Permission: config.PermissionReadWrite, TTLSeconds: 600,
+				Group: "ci:artifacts:writer", Bucket: "artifacts-bucket", Permission: config.PermissionReadWrite, TTLSeconds: 600,
 			},
 		},
 		{
@@ -99,7 +99,7 @@ func TestDecide(t *testing.T) {
 				Groups: []string{"ci:cache:admin"}, Prefixes: []string{"go-build/"}, Permission: config.PermissionReadWrite,
 			},
 			want: Decision{
-				Bucket: "example-bucket", Prefixes: []string{"go-build/"},
+				Group: "ci:cache:admin", Bucket: "example-bucket", Prefixes: []string{"go-build/"},
 				Permission: config.PermissionReadWrite, TTLSeconds: 120,
 			},
 		},
@@ -139,7 +139,7 @@ func TestDecide(t *testing.T) {
 				Groups: []string{"ci:cache:admin"}, Prefixes: []string{"go-build/"}, Permission: config.PermissionReadOnly,
 			},
 			want: Decision{
-				Bucket: "example-bucket", Prefixes: []string{"go-build/"},
+				Group: "ci:cache:admin", Bucket: "example-bucket", Prefixes: []string{"go-build/"},
 				Permission: config.PermissionReadOnly, TTLSeconds: 120,
 			},
 		},

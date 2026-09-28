@@ -509,9 +509,14 @@ secret today, OpenBAO KV tomorrow) is the caller's decision, matching
 `internal/decide` and `internal/verify` so the two can never drift from
 each other:
 
-- `r2broker serve --config <path> [--addr :8080]` runs the HTTP service:
-  `POST /v1/credentials` (bearer OIDC token in), a group -> grant decision,
-  a minted credential out; `GET /healthz`.
+- `r2broker serve --config <path> [--addr :8080] [--audit-receiver-url <url>] [--audit-token-file <path>]`
+  runs the HTTP service: `POST /v1/credentials` (bearer OIDC token in), a
+  group -> grant decision, a minted credential out; `GET /healthz`. Every
+  mint and refusal is recorded to its own audit catalogue
+  (`catalogue/r2broker.yaml`, source `r2broker`) — with neither audit flag
+  set (or the matching `$R2BROKER_AUDIT_RECEIVER_URL` /
+  `$R2BROKER_AUDIT_TOKEN_FILE`), records are validated against the
+  catalogue and logged, and kept nowhere else.
 - `r2broker credentials (--config <path> | --service-url <url>) [--token-file <path>] [--bucket <name>] [--prefix <prefix>]... [--permission <object-read-only|object-read-write>]`
   either calls a running `serve` over HTTP, or (with `--config`) mints
   in-process — no central broker at all. Either way it prints an AWS
@@ -568,7 +573,25 @@ Content-Type: application/json
 | `minting.mode` | `local` | |
 | `grants` | `[]` | safe default: verifies and refuses everything |
 | `service.port` | `8080` | |
+| `audit.receiverUrl` | `""` | the shared audit platform's receiver; empty means log-only (design §2.8) |
+| `audit.tokenExpirationSeconds` | `3600` | the broker's own projected ServiceAccount token (audience `audit`), mounted only when `receiverUrl` is set — no Secret, no audit credential of its own |
 | `podDisruptionBudget.enabled` | `true` | a centrally-deployed broker is meant to stay up across drains |
+
+### Audit
+
+Its own catalogue and installation (design decision R4), independent of
+access-roster's `roster.*` actions:
+
+| Action | Outcome | Data |
+| --- | --- | --- |
+| `r2broker.credential.minted` | success | `group`, `bucket`, `prefixes`, `permission`, `ttl_seconds`, `mint_mode` (`local`/`api`) — never the credential |
+| `r2broker.credential.refused` | denied, with a reason | whatever of `group`/`bucket`/`prefixes`/`permission` was known before the refusal |
+
+The actor is `anonymous` when a token could not be verified at all, or
+`workload`/`ci` from the verified token's subject otherwise
+(`internal/audit.Identified`). `just audit-catalogue` (`audit validate` +
+`audit check-emitters`) holds `catalogue/r2broker.yaml` and
+`internal/audit/events.go`'s two constructors to each other in CI.
 
 ## Child names are a contract
 

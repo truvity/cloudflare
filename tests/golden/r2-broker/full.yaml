@@ -52,7 +52,7 @@ data:
   broker.yaml: |
     account:
       id: example-account-id
-      parentTokenFile: /var/run/secrets/r2broker/token
+      parentTokenFile: /secrets/token
       parentTokenId: example-parent-token-id
     audience: r2-broker
     grants:
@@ -131,7 +131,7 @@ spec:
         # A config change (a new grant row, a rotated parentTokenId,
         # ...) must roll the pods, not just update a ConfigMap nobody
         # reads until the next restart.
-        checksum/config: 153b2906ef222536f5619b467912c28fb21e686aab4542a2077b090b2dbb0e95
+        checksum/config: 549e67bac09f0856f1bb96c03948f09c26022f819c94761b4039af2702c03636
         example.com/scrape: "true"
     spec:
       serviceAccountName: r2-broker-custom-sa
@@ -165,6 +165,10 @@ spec:
             - /etc/r2broker/broker.yaml
             - --addr
             - :9090
+            - --audit-receiver-url
+            - http://audit-receiver.example.svc:8443
+            - --audit-token-file
+            - /var/run/audit-token/token
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -196,7 +200,10 @@ spec:
               mountPath: /etc/r2broker
               readOnly: true
             - name: parent-token
-              mountPath: /var/run/secrets/r2broker
+              mountPath: /secrets
+              readOnly: true
+            - name: audit-token
+              mountPath: /var/run/audit-token
               readOnly: true
       volumes:
         - name: config
@@ -211,3 +218,14 @@ spec:
                 # name, so the broker's config (parentTokenFile) never
                 # has to know what the estate happened to call it.
                 path: token
+        # No Secret: the broker needs no audit credential of its own
+        # (design §2.8), matching every other application on the shared
+        # audit platform. Kubernetes mints this token, scoped to the
+        # "audit" audience, and rotates it before it expires.
+        - name: audit-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: audit
+                  expirationSeconds: 7200
+                  path: token

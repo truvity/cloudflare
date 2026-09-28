@@ -58,6 +58,12 @@ spec:
             - /etc/r2broker/broker.yaml
             - --addr
             - :{{ .Values.service.port }}
+            {{- if .Values.audit.receiverUrl }}
+            - --audit-receiver-url
+            - {{ .Values.audit.receiverUrl }}
+            - --audit-token-file
+            - /var/run/audit-token/token
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -84,8 +90,13 @@ spec:
               mountPath: /etc/r2broker
               readOnly: true
             - name: parent-token
-              mountPath: /var/run/secrets/r2broker
+              mountPath: /secrets
               readOnly: true
+            {{- if .Values.audit.receiverUrl }}
+            - name: audit-token
+              mountPath: /var/run/audit-token
+              readOnly: true
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -99,3 +110,16 @@ spec:
                 # name, so the broker's config (parentTokenFile) never
                 # has to know what the estate happened to call it.
                 path: token
+        {{- if .Values.audit.receiverUrl }}
+        # No Secret: the broker needs no audit credential of its own
+        # (design §2.8), matching every other application on the shared
+        # audit platform. Kubernetes mints this token, scoped to the
+        # "audit" audience, and rotates it before it expires.
+        - name: audit-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: audit
+                  expirationSeconds: {{ .Values.audit.tokenExpirationSeconds }}
+                  path: token
+        {{- end }}

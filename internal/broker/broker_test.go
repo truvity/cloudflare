@@ -122,7 +122,9 @@ func TestBrokerMintEndToEnd(t *testing.T) {
 	result := b.Mint(context.Background(), Request{Token: token, Prefixes: []string{"go-build/"}})
 	require.Equal(t, OutcomeMinted, result.Outcome, "%+v", result.Err)
 	assert.Equal(t, "ci:example/repo", result.Subject)
+	assert.Equal(t, "ci:cache:writer", result.Decision.Group)
 	assert.Equal(t, "example-bucket", result.Decision.Bucket)
+	assert.Equal(t, mint.PathLocal, result.MintPath, "local signing succeeded, so it must report the local path, not just default")
 	assert.NotEmpty(t, result.Credential.AccessKeyID)
 	assert.NotEmpty(t, result.Credential.SessionToken)
 
@@ -224,6 +226,43 @@ func TestBrokerMintFailurePropagatesOutcome(t *testing.T) {
 	assert.Equal(t, OutcomeMintFailed, result.Outcome)
 	require.Error(t, result.Err)
 	assert.Equal(t, "example-bucket", result.Decision.Bucket, "decide's own result is kept even though mint failed")
+}
+
+func TestBrokerMintReportsAPIPathOnFallback(t *testing.T) {
+	ti := newTestIssuer(t)
+	cfg := testConfig(ti.issuerURL())
+
+	b, err := New(context.Background(), cfg, mint.ParentToken{ID: "parent-id", Value: "parent-secret"}, nil, nil)
+	require.NoError(t, err)
+
+	// Force local signing to fail so the composite falls to the (fake)
+	// API path, which always succeeds here.
+	b.Minter = &mint.CompositeMinter{
+		Local: brokenMinter{}, API: fakeAPIMinter{},
+	}
+
+	token := ti.token(t, "r2-broker", []string{"ci:cache:writer"})
+	result := b.Mint(context.Background(), Request{Token: token, Prefixes: []string{"go-build/"}})
+	require.Equal(t, OutcomeMinted, result.Outcome, "%+v", result.Err)
+	assert.Equal(t, mint.PathAPI, result.MintPath, "the fallback must be reported, not the configured default")
+}
+
+type brokenMinter struct{}
+
+func (brokenMinter) Mint(context.Context, mint.Request) (mint.Credential, error) {
+	return mint.Credential{}, errSimulatedMintFailure
+}
+
+type fakeAPIMinter struct{}
+
+func (fakeAPIMinter) Mint(context.Context, mint.Request) (mint.Credential, error) {
+	return mint.Credential{AccessKeyID: "fake", SecretAccessKey: "fake", SessionToken: "fake"}, nil
+}
+
+func TestPerCallMinterDetectsBareAPIMinter(t *testing.T) {
+	m := &mint.APIMinter{BaseURL: "https://example.invalid"}
+	_, path := perCallMinter(m)
+	assert.Equal(t, mint.PathAPI, *path)
 }
 
 func TestBuildMinterSelectsAPIMode(t *testing.T) {

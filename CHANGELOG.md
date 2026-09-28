@@ -20,8 +20,22 @@ together at every version.
   verifies tokens and refuses every request rather than a load error.
   `internal/config.Account` gained `parentTokenId` (required): the
   parent token's own id, needed to mint locally, that the original
-  config schema had no field for. No audit emission yet — see
+  config schema had no field for. See
   [docs/reference.md](docs/reference.md#cmdr2broker-and-chartsr2-broker).
+- **The broker writes its own audit trail.** Its own catalogue
+  (`catalogue/r2broker.yaml`, source `r2broker`, independent of
+  access-roster's `roster.*`): `r2broker.credential.minted` and
+  `r2broker.credential.refused`, never the credential itself.
+  `internal/decide.Decision` gained `Group` (the row that resolved the
+  decision), so a minted record can say which group authorized it.
+  `r2broker serve` gains `--audit-receiver-url` / `--audit-token-file`
+  (or `$R2BROKER_AUDIT_RECEIVER_URL` / `$R2BROKER_AUDIT_TOKEN_FILE`); with
+  neither set, every record is still validated against the catalogue and
+  logged, kept nowhere else. `charts/r2-broker` gains `audit.receiverUrl`
+  and, when it is set, mounts a projected ServiceAccount token (audience
+  `audit`) — the broker needs no audit credential of its own.
+  `just audit-catalogue` (`audit validate` + `audit check-emitters`) runs
+  in CI.
 
 ## v2.4.0
 
