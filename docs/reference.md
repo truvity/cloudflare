@@ -126,6 +126,88 @@ so it never lands in plain state.
 An Account is not a component resource and creates nothing but the
 provider.
 
+### NewChildToken
+
+```go
+func NewChildToken(ctx *pulumi.Context, name string, acct *Account, cfg ChildTokenConfig, opts ...pulumi.ResourceOption) (*ChildToken, error)
+```
+
+Mints one account-owned Cloudflare API token
+(`cloudflare.AccountToken`, `/accounts/{account_id}/tokens`) scoped to
+exactly `cfg.Policies`, under `acct`'s account and provider — the
+generic form of the token `pkg/r2` has minted for its own bucket since
+v2.2.0. `name` is the Pulumi resource name the underlying
+`AccountToken` is registered under; pass `opts` (`pulumi.Parent(...)`,
+in particular) the way you would to any other resource in `acct`'s
+account — `acct.Use()` needs no separate mention in `opts`, because
+`NewChildToken` binds `acct`'s own provider explicitly on both the
+token resource and the permission-group lookup invoke described below.
+
+```go
+ct, err := account.NewChildToken(ctx, "ci-token", acct, account.ChildTokenConfig{
+	Name: "ci-dns-token",
+	Policies: []account.ChildTokenPolicy{
+		{
+			PermissionGroups: []string{"DNS Write"},
+			Scope:            account.ZoneScope{ZoneID: "0123456789abcdef0123456789abcdef"},
+		},
+	},
+})
+```
+
+`ChildTokenConfig`:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `Name` | yes | the token's Cloudflare-visible name. When `Rotation` is set, `NewChildToken` embeds it as `"<Name>-<Rotation>"` |
+| `Rotation` | no | changing it to any new value forces the token to be REPLACED — a fresh id and value, never an in-place rename. See [safety.md](safety.md#rotation-is-a-replace-not-an-update) |
+| `ExpiresOn` | no | an RFC3339 timestamp after which Cloudflare refuses the token; must be in the future when set |
+| `Policies` | yes, non-empty | see below |
+
+`ChildTokenPolicy` (one per entry in `Policies`; Cloudflare unions every
+`allow` policy on a token, so there is no ordering between them):
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `PermissionGroups` | yes, non-empty | permission group names, resolved BY NAME per account at apply time (see below); neither `"Account API Tokens Read"` nor `"Account API Tokens Write"` may appear here — see [safety.md](safety.md#child-tokens-never-hold-account-api-tokens) |
+| `Scope` | yes | the one resource `PermissionGroups` applies to: `WholeAccountScope{}`, `ZoneScope{ZoneID: "..."}` or `R2BucketScope{Jurisdiction: "...", Bucket: "..."}` |
+
+The permission groups in one policy are resolved by name through the
+provider's ACCOUNT-scoped `getAccountApiTokenPermissionGroupsList` data
+source at apply time — the SAME lookup, and the same exact-match-or-refuse
+behaviour, `pkg/r2` has always used for its own bucket token (see
+[safety.md](safety.md#pkgaccount) for the full refusal table) — with
+`acct`'s explicit Cloudflare provider carried into the invoke, never the
+default one.
+
+Each `Scope` resolves to Cloudflare's own resource key for a token
+policy's `Resources` map
+(https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/,
+accessed 2026-09-28):
+
+| Scope | Resource key |
+| --- | --- |
+| `WholeAccountScope{}` | `com.cloudflare.api.account.<ACCOUNT_ID>` — every zone and account-level resource `acct` owns |
+| `ZoneScope{ZoneID}` | `com.cloudflare.api.account.zone.<ZONE_ID>` — exactly one zone. `ZoneID` must be Cloudflare's own 32-character lowercase hex zone id (confirmed against https://developers.cloudflare.com/api/resources/zones/, accessed 2026-09-28: the `zone_id` path parameter is `maxLength: 32`, and every example value on that page is a 32-character lowercase hex string) |
+| `R2BucketScope{Jurisdiction, Bucket}` | `com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>` — the same key `pkg/r2` has always used (see [its own reference section](#pkgr2)); `Jurisdiction` empty (or `"default"`) is an ordinary, non-jurisdictional bucket |
+
+`ChildToken` outputs:
+
+| | |
+| --- | --- |
+| `ChildToken.Token` | the underlying `*cloudflare.AccountToken`, for a caller that needs more than `ID`/`Value` (`Status`, `IssuedOn`, and so on) |
+| `ChildToken.ID` | the child token's id |
+| `ChildToken.Value` | the child token's secret value; a secret output |
+
+`ChildToken` is deliberately NOT a Pulumi component resource: `NewChildToken`
+registers exactly one resource, and the `AccountToken` is registered
+directly under whatever `Parent` (or none) the caller's own `opts` give
+it — its type and name in Pulumi's state are exactly what they would be
+had the caller registered the `AccountToken` itself. This is what makes
+`pkg/r2`'s own use of `NewChildToken` (since v2.4.0) invisible to an
+existing deployment: no new parent type joins the resource's URN, so
+nothing is replaced.
+
 ## pkg/zone
 
 `github.com/truvity/cloudflare/v2/pkg/zone`
@@ -354,6 +436,11 @@ r, err := r2.New(ctx, "cache", r2.Config{
 
 ### The token's permission group
 
+Since v2.4.0 the token itself is minted by
+[`account.NewChildToken`](#newchildtoken); this package supplies only the
+permission group name and the bucket's own scope (`account.R2BucketScope`).
+The mechanics below are unchanged, just relocated.
+
 The policy naming the token's one permission group is resolved **by
 name**, through the provider's **account-scoped**
 `getAccountApiTokenPermissionGroupsList` data source, at apply time — never
@@ -379,7 +466,9 @@ renames a group before this package catches up, set
 
 The lookup itself carries whatever explicit Cloudflare provider `opts`
 gave `New` (`acct.Use()`, typically) — not just the bucket and token
-resources. See
+resources: this package rebuilds an `account.Account` from `opts`'
+provider and hands it to `account.NewChildToken`, which binds it onto both
+the token resource and the lookup invoke explicitly. See
 [safety.md](safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does)
 for why that needs saying: an invoke does not inherit a provider from its
 component the way a resource does, and v2.2.0 shipped this one without
@@ -392,7 +481,10 @@ name for "this one bucket":
 `com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>`,
 jurisdiction `default` for a non-jurisdictional bucket — confirmed on the
 same page. A token this package creates can therefore never reach a
-second bucket, however `Config` changes.
+second bucket, however `Config` changes. This is `account.R2BucketScope`'s
+own resource key (see [`NewChildToken`](#newchildtoken)); this package
+builds one from `Config.AccountID`, `Config.Jurisdiction` and
+`Config.Bucket` and passes it as the one policy's `Scope`.
 
 ### Outputs and names
 

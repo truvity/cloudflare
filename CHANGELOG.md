@@ -5,6 +5,33 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`pkg/account` gains `NewChildToken`: a generic, least-privilege
+  child-token helper.** It mints one account-owned Cloudflare API token
+  (`cloudflare.AccountToken`) scoped to a caller-chosen set of policies —
+  each a permission-group list plus a `Scope` (`WholeAccountScope`,
+  `ZoneScope{ZoneID}` or `R2BucketScope{Jurisdiction, Bucket}`) — under the
+  root, account-owned token the estate's Pulumi program runs as. It is the
+  generalised form of the token `pkg/r2` has minted for its own bucket
+  since v2.2.0: the same by-name, account-scoped permission-group lookup
+  (explicit provider carried into the invoke, never the default one), the
+  same `Rotation`-forces-`REPLACE` mechanism, and the same
+  refuse-before-registering validation, now available to any caller that
+  needs a token scoped to a zone or a whole account, not only to an R2
+  bucket. A `PermissionGroups` entry naming `Account API Tokens Read` or
+  `Account API Tokens Write` is refused outright: only the root token that
+  mints child tokens may ever hold either. See
+  [docs/reference.md#newchildtoken](docs/reference.md#newchildtoken) and
+  [docs/safety.md#pkgaccount](docs/safety.md#pkgaccount).
+- **`pkg/r2` now mints its bucket token through `account.NewChildToken`.**
+  `Config`, `New`'s signature and every `R2` output are unchanged; the
+  underlying `cloudflare.AccountToken` keeps the exact same child name and
+  type in Pulumi's state (`NewChildToken`'s result is deliberately not a
+  component resource, precisely so this move is invisible to an existing
+  deployment — see [docs/reference.md#newchildtoken](docs/reference.md#newchildtoken)).
+  No consumer of `pkg/r2` needs to change anything.
+
 ## v2.3.1
 
 - **Fix: `pkg/r2`'s permission-group lookup no longer double-encodes the

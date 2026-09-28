@@ -17,6 +17,12 @@
 //     here so it never lands in plain state.
 //   - No implicit scope. An Account configures a provider and nothing
 //     else; it reads no zones, creates no records and changes no settings.
+//
+// NewChildToken, in childtoken.go, mints a least-privilege, account-owned
+// Cloudflare API token scoped to exactly one resource — a zone, the whole
+// account, or (the scope pkg/r2 uses) one R2 bucket — under the root,
+// account-owned token this whole module's caller runs as. See its own doc
+// and docs/safety.md#child-tokens-never-hold-account-api-tokens.
 package account
 
 import (
