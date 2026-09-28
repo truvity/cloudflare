@@ -50,6 +50,12 @@ type Request struct {
 
 // Decision is what Decide chose: a caller may mint exactly this.
 type Decision struct {
+	// Group is the one row's Group that resolved this decision — not
+	// necessarily the only group req.Groups held, when a token carries
+	// several, but the one that identifies which grant row fired. Kept
+	// mainly for the audit record built from a Decision (a mint must say
+	// which group authorized it), not for anything Decide itself acts on.
+	Group      string
 	Bucket     string
 	Prefixes   []string
 	Permission config.Permission
@@ -97,6 +103,7 @@ func Decide(req Request, grants []config.Grant) (Decision, error) {
 	}
 
 	return Decision{
+		Group:      grant.Group,
 		Bucket:     grant.Bucket,
 		Prefixes:   prefixes,
 		Permission: grant.Permission,

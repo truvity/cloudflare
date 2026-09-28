@@ -81,6 +81,16 @@ minting:
 #     ttlSeconds: 900
 grants: []
 
+audit:
+  # Empty: no audit installation is connected. Every mint and refusal is
+  # still validated against the broker's own catalogue and logged; it is
+  # kept nowhere else (design §2.8). Fill in for an estate running the
+  # shared audit platform — the broker mounts a projected ServiceAccount
+  # token itself (audience "audit"); it needs no credential of its own
+  # and this chart creates no Secret for one.
+  receiverUrl: ""
+  tokenExpirationSeconds: 3600
+
 service:
   port: 8080
 

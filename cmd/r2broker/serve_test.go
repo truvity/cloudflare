@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	auditpkg "github.com/truvity/cloudflare/v2/internal/audit"
 	"github.com/truvity/cloudflare/v2/internal/broker"
 	"github.com/truvity/cloudflare/v2/internal/config"
 	"github.com/truvity/cloudflare/v2/internal/mint"
@@ -100,7 +101,11 @@ func testHandler(t *testing.T, issuer string) *credentialsHandler {
 	b, err := broker.New(context.Background(), cfg, mint.ParentToken{ID: "parent-id", Value: "parent-secret"}, nil, nil)
 	require.NoError(t, err)
 
-	return &credentialsHandler{broker: b, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	trail, err := auditpkg.Open(context.Background(), auditpkg.Config{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	require.NoError(t, err, "no receiver configured: this must open a logging-only trail, never fail")
+	t.Cleanup(func() { _ = trail.Close() })
+
+	return &credentialsHandler{broker: b, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), trail: trail}
 }
 
 func doRequest(h *credentialsHandler, authz, body string) *httptest.ResponseRecorder {

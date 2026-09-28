@@ -50,7 +50,7 @@ data:
   broker.yaml: |
     account:
       id: example-account-id
-      parentTokenFile: /var/run/secrets/r2broker/token
+      parentTokenFile: /secrets/token
       parentTokenId: example-parent-token-id
     audience: r2-broker
     grants: []
@@ -114,7 +114,7 @@ spec:
         # A config change (a new grant row, a rotated parentTokenId,
         # ...) must roll the pods, not just update a ConfigMap nobody
         # reads until the next restart.
-        checksum/config: b86b8ab655e60bd9fcde2ee0f918b6474e81d026cc6a296706602b23ba604520
+        checksum/config: 3e5ca0ac2d4f2e93c60812aae0a69cee8a1cc6f8c128011989e164821d01729e
     spec:
       serviceAccountName: r2-broker
       terminationGracePeriodSeconds: 30
@@ -164,7 +164,7 @@ spec:
               mountPath: /etc/r2broker
               readOnly: true
             - name: parent-token
-              mountPath: /var/run/secrets/r2broker
+              mountPath: /secrets
               readOnly: true
       volumes:
         - name: config

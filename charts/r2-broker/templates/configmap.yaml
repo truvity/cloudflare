@@ -14,7 +14,7 @@ actually is secret.
       "account" (dict
         "id" .Values.account.id
         "parentTokenId" .Values.account.parentTokenId
-        "parentTokenFile" "/var/run/secrets/r2broker/token"
+        "parentTokenFile" "/secrets/token"
       )
       "minting" (dict "mode" .Values.minting.mode)
       "grants" .Values.grants

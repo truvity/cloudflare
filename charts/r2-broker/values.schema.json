@@ -53,6 +53,14 @@
         }
       }
     },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "receiverUrl": { "type": "string" },
+        "tokenExpirationSeconds": { "type": "integer", "minimum": 600 }
+      }
+    },
     "service": {
       "type": "object",
       "additionalProperties": false,

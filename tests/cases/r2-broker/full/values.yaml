@@ -30,6 +30,9 @@ grants:
     prefixes: ["go-build/", "bazel-remote/"]
     permission: object-read-write
     ttlSeconds: 900
+audit:
+  receiverUrl: http://audit-receiver.example.svc:8443
+  tokenExpirationSeconds: 7200
 service:
   port: 9090
 serviceAccount:
