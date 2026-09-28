@@ -1,0 +1,6 @@
+grants:
+  - group: ci:cache:reader
+    bucket: example-bucket
+    permission: object-read-only
+    ttlSeconds: 900
+    repository: example/repo

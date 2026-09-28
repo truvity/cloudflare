@@ -1,0 +1,5 @@
+grants:
+  - group: ci:cache:reader
+    bucket: example-bucket
+    permission: admin-read-write
+    ttlSeconds: 900

@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "r2-broker chart values",
+  "description": "Strict throughout: an unknown key — at the top level, in a grant row, or anywhere else this schema names an object — fails the render instead of being silently ignored. A grant row is deliberately closed to exactly group/bucket/prefixes/permission/ttlSeconds: a field for a repository, a ref or an event name would be a second, disagreeing decision engine (docs/doctrine.md; internal/config's own doc comment).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": { "type": "object" },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "replicas": { "type": "integer", "minimum": 0 },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "issuer": { "type": "string", "minLength": 1 },
+    "audience": { "type": "string", "minLength": 1 },
+    "groupsClaim": { "type": "string", "minLength": 1 },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "parentTokenId": { "type": "string", "minLength": 1 },
+        "parentTokenSecretName": { "type": "string", "minLength": 1 },
+        "parentTokenSecretKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "minting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["local", "api"] }
+      }
+    },
+    "grants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["group", "bucket", "permission", "ttlSeconds"],
+        "properties": {
+          "group": { "type": "string", "minLength": 1 },
+          "bucket": { "type": "string", "minLength": 1 },
+          "prefixes": { "type": "array", "items": { "type": "string" } },
+          "permission": { "enum": ["object-read-only", "object-read-write"] },
+          "ttlSeconds": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
+    "podAnnotations": { "type": "object", "additionalProperties": { "type": "string" } },
+    "podLabels": { "type": "object", "additionalProperties": { "type": "string" } },
+    "priorityClassName": { "type": "string" },
+    "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+    "tolerations": { "type": "array", "items": { "type": "object" } },
+    "affinity": { "type": "object" },
+    "topologySpreadConstraints": { "type": "array", "items": { "type": "object" } },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": { "type": ["integer", "string"] }
+      }
+    },
+    "resources": { "type": "object" }
+  }
+}

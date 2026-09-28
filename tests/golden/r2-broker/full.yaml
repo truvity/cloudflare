@@ -1,0 +1,213 @@
+---
+# Source: r2-broker/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: r2-broker
+  namespace: default
+  labels:
+    app.kubernetes.io/name: r2-broker
+    app.kubernetes.io/instance: r2-broker
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: r2-broker
+      app.kubernetes.io/instance: r2-broker
+      app.kubernetes.io/component: broker
+
+---
+# Source: r2-broker/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: r2-broker-custom-sa
+  namespace: default
+  labels:
+    app.kubernetes.io/name: r2-broker
+    app.kubernetes.io/instance: r2-broker
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    example.com/owner: platform
+
+---
+# Source: r2-broker/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r2-broker-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: r2-broker
+    app.kubernetes.io/instance: r2-broker
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  broker.yaml: |
+    account:
+      id: example-account-id
+      parentTokenFile: /var/run/secrets/r2broker/token
+      parentTokenId: example-parent-token-id
+    audience: r2-broker
+    grants:
+    - bucket: example-bucket
+      group: ci:cache:reader
+      permission: object-read-only
+      prefixes:
+      - go-build/
+      - bazel-remote/
+      ttlSeconds: 900
+    - bucket: example-bucket
+      group: ci:cache:writer
+      permission: object-read-write
+      prefixes:
+      - go-build/
+      - bazel-remote/
+      ttlSeconds: 900
+    groupsClaim: groups
+    issuer: https://issuer.example.com
+    minting:
+      mode: api
+
+---
+# Source: r2-broker/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: r2-broker
+  namespace: default
+  labels:
+    app.kubernetes.io/name: r2-broker
+    app.kubernetes.io/instance: r2-broker
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: r2-broker
+    app.kubernetes.io/instance: r2-broker
+    app.kubernetes.io/component: broker
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+      protocol: TCP
+
+---
+# Source: r2-broker/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r2-broker
+  namespace: default
+  labels:
+    app.kubernetes.io/name: r2-broker
+    app.kubernetes.io/instance: r2-broker
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: r2-broker
+      app.kubernetes.io/instance: r2-broker
+      app.kubernetes.io/component: broker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: r2-broker
+        app.kubernetes.io/instance: r2-broker
+        app.kubernetes.io/component: broker
+        team: platform
+      annotations:
+        # A config change (a new grant row, a rotated parentTokenId,
+        # ...) must roll the pods, not just update a ConfigMap nobody
+        # reads until the next restart.
+        checksum/config: 153b2906ef222536f5619b467912c28fb21e686aab4542a2077b090b2dbb0e95
+        example.com/scrape: "true"
+    spec:
+      serviceAccountName: r2-broker-custom-sa
+      terminationGracePeriodSeconds: 45
+      priorityClassName: system-cluster-critical
+      nodeSelector: 
+        kubernetes.io/os: linux
+      tolerations: 
+        - effect: NoSchedule
+          key: dedicated
+          operator: Equal
+          value: broker
+      affinity: 
+        podAntiAffinity: {}
+      topologySpreadConstraints: 
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: r2-broker
+          image: "ghcr.io/truvity/cloudflare/r2-broker:1.2.3"
+          imagePullPolicy: Always
+          args:
+            - serve
+            - --config
+            - /etc/r2broker/broker.yaml
+            - --addr
+            - :9090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources: 
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/r2broker
+              readOnly: true
+            - name: parent-token
+              mountPath: /var/run/secrets/r2broker
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: r2-broker-config
+        - name: parent-token
+          secret:
+            secretName: r2-broker-parent-token
+            items:
+              - key: token
+                # A fixed filename regardless of the Secret's own key
+                # name, so the broker's config (parentTokenFile) never
+                # has to know what the estate happened to call it.
+                path: token

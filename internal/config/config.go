@@ -78,6 +78,13 @@ type (
 	Account struct {
 		// ID is the Cloudflare account id. Required.
 		ID string `yaml:"id"`
+		// ParentTokenID is the parent API token's OWN id — "Access Key
+		// ID: the id of the API token"
+		// (developers.cloudflare.com/r2/api/s3/tokens/). Required. Unlike
+		// the token's value, this is not sensitive (Cloudflare shows it
+		// in the dashboard next to the token's name), so it is a plain
+		// config field rather than a file/env indirection.
+		ParentTokenID string `yaml:"parentTokenId"`
 		// ParentTokenFile is a path to a file holding the parent token's
 		// value. Exactly one of ParentTokenFile and ParentTokenEnv is
 		// required — there is deliberately no field for the value
@@ -187,6 +194,10 @@ func (c *Config) Validate() error {
 
 	if c.Account.ID == "" {
 		return fmt.Errorf("config: account.id is required")
+	}
+
+	if c.Account.ParentTokenID == "" {
+		return fmt.Errorf("config: account.parentTokenId is required")
 	}
 
 	hasFile := c.Account.ParentTokenFile != ""

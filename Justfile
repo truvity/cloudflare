@@ -1,7 +1,7 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-charts := "cloudflared"
+charts := "cloudflared r2-broker"
 
 # Lint every chart and the Go module. The schema is part of the lint:
 # an unknown key must fail the render, not be silently ignored, and every
@@ -60,7 +60,11 @@ tidy:
 
 # Package every chart locally (the release workflow stamps the version from the tag).
 package:
-    helm package charts/cloudflared --destination dist/
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for chart in {{ charts }}; do
+      helm package "charts/$chart" --destination dist/
+    done
 
 # Everything CI runs on a pull request.
 check: build lint test leak-canary vuln

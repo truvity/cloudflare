@@ -1,0 +1,31 @@
+{{/*
+The broker's own config (internal/config.Config, as YAML): issuer,
+audience, groupsClaim, account (the parent token's VALUE is deliberately
+NOT here — see secret.yaml's comment and account.parentTokenFile below),
+minting mode and the group -> grant map. None of this is secret, so a
+ConfigMap, not a Secret — matching docs/doctrine.md's "the chart takes
+the NAME of a Secret ... and creates neither" for the one field that
+actually is secret.
+*/}}
+{{- $cfg := dict
+      "issuer" .Values.issuer
+      "audience" .Values.audience
+      "groupsClaim" .Values.groupsClaim
+      "account" (dict
+        "id" .Values.account.id
+        "parentTokenId" .Values.account.parentTokenId
+        "parentTokenFile" "/var/run/secrets/r2broker/token"
+      )
+      "minting" (dict "mode" .Values.minting.mode)
+      "grants" .Values.grants
+-}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "r2-broker.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "r2-broker.labels" . | nindent 4 }}
+data:
+  broker.yaml: |
+    {{- toYaml $cfg | nindent 4 }}

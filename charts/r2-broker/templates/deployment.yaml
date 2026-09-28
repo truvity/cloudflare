@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "r2-broker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "r2-broker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "r2-broker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "r2-broker.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # A config change (a new grant row, a rotated parentTokenId,
+        # ...) must roll the pods, not just update a ConfigMap nobody
+        # reads until the next restart.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "r2-broker.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: r2-broker
+          image: "{{ include "r2-broker.image" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+            - --config
+            - /etc/r2broker/broker.yaml
+            - --addr
+            - :{{ .Values.service.port }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/r2broker
+              readOnly: true
+            - name: parent-token
+              mountPath: /var/run/secrets/r2broker
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "r2-broker.fullname" . }}-config
+        - name: parent-token
+          secret:
+            secretName: {{ .Values.account.parentTokenSecretName }}
+            items:
+              - key: {{ .Values.account.parentTokenSecretKey }}
+                # A fixed filename regardless of the Secret's own key
+                # name, so the broker's config (parentTokenFile) never
+                # has to know what the estate happened to call it.
+                path: token
