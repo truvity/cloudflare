@@ -503,6 +503,73 @@ token value and its derived S3 credentials are stored (a Pulumi config
 secret today, OpenBAO KV tomorrow) is the caller's decision, matching
 `pkg/tunnel`'s existing precedent for `Tunnel.Token`.
 
+## cmd/r2broker and charts/r2-broker
+
+`r2broker` is one binary, two modes, sharing `internal/mint`,
+`internal/decide` and `internal/verify` so the two can never drift from
+each other:
+
+- `r2broker serve --config <path> [--addr :8080]` runs the HTTP service:
+  `POST /v1/credentials` (bearer OIDC token in), a group -> grant decision,
+  a minted credential out; `GET /healthz`.
+- `r2broker credentials (--config <path> | --service-url <url>) [--token-file <path>] [--bucket <name>] [--prefix <prefix>]... [--permission <object-read-only|object-read-write>]`
+  either calls a running `serve` over HTTP, or (with `--config`) mints
+  in-process — no central broker at all. Either way it prints an AWS
+  `credential_process` document (`Version` 1) to stdout and nothing else.
+  The bearer token comes from `--token-file`, or `$R2BROKER_TOKEN_FILE`,
+  or the raw value in `$R2BROKER_TOKEN` — never an argv value. A file-
+  locked, per-scope cache under `$R2BROKER_CACHE_DIR` (default
+  `os.UserCacheDir()/r2broker`) makes several concurrent callers in one
+  build (BuildKit, `GOCACHEPROG`, bazel-remote) mint once, not once each.
+
+### Config (`internal/config.Config`, YAML)
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `issuer` | yes | the OIDC issuer this broker trusts; no default |
+| `audience` | yes | required in a token's `aud` claim |
+| `groupsClaim` | yes | the claim carrying the token's group list |
+| `account.id` | yes | the Cloudflare account id |
+| `account.parentTokenId` | yes | the parent API token's own id (`developers.cloudflare.com/r2/api/s3/tokens/`'s "Access Key ID"); not sensitive |
+| `account.parentTokenFile` / `account.parentTokenEnv` | exactly one | where the parent token's *value* comes from; never an inline value |
+| `minting.mode` | no (`local`) | `local` signs credentials itself with an automatic `api` fallback on error; `api` calls Cloudflare's temporary-credentials endpoint for every mint |
+| `grants` | no (`[]`) | group-only rows: `group`, `bucket`, `prefixes` (a list), `permission`, `ttlSeconds` — never a repository, ref or event field |
+
+Loading is strict: an unknown key, in the file or in a grant row, fails
+the load. Empty `grants` is valid — a broker that verifies tokens and
+refuses every request, not a load error.
+
+### Service API
+
+```
+POST /v1/credentials
+Authorization: Bearer <OIDC JWT, aud matches config's audience>
+Content-Type: application/json
+
+{"bucket": "…", "prefixes": ["…"], "permission": "…"}   // every field optional
+```
+
+| Outcome | Status | Body |
+| --- | --- | --- |
+| minted | 200 | `{"accessKeyId","secretAccessKey","sessionToken","expiration","bucket","prefixes"}` |
+| no/invalid/expired token | 401 | `{"error": "…"}` |
+| no grant covers the request | 403 | `{"error": "…"}` — decide's own sentence, e.g. `"no group in the token maps to a grant"` |
+| minting itself failed (local AND its API fallback) | 502 | `{"error": "…"}` |
+
+### charts/r2-broker values
+
+| Value | Default | Notes |
+| --- | --- | --- |
+| `replicas` | `2` | |
+| `image.repository` | `ghcr.io/truvity/cloudflare/r2broker` | ko names the image after `cmd/r2broker`'s directory — one word, unlike the chart's own hyphenated name |
+| `issuer`, `audience`, `groupsClaim` | placeholders | every real install overrides `issuer`; `hack/leak-canary.sh` is why the default is `https://issuer.example.com`, not empty |
+| `account.id`, `account.parentTokenId` | placeholders | plain config, not secret |
+| `account.parentTokenSecretName` / `parentTokenSecretKey` | `r2-broker-parent-token` / `token` | the Secret holding the parent token's *value* — created by whatever already owns secrets in your estate, mounted read-only, never created by this chart |
+| `minting.mode` | `local` | |
+| `grants` | `[]` | safe default: verifies and refuses everything |
+| `service.port` | `8080` | |
+| `podDisruptionBudget.enabled` | `true` | a centrally-deployed broker is meant to stay up across drains |
+
 ## Child names are a contract
 
 Every child name above is documented because an estate that already has

@@ -5,6 +5,24 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`r2broker`: the R2 temporary-credentials broker's service, CLI and
+  chart.** One binary, two modes, sharing the `internal/mint`,
+  `internal/decide` and `internal/verify` groundwork v2.3.0 shipped:
+  `r2broker serve` runs `POST /v1/credentials` (a bearer OIDC token in, a
+  group -> grant decision, a minted credential out) and `r2broker
+  credentials` either calls a running service or mints in-process from a
+  local config, printing an AWS `credential_process` document either way.
+  A file-locked, per-scope client-side cache keeps several concurrent
+  callers in one build to one mint. `charts/r2-broker` deploys the
+  service: `grants: []` is the default, and renders a broker that
+  verifies tokens and refuses every request rather than a load error.
+  `internal/config.Account` gained `parentTokenId` (required): the
+  parent token's own id, needed to mint locally, that the original
+  config schema had no field for. No audit emission yet — see
+  [docs/reference.md](docs/reference.md#cmdr2broker-and-chartsr2-broker).
+
 ## v2.4.0
 
 - **`pkg/account` gains `NewChildToken`: a generic, least-privilege

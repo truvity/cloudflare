@@ -1,0 +1,113 @@
+# r2-broker — the R2 temporary-credentials broker.
+#
+# Scope: a Deployment, a Service and a ServiceAccount. The broker's own
+# config (issuer, audience, group -> grant map) renders into a ConfigMap
+# from the values below — nothing in it is secret. The one secret this
+# chart needs, the parent Cloudflare API token's VALUE, is a Secret this
+# chart does not create: point account.parentTokenSecretName at whatever
+# your estate already wrote it with (External Secrets, SOPS, kubectl),
+# the same ownership split `charts/cloudflared` already uses for its
+# tunnel token.
+#
+# A new install with `grants: []` verifies every token and refuses every
+# request — it renders and runs, and mints nothing, until you add a row.
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicas: 2
+
+image:
+  # NOT r2-broker: ko names the image after cmd/r2broker's own directory
+  # (base_import_paths, .goreleaser.yaml), so the published image is
+  # ghcr.io/truvity/cloudflare/r2broker — one word, matching the binary
+  # and CLI name everywhere else. The CHART's own name stays hyphenated
+  # (charts/r2-broker), which is an ordinary Helm naming convention, not
+  # the same name as the binary it deploys.
+  repository: ghcr.io/truvity/cloudflare/r2broker
+  # Empty: defaults to .Chart.AppVersion, stamped at release.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The OIDC issuer this broker trusts, and the audience it requires in a
+# token's `aud` claim. `https://issuer.example.com` is a placeholder
+# (RFC 2606 reserved domain) — every real installation must override it;
+# there is deliberately no default naming a real issuer (see
+# hack/leak-canary.sh and docs/doctrine.md's "a particular is an input").
+issuer: https://issuer.example.com
+audience: r2-broker
+# The claim carrying the token's group list.
+groupsClaim: groups
+
+account:
+  # Cloudflare account id. example-account-id is a placeholder, not a
+  # real Cloudflare id (which is 32 hex characters) — nobody could
+  # mistake it for one, and every real installation must override it.
+  id: example-account-id
+  # The parent API token's OWN id ("Access Key ID: the id of the API
+  # token" — developers.cloudflare.com/r2/api/s3/tokens/). Not sensitive:
+  # Cloudflare shows it in the dashboard beside the token's name.
+  parentTokenId: example-parent-token-id
+  # The Secret holding the parent token's VALUE — created by whatever
+  # already owns secrets in your estate, not by this chart. Mounted
+  # read-only and read with --token-file equivalent semantics, so the
+  # value never appears in the pod spec or in `ps`.
+  parentTokenSecretName: r2-broker-parent-token
+  parentTokenSecretKey: token
+
+minting:
+  # local (default): sign credentials ourselves, no Cloudflare API call
+  # per mint — falls back to api automatically on error. api: call
+  # Cloudflare's temporary-credentials endpoint for every mint. See
+  # internal/mint's doc comment for the trade-off.
+  mode: local
+
+# GROUP ONLY -> bucket/prefixes/permission. No field here ever names a
+# repository, a ref or an event: that decision belongs to whatever OIDC
+# issuer minted the token's groups claim (see internal/config's doc
+# comment). Empty is the safe default: a broker that verifies tokens and
+# refuses every request, not a load error.
+#
+# grants:
+#   - group: ci:cache:reader
+#     bucket: example-bucket
+#     prefixes: ["go-build/"]
+#     permission: object-read-only
+#     ttlSeconds: 900
+#   - group: ci:cache:writer
+#     bucket: example-bucket
+#     prefixes: ["go-build/"]
+#     permission: object-read-write
+#     ttlSeconds: 900
+grants: []
+
+service:
+  port: 8080
+
+serviceAccount:
+  create: true
+  # Empty: named after the release, like every other object.
+  name: ""
+  annotations: {}
+
+terminationGracePeriodSeconds: 30
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+# A centrally-deployed broker is meant to stay up across node drains.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

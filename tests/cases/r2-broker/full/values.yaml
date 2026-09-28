@@ -1,0 +1,67 @@
+# Every field the chart knows about, filled in with placeholder-but-real
+# looking values, plus two grant rows differing only by prefix and
+# permission (the estate's own convention — see internal/config's doc
+# comment).
+nameOverride: ""
+fullnameOverride: ""
+replicas: 3
+image:
+  repository: ghcr.io/truvity/cloudflare/r2-broker
+  tag: "1.2.3"
+  pullPolicy: Always
+issuer: https://issuer.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  id: example-account-id
+  parentTokenId: example-parent-token-id
+  parentTokenSecretName: r2-broker-parent-token
+  parentTokenSecretKey: token
+minting:
+  mode: api
+grants:
+  - group: ci:cache:reader
+    bucket: example-bucket
+    prefixes: ["go-build/", "bazel-remote/"]
+    permission: object-read-only
+    ttlSeconds: 900
+  - group: ci:cache:writer
+    bucket: example-bucket
+    prefixes: ["go-build/", "bazel-remote/"]
+    permission: object-read-write
+    ttlSeconds: 900
+service:
+  port: 9090
+serviceAccount:
+  create: true
+  name: r2-broker-custom-sa
+  annotations:
+    example.com/owner: platform
+terminationGracePeriodSeconds: 45
+podAnnotations:
+  example.com/scrape: "true"
+podLabels:
+  team: platform
+priorityClassName: system-cluster-critical
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: broker
+    effect: NoSchedule
+affinity:
+  podAntiAffinity: {}
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi

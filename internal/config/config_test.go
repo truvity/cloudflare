@@ -14,6 +14,7 @@ audience: r2-broker
 groupsClaim: groups
 account:
   id: example-account-id
+  parentTokenId: example-parent-token-id
   parentTokenEnv: R2_BROKER_PARENT_TOKEN
 grants:
   - group: ci:cache:reader
@@ -50,6 +51,7 @@ audience: r2-broker
 groupsClaim: groups
 account:
   id: example-account-id
+  parentTokenId: example-parent-token-id
   parentTokenEnv: TOKEN
 grants:
   - group: ci:cache:reader
@@ -69,6 +71,7 @@ audience: r2-broker
 groupsClaim: groups
 account:
   id: example-account-id
+  parentTokenId: example-parent-token-id
   parentTokenEnv: TOKEN
 `
 	cfg, err := Load(strings.NewReader(noGrants))
@@ -82,7 +85,7 @@ func TestValidate(t *testing.T) {
 			Issuer:      "https://access.example.com",
 			Audience:    "r2-broker",
 			GroupsClaim: "groups",
-			Account:     Account{ID: "acct", ParentTokenEnv: "TOKEN"},
+			Account:     Account{ID: "acct", ParentTokenID: "parent-token-id", ParentTokenEnv: "TOKEN"},
 			Minting:     Minting{Mode: MintModeLocal},
 		}
 	}
@@ -97,6 +100,7 @@ func TestValidate(t *testing.T) {
 		{"missing audience", func(c *Config) { c.Audience = "" }, "audience is required"},
 		{"missing groupsClaim", func(c *Config) { c.GroupsClaim = "" }, "groupsClaim is required"},
 		{"missing account id", func(c *Config) { c.Account.ID = "" }, "account.id is required"},
+		{"missing parent token id", func(c *Config) { c.Account.ParentTokenID = "" }, "account.parentTokenId is required"},
 		{"neither token source", func(c *Config) { c.Account.ParentTokenEnv = "" }, "exactly one of parentTokenFile or parentTokenEnv"},
 		{"both token sources", func(c *Config) { c.Account.ParentTokenFile = "/var/run/token" }, "exactly one of parentTokenFile or parentTokenEnv"},
 		{"unknown minting mode", func(c *Config) { c.Minting.Mode = "sometimes" }, `minting.mode "sometimes" is neither`},

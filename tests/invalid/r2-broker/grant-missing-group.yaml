@@ -1,0 +1,4 @@
+grants:
+  - bucket: example-bucket
+    permission: object-read-only
+    ttlSeconds: 900

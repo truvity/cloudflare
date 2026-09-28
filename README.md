@@ -9,11 +9,13 @@ tunnel as a Helm chart.
 | `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with; `NewChildToken` mints a least-privilege, account-owned token scoped to one zone, one R2 bucket or the whole account | shipped |
 | `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
 | `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
-| `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | new |
+| `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | shipped |
 | `charts/cloudflared` | `cloudflared` as a plain Deployment: token from a Secret, optional origin CA from a Secret, one install per account | shipped |
+| `cmd/r2broker` | The R2 temporary-credentials broker: `r2broker serve` (the HTTP service) and `r2broker credentials` (a client of it, or an in-process standalone mode) — one binary, group-only OIDC in, scoped temporary R2 credentials out | new |
+| `charts/r2-broker` | The broker's Deployment, Service and ServiceAccount; `grants: []` renders a broker that verifies tokens and refuses every request, not a load error | new |
 
-The chart publishes to `oci://ghcr.io/truvity/charts/cloudflared` on every
-tag. The Go module is `github.com/truvity/cloudflare/v2`; **use v2.0.1 or
+The charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
+The Go module is `github.com/truvity/cloudflare/v2`; **use v2.0.1 or
 later**, because v2.0.0 cannot be fetched as a module (see
 [docs/adoption.md](docs/adoption.md#the-go-module-moves-to-v2)).
 

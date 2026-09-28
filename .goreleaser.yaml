@@ -1,15 +1,64 @@
 # Tag-triggered release through truvity/ci-workflows release-public.yaml,
-# which runs goreleaser and then pushes every chart under charts/ to
-# ghcr.io/truvity/charts at the tag's version.
+# which runs goreleaser first (binaries + the r2broker image) and then
+# pushes every chart under charts/ to ghcr.io/truvity/charts at the tag's
+# version.
 #
-# No binaries: this repository ships Helm charts (and a Go library, which
-# needs no build step) — goreleaser's job here is the GitHub Release with
-# the changelog, nothing else. `skip: true` is its documented shape for
-# library projects.
+# This repository shipped Helm charts and a Go library only, with
+# `builds: skip: true`, until the R2 credential broker added a real
+# service and a real CLI. `r2broker` is one binary (design decision R3:
+# one binary, two modes — `serve` and `credentials`), so it is one
+# `builds:` entry, one archive and one ko image, following
+# access-roster's own `.goreleaser.yaml` (the closest existing precedent
+# for "a service + a CLI + an image + a chart, released from one tag").
 version: 2
 
 builds:
-  - skip: true
+  - id: r2broker
+    main: ./cmd/r2broker
+    binary: r2broker
+    env: [CGO_ENABLED=0]
+    # linux for the image and for a Linux CI runner running `credentials`
+    # directly; darwin and windows because `credentials` (unlike `serve`)
+    # is what an AWS SDK's credential_process can run on somebody's own
+    # laptop, the same reasoning access-roster's accessctl build list
+    # gives for including Windows.
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/cloudflare/v2/internal/version.Version={{.Version}}
+
+archives:
+  # The thing an operator or a CI runner downloads directly, when they
+  # are not pulling the image — `r2broker credentials --config`'s
+  # standalone, no-central-broker installation (design §2.6).
+  - id: r2broker
+    ids: [r2broker]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "r2broker_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+kos:
+  # base_import_paths appends the cmd directory's basename, so with
+  # ko-docker-repo ghcr.io/truvity/cloudflare the published slug is
+  # ghcr.io/truvity/cloudflare/r2broker — see charts/r2-broker/values.yaml
+  # for why the chart's own (hyphenated) name differs from the image's.
+  - id: r2broker
+    build: r2broker
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: r2broker
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/cloudflare
 
 changelog:
   sort: asc
@@ -22,3 +71,15 @@ changelog:
 
 release:
   github: {}
+  header: |
+    ## truvity/cloudflare {{ .Tag }}
+
+    | | |
+    |---|---|
+    | r2broker image | `ghcr.io/truvity/cloudflare/r2broker:{{ .Version }}` |
+    | r2-broker chart | `oci://ghcr.io/truvity/charts/r2-broker:{{ .Version }}` |
+    | cloudflared chart | `oci://ghcr.io/truvity/charts/cloudflared:{{ .Version }}` |
+    | Go | `go get github.com/truvity/cloudflare/v2@{{ .Tag }}` |
+
+    `r2broker` is also published as its own archive (linux/darwin/windows),
+    for `credentials --config` installations with no central broker.
