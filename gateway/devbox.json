@@ -1,9 +1,9 @@
 {
   "packages": [
-    "goreleaser@latest",
-    "just-lsp@latest",
-    "just@latest",
-    "kubernetes-helm@latest"
+    "goreleaser@2.17.1",
+    "just-lsp@0.6.2",
+    "just@1.58.0",
+    "kubernetes-helm@4.2.4"
   ],
   "env": {},
   "shell": {
