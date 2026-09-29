@@ -5,6 +5,25 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v2.7.2
+
+- **`r2broker`: locally signed credentials are ones R2 accepts.** The local
+  minter had guessed the JWT's claims, because Cloudflare had not published
+  them. It now follows Cloudflare's published client-side signing example
+  ([Authenticate against R2 with temporary credentials](https://developers.cloudflare.com/r2/examples/authenticate-r2-temp-credentials/)).
+  The header gains `typ: JWT`. The claims are `sub` (account id), `iss`
+  (parent access key id), `aud` (the S3 endpoint host), `iat`, `exp`,
+  `bucket`, `scope`, and `paths.prefixPaths` when the grant has prefixes;
+  they used to be `accountId`, `permission`, `prefixes` and
+  `parentAccessKeyId`. The HMAC key is the parent secret access key as
+  text (hex SHA-256 of the token value), where it used to be the digest's
+  raw bytes. Up to v2.7.1, R2 refused every locally minted credential with
+  `400 InvalidArgument: X-Amz-Security-Token`, and the broker could not
+  see it, because local signing never fails and the API fallback runs only
+  on a signing error.
+- **`r2broker`: `minting.mode: api` sends `parentAccessKeyId`**, which the
+  temporary-credentials endpoint requires.
+
 ## v2.7.1
 
 - OpenTelemetry exporters bumped to the current stable line (`otlploggrpc` v0.22.0, `otlptrace` v1.46.0); govulncheck reports no reachable vulnerability.

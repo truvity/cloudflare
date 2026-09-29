@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -130,15 +129,15 @@ func TestBrokerMintEndToEnd(t *testing.T) {
 
 	// The credential is a locally-signed one (mode: local, no API
 	// fallback needed): its session token decodes to "jwt/<jwt>",
-	// verifiable against SHA-256(parent secret).
+	// verifiable against the parent secret access key, which is the hex
+	// SHA-256 of the parent token's value, keyed as text.
 	decoded, err := base64.StdEncoding.DecodeString(result.Credential.SessionToken)
 	require.NoError(t, err)
 	rawJWT, ok := strings.CutPrefix(string(decoded), "jwt/")
 	require.True(t, ok)
-	sum := sha256.Sum256([]byte("parent-secret"))
 	parsed, err := jose.ParseSigned(rawJWT, []jose.SignatureAlgorithm{jose.HS256})
 	require.NoError(t, err)
-	_, err = parsed.Verify(sum[:])
+	_, err = parsed.Verify([]byte(mint.ParentSecretAccessKey("parent-secret")))
 	require.NoError(t, err)
 }
 

@@ -40,7 +40,7 @@ func TestAPIMinterMintSuccess(t *testing.T) {
 	m := &APIMinter{
 		Client:  srv.Client(),
 		BaseURL: srv.URL,
-		Token:   ParentToken{Value: "parent-token-value"},
+		Token:   ParentToken{ID: "parent-token-id", Value: "parent-token-value"},
 		Now:     func() time.Time { return fixedNow },
 	}
 
@@ -53,6 +53,7 @@ func TestAPIMinterMintSuccess(t *testing.T) {
 	assert.Equal(t, "/accounts/example-account-id/r2/temp-access-credentials", gotPath)
 	assert.Equal(t, "Bearer parent-token-value", gotAuth)
 	assert.Equal(t, "example-bucket", gotBody.Bucket)
+	assert.Equal(t, "parent-token-id", gotBody.ParentAccessKeyID, "required by the API reference")
 	assert.Equal(t, "object-read-write", gotBody.Permission)
 	assert.Equal(t, []string{"go-build/"}, gotBody.Prefixes)
 	assert.Equal(t, 900, gotBody.TTLSeconds)
@@ -92,7 +93,7 @@ func TestAPIMinterRetriesOn429ThenSucceeds(t *testing.T) {
 	m := &APIMinter{
 		Client:  srv.Client(),
 		BaseURL: srv.URL,
-		Token:   ParentToken{Value: "v"},
+		Token:   ParentToken{ID: "id", Value: "v"},
 		Sleep:   func(d time.Duration) { slept = append(slept, d) },
 	}
 
@@ -121,7 +122,7 @@ func TestAPIMinterGivesUpAfterMaxRetries(t *testing.T) {
 	m := &APIMinter{
 		Client:     srv.Client(),
 		BaseURL:    srv.URL,
-		Token:      ParentToken{Value: "v"},
+		Token:      ParentToken{ID: "id", Value: "v"},
 		MaxRetries: 2,
 		Sleep:      func(time.Duration) {},
 	}
@@ -154,7 +155,7 @@ func TestAPIMinterBackoffDoublesWithoutRetryAfter(t *testing.T) {
 	m := &APIMinter{
 		Client:  srv.Client(),
 		BaseURL: srv.URL,
-		Token:   ParentToken{Value: "v"},
+		Token:   ParentToken{ID: "id", Value: "v"},
 		Sleep:   func(d time.Duration) { slept = append(slept, d) },
 	}
 
@@ -175,7 +176,7 @@ func TestAPIMinterSurfacesNon200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := &APIMinter{Client: srv.Client(), BaseURL: srv.URL, Token: ParentToken{Value: "v"}}
+	m := &APIMinter{Client: srv.Client(), BaseURL: srv.URL, Token: ParentToken{ID: "id", Value: "v"}}
 
 	_, err := m.Mint(context.Background(), Request{
 		AccountID: "example-account-id", Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60,
@@ -187,10 +188,10 @@ func TestAPIMinterSurfacesNon200(t *testing.T) {
 func TestAPIMinterRequiresBaseURLAndAccountID(t *testing.T) {
 	req := Request{Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60}
 
-	_, err := (&APIMinter{Token: ParentToken{Value: "v"}}).Mint(context.Background(), req)
+	_, err := (&APIMinter{Token: ParentToken{ID: "id", Value: "v"}}).Mint(context.Background(), req)
 	assert.ErrorContains(t, err, "baseURL is required")
 
-	_, err = (&APIMinter{Token: ParentToken{Value: "v"}, BaseURL: "https://example.com"}).Mint(context.Background(), req)
+	_, err = (&APIMinter{Token: ParentToken{ID: "id", Value: "v"}, BaseURL: "https://example.com"}).Mint(context.Background(), req)
 	assert.ErrorContains(t, err, "accountID is required")
 }
 
