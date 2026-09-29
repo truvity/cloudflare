@@ -6,16 +6,31 @@ minting mode and the group -> grant map. None of this is secret, so a
 ConfigMap, not a Secret — matching docs/doctrine.md's "the chart takes
 the NAME of a Secret ... and creates neither" for the one field that
 actually is secret.
+
+account.id and account.parentTokenId can EACH come from either a plain
+value or a key in the same Secret that holds the parent token's value
+(account.idSecretKey / account.parentTokenIdSecretKey — see
+deployment.yaml's parent-token volume for the matching mount). The
+schema (values.schema.json) already refused any values.yaml where a
+pair disagrees about which source is set, so exactly one branch below is
+ever taken for each field.
 */}}
+{{- $account := dict "parentTokenFile" "/secrets/token" -}}
+{{- if .Values.account.idSecretKey -}}
+{{- $_ := set $account "idFile" "/secrets/account-id" -}}
+{{- else -}}
+{{- $_ := set $account "id" .Values.account.id -}}
+{{- end -}}
+{{- if .Values.account.parentTokenIdSecretKey -}}
+{{- $_ := set $account "parentTokenIdFile" "/secrets/parent-token-id" -}}
+{{- else -}}
+{{- $_ := set $account "parentTokenId" .Values.account.parentTokenId -}}
+{{- end -}}
 {{- $cfg := dict
       "issuer" .Values.issuer
       "audience" .Values.audience
       "groupsClaim" .Values.groupsClaim
-      "account" (dict
-        "id" .Values.account.id
-        "parentTokenId" .Values.account.parentTokenId
-        "parentTokenFile" "/secrets/token"
-      )
+      "account" $account
       "minting" (dict "mode" .Values.minting.mode)
       "grants" .Values.grants
 -}}

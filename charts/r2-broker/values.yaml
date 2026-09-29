@@ -43,15 +43,34 @@ account:
   # Cloudflare account id. example-account-id is a placeholder, not a
   # real Cloudflare id (which is 32 hex characters) — nobody could
   # mistake it for one, and every real installation must override it.
+  #
+  # Exactly one of id and idSecretKey is required: leave id set (the
+  # common case) or blank it out and set idSecretKey instead.
   id: example-account-id
+  # A key in the SAME Secret named by parentTokenSecretName, holding the
+  # account id. Empty (default): id above is used. Set this instead of
+  # id when an estate already keeps the account id in that Secret next
+  # to the parent token's value — one mount instead of two. Not sensitive
+  # (see id above); this is a convenience, not a confidentiality need.
+  idSecretKey: ""
   # The parent API token's OWN id ("Access Key ID: the id of the API
   # token" — developers.cloudflare.com/r2/api/s3/tokens/). Not sensitive:
   # Cloudflare shows it in the dashboard beside the token's name.
+  #
+  # Exactly one of parentTokenId and parentTokenIdSecretKey is required:
+  # leave parentTokenId set (the common case) or blank it out and set
+  # parentTokenIdSecretKey instead.
   parentTokenId: example-parent-token-id
+  # A key in the SAME Secret named by parentTokenSecretName, holding the
+  # parent token's own id. Empty (default): parentTokenId above is used.
+  # See idSecretKey — same convenience, same Secret.
+  parentTokenIdSecretKey: ""
   # The Secret holding the parent token's VALUE — created by whatever
   # already owns secrets in your estate, not by this chart. Mounted
   # read-only and read with --token-file equivalent semantics, so the
-  # value never appears in the pod spec or in `ps`.
+  # value never appears in the pod spec or in `ps`. Also the Secret
+  # idSecretKey and parentTokenIdSecretKey (above) name a key in, when
+  # either is set.
   parentTokenSecretName: r2-broker-parent-token
   parentTokenSecretKey: token
 

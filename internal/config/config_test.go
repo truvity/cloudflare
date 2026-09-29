@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -79,6 +81,131 @@ account:
 	assert.Empty(t, cfg.Grants)
 }
 
+// writeFile writes contents to a new file under t.TempDir() and returns
+// its path.
+func writeFile(t *testing.T, name, contents string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), name)
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+
+	return path
+}
+
+func TestLoadResolvesIDFileAndParentTokenIDFile(t *testing.T) {
+	idFile := writeFile(t, "account-id", "acct-from-file\n")
+	parentTokenIDFile := writeFile(t, "parent-token-id", "parent-token-id-from-file\n")
+
+	yamlDoc := `
+issuer: https://access.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  idFile: ` + idFile + `
+  parentTokenIdFile: ` + parentTokenIDFile + `
+  parentTokenEnv: TOKEN
+`
+	cfg, err := Load(strings.NewReader(yamlDoc))
+	require.NoError(t, err)
+
+	assert.Equal(t, "acct-from-file", cfg.Account.ID, "one trailing newline is trimmed")
+	assert.Equal(t, "parent-token-id-from-file", cfg.Account.ParentTokenID)
+}
+
+func TestLoadIDFileTrimsExactlyOneTrailingNewline(t *testing.T) {
+	// \r\n counts as one trailing newline too.
+	idFile := writeFile(t, "account-id", "acct-from-file\r\n")
+
+	yamlDoc := `
+issuer: https://access.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  idFile: ` + idFile + `
+  parentTokenId: example-parent-token-id
+  parentTokenEnv: TOKEN
+`
+	cfg, err := Load(strings.NewReader(yamlDoc))
+	require.NoError(t, err)
+	assert.Equal(t, "acct-from-file", cfg.Account.ID)
+}
+
+func TestLoadIDFileRefusesOtherWhitespace(t *testing.T) {
+	cases := map[string]string{
+		"leading whitespace":    " acct-from-file\n",
+		"embedded whitespace":   "acct from-file\n",
+		"two trailing newlines": "acct-from-file\n\n",
+		"trailing space":        "acct-from-file \n",
+		"only whitespace":       "   \n",
+		"empty after trim":      "\n",
+	}
+
+	for name, contents := range cases {
+		t.Run(name, func(t *testing.T) {
+			idFile := writeFile(t, "account-id", contents)
+
+			yamlDoc := `
+issuer: https://access.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  idFile: ` + idFile + `
+  parentTokenId: example-parent-token-id
+  parentTokenEnv: TOKEN
+`
+			_, err := Load(strings.NewReader(yamlDoc))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestLoadIDFileMissingFile(t *testing.T) {
+	yamlDoc := `
+issuer: https://access.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  idFile: /no/such/file
+  parentTokenId: example-parent-token-id
+  parentTokenEnv: TOKEN
+`
+	_, err := Load(strings.NewReader(yamlDoc))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "account.idFile")
+}
+
+func TestLoadRefusesIDAndIDFileBothSet(t *testing.T) {
+	idFile := writeFile(t, "account-id", "acct-from-file\n")
+
+	yamlDoc := `
+issuer: https://access.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  id: example-account-id
+  idFile: ` + idFile + `
+  parentTokenId: example-parent-token-id
+  parentTokenEnv: TOKEN
+`
+	_, err := Load(strings.NewReader(yamlDoc))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one of id or idFile")
+}
+
+func TestLoadRefusesNeitherIDNorIDFile(t *testing.T) {
+	yamlDoc := `
+issuer: https://access.example.com
+audience: r2-broker
+groupsClaim: groups
+account:
+  parentTokenId: example-parent-token-id
+  parentTokenEnv: TOKEN
+`
+	_, err := Load(strings.NewReader(yamlDoc))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one of id or idFile")
+}
+
 func TestValidate(t *testing.T) {
 	base := func() Config {
 		return Config{
@@ -99,8 +226,21 @@ func TestValidate(t *testing.T) {
 		{"missing issuer", func(c *Config) { c.Issuer = "" }, "issuer is required"},
 		{"missing audience", func(c *Config) { c.Audience = "" }, "audience is required"},
 		{"missing groupsClaim", func(c *Config) { c.GroupsClaim = "" }, "groupsClaim is required"},
-		{"missing account id", func(c *Config) { c.Account.ID = "" }, "account.id is required"},
-		{"missing parent token id", func(c *Config) { c.Account.ParentTokenID = "" }, "account.parentTokenId is required"},
+		{"missing account id and no idFile", func(c *Config) { c.Account.ID = "" }, "account needs exactly one of id or idFile"},
+		{"account id and idFile both set", func(c *Config) { c.Account.IDFile = "/var/run/account-id" }, "account needs exactly one of id or idFile"},
+		{"account id resolved via idFile is fine", func(c *Config) { c.Account.ID, c.Account.IDFile = "", "/var/run/account-id" }, ""},
+		{
+			"missing parent token id and no parentTokenIdFile", func(c *Config) { c.Account.ParentTokenID = "" },
+			"account needs exactly one of parentTokenId or parentTokenIdFile",
+		},
+		{
+			"parent token id and parentTokenIdFile both set", func(c *Config) { c.Account.ParentTokenIDFile = "/var/run/parent-token-id" },
+			"account needs exactly one of parentTokenId or parentTokenIdFile",
+		},
+		{
+			"parent token id resolved via parentTokenIdFile is fine",
+			func(c *Config) { c.Account.ParentTokenID, c.Account.ParentTokenIDFile = "", "/var/run/parent-token-id" }, "",
+		},
 		{"neither token source", func(c *Config) { c.Account.ParentTokenEnv = "" }, "exactly one of parentTokenFile or parentTokenEnv"},
 		{"both token sources", func(c *Config) { c.Account.ParentTokenFile = "/var/run/token" }, "exactly one of parentTokenFile or parentTokenEnv"},
 		{"unknown minting mode", func(c *Config) { c.Minting.Mode = "sometimes" }, `minting.mode "sometimes" is neither`},

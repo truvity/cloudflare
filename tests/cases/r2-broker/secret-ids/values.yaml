@@ -1,0 +1,13 @@
+# account.id and account.parentTokenId sourced from the SAME Secret as
+# the parent token's value (account.parentTokenSecretName), via
+# idSecretKey / parentTokenIdSecretKey instead of the plain id /
+# parentTokenId values — proves the chart mounts both extra keys onto the
+# existing parent-token volume and renders idFile/parentTokenIdFile into
+# the broker's config, not id/parentTokenId.
+account:
+  id: ""
+  idSecretKey: account-id
+  parentTokenId: ""
+  parentTokenIdSecretKey: parent-token-id
+  parentTokenSecretName: r2-broker-parent-token
+  parentTokenSecretKey: token

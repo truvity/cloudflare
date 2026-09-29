@@ -26,8 +26,10 @@ package config
 import (
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
+	"unicode"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -76,15 +78,30 @@ type (
 	// Account identifies the Cloudflare account the broker mints into,
 	// and where its parent API token's value comes from.
 	Account struct {
-		// ID is the Cloudflare account id. Required.
-		ID string `yaml:"id"`
+		// ID is the Cloudflare account id. Exactly one of ID and IDFile
+		// is required.
+		ID string `yaml:"id,omitempty"`
+		// IDFile is a path to a file holding the account id, resolved
+		// into ID at Load time (see (*Config).resolveAccountFiles). Not
+		// sensitive — see ID — but some estates keep it in the same
+		// Secret as ParentTokenID/the parent token's value, one mount
+		// instead of several; this field is how that Secret's key
+		// reaches this config. Exactly one of ID and IDFile is required.
+		IDFile string `yaml:"idFile,omitempty"`
 		// ParentTokenID is the parent API token's OWN id — "Access Key
 		// ID: the id of the API token"
-		// (developers.cloudflare.com/r2/api/s3/tokens/). Required. Unlike
-		// the token's value, this is not sensitive (Cloudflare shows it
-		// in the dashboard next to the token's name), so it is a plain
-		// config field rather than a file/env indirection.
-		ParentTokenID string `yaml:"parentTokenId"`
+		// (developers.cloudflare.com/r2/api/s3/tokens/). Exactly one of
+		// ParentTokenID and ParentTokenIDFile is required. Unlike the
+		// token's value, this is not sensitive (Cloudflare shows it in
+		// the dashboard next to the token's name), so it is a plain
+		// config field rather than a file/env indirection — but see
+		// ParentTokenIDFile for the case where an estate still wants it
+		// to come from the same Secret as ID or the token's value.
+		ParentTokenID string `yaml:"parentTokenId,omitempty"`
+		// ParentTokenIDFile is a path to a file holding ParentTokenID,
+		// resolved the same way as IDFile. Exactly one of ParentTokenID
+		// and ParentTokenIDFile is required.
+		ParentTokenIDFile string `yaml:"parentTokenIdFile,omitempty"`
 		// ParentTokenFile is a path to a file holding the parent token's
 		// value. Exactly one of ParentTokenFile and ParentTokenEnv is
 		// required — there is deliberately no field for the value
@@ -173,7 +190,67 @@ func Load(r io.Reader) (*Config, error) {
 		return nil, err
 	}
 
+	if err := cfg.resolveAccountFiles(); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// resolveAccountFiles fills Account.ID and Account.ParentTokenID from
+// their *File counterparts when those are set. Validate has already
+// confirmed exactly one source exists for each field before this runs
+// (Load calls it first), so this only has to read whichever one is
+// present — a caller that builds a Config some other way and wants the
+// same resolution should call Validate then this, in that order, too.
+func (c *Config) resolveAccountFiles() error {
+	if c.Account.IDFile != "" {
+		v, err := readTrimmedFile(c.Account.IDFile)
+		if err != nil {
+			return fmt.Errorf("config: account.idFile: %w", err)
+		}
+
+		c.Account.ID = v
+	}
+
+	if c.Account.ParentTokenIDFile != "" {
+		v, err := readTrimmedFile(c.Account.ParentTokenIDFile)
+		if err != nil {
+			return fmt.Errorf("config: account.parentTokenIdFile: %w", err)
+		}
+
+		c.Account.ParentTokenID = v
+	}
+
+	return nil
+}
+
+// readTrimmedFile reads path and strips exactly one trailing newline
+// ("\n", or "\r\n"): a value written by a tool that appends one trailing
+// newline to whatever it mounts (a Secret's own default behavior for a
+// literal value, an editor that adds one on save) would otherwise carry
+// one character too many. Any OTHER whitespace — leading, embedded, or a
+// second trailing newline — is refused rather than silently stripped: an
+// account id or a token id is never legitimately padded, and guessing at
+// what to trim would hide a mis-mounted file instead of failing on it.
+func readTrimmedFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	s := strings.TrimSuffix(string(data), "\n")
+	s = strings.TrimSuffix(s, "\r")
+
+	if s == "" {
+		return "", fmt.Errorf("%s is empty", path)
+	}
+
+	if strings.IndexFunc(s, unicode.IsSpace) >= 0 {
+		return "", fmt.Errorf("%s contains whitespace other than a single trailing newline", path)
+	}
+
+	return s, nil
 }
 
 // Validate reports the first problem with cfg. Load calls it; a caller
@@ -192,12 +269,20 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: groupsClaim is required")
 	}
 
-	if c.Account.ID == "" {
-		return fmt.Errorf("config: account.id is required")
+	hasID := c.Account.ID != ""
+	hasIDFile := c.Account.IDFile != ""
+
+	if hasID == hasIDFile {
+		// Both false, or both true — either way there is not exactly
+		// one source.
+		return fmt.Errorf("config: account needs exactly one of id or idFile")
 	}
 
-	if c.Account.ParentTokenID == "" {
-		return fmt.Errorf("config: account.parentTokenId is required")
+	hasParentTokenID := c.Account.ParentTokenID != ""
+	hasParentTokenIDFile := c.Account.ParentTokenIDFile != ""
+
+	if hasParentTokenID == hasParentTokenIDFile {
+		return fmt.Errorf("config: account needs exactly one of parentTokenId or parentTokenIdFile")
 	}
 
 	hasFile := c.Account.ParentTokenFile != ""
