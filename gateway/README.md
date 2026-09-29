@@ -213,7 +213,7 @@ has every input.
 ## Consumers
 
 - **truvity/gitops**: charts `gateway-fleet`, `gateway-groups`, `gateway-policies`
-- **opwerm/nexus**: charts `gateway-fleet`, `gateway-policies`
+- **A second, non-AWS estate**: charts `gateway-fleet`, `gateway-policies`
 
 ## Neighbours
 
