@@ -74,7 +74,7 @@ namespace.
 ## Install and a worked example
 
 ```sh
-go get github.com/truvity/cloudflare/v2@v2.7.0
+go get github.com/truvity/cloudflare/v2@v2.7.1
 ```
 
 A Pulumi program for the two accounts above. Every value is a
@@ -303,7 +303,7 @@ repository. `hack/leak-canary.sh` enforces this in CI, and public history
 cannot be unpublished — so the rule is mechanical, not remembered.
 
 This repository follows the shared
-[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
+[component contract](https://github.com/truvity/policy/blob/master/docs/contracts/component.md).
 
 ## Status
 
