@@ -184,7 +184,7 @@ template, which is what makes `sectionName` above meaningful:
 # the application's Chart.yaml
 dependencies:
   - name: gateway-routes
-    version: 1.3.0
+    version: 1.5.3
     repository: oci://ghcr.io/truvity/charts
 ```
 
