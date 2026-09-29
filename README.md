@@ -1,8 +1,8 @@
 # cloudflare
 
 Cloudflare for Kubernetes estates, as reusable mechanism: accounts, zone
-settings and tunnels as Pulumi Go components, and the in-cluster end of a
-tunnel as a Helm chart.
+settings, tunnels and R2 buckets as Pulumi Go components; the in-cluster
+end of a tunnel and an R2 temporary-credentials broker as Helm charts.
 
 | Artifact | What | Status |
 | --- | --- | --- |
@@ -10,9 +10,10 @@ tunnel as a Helm chart.
 | `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS | shipped |
 | `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
 | `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | shipped |
+| `pkg/cfnames` | Pure Cloudflare naming and validity rules — the R2 jurisdiction list and the R2 bucket-name syntax check — with no SDK import of any kind, not even this module's own `pkg/account` or `pkg/r2` | shipped |
 | `charts/cloudflared` | `cloudflared` as a plain Deployment: token from a Secret, optional origin CA from a Secret, one install per account | shipped |
-| `cmd/r2broker` | The R2 temporary-credentials broker: `r2broker serve` (the HTTP service) and `r2broker credentials` (a client of it, or an in-process standalone mode) — one binary, group-only OIDC in, scoped temporary R2 credentials out, its own audit catalogue for every mint and refusal | new |
-| `charts/r2-broker` | The broker's Deployment, Service and ServiceAccount; `grants: []` renders a broker that verifies tokens and refuses every request, not a load error | new |
+| `cmd/r2broker` | The R2 temporary-credentials broker: `r2broker serve` (the HTTP service) and `r2broker credentials` (a client of it, or an in-process standalone mode) — one binary, group-only OIDC in, scoped temporary R2 credentials out, its own audit catalogue for every mint and refusal | shipped |
+| `charts/r2-broker` | The broker's Deployment, Service and ServiceAccount; `grants: []` renders a broker that verifies tokens and refuses every request, not a load error | shipped |
 
 The charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
 The Go module is `github.com/truvity/cloudflare/v2`; **use v2.0.1 or
@@ -28,6 +29,13 @@ account. The API tokens, the tunnel secrets, where the tunnel token is
 stored, the origin CA and the network policy around the daemon are the
 estate's. Nothing here installs a secret manager, a certificate issuer or
 a gateway: the tunnel routes to an origin the estate already runs.
+
+The same team, if it also uses R2, is who `pkg/r2` and `cmd/r2broker`
+are for: an estate that wants a build tool (or any other group-scoped
+caller) to hold a short-lived, bucket-scoped R2 credential instead of a
+long-lived one. Deploying `charts/r2-broker` is optional — `cmd/r2broker
+credentials --config` mints the same credential in-process, for an
+installation with no central broker at all.
 
 ## The model
 
@@ -66,7 +74,7 @@ namespace.
 ## Install and a worked example
 
 ```sh
-go get github.com/truvity/cloudflare/v2@latest
+go get github.com/truvity/cloudflare/v2@v2.7.0
 ```
 
 A Pulumi program for the two accounts above. Every value is a
@@ -231,6 +239,44 @@ The second account is a second release, `cloudflared-partner`, with its
 own `secretName`. [docs/reference.md](docs/reference.md) has every value
 and every Go field.
 
+## Consumers
+
+Who uses this repository, and through which surface:
+
+| Consumer | Surface |
+| --- | --- |
+| truvity/gitops | Go `pkg/account`, `pkg/tunnel`, `pkg/zone` (v2); chart `cloudflared` |
+| opwerm/nexus | Go `pkg/tunnel`; chart `cloudflared` |
+
+`cmd/r2broker` and `charts/r2-broker` also live in this repository, but
+they have no consumer of their own listed here: their callers are
+covered in Neighbours below, since the relationship is "who issues the
+tokens r2broker verifies" and "where r2broker's audit records go", not
+"who imports this repository's Go packages or charts".
+
+## Neighbours
+
+Repositories a reader must know about, and the boundary with each:
+
+- **gateway ↔ cloudflare ↔ tailscale** are three LAYERS of one exposure
+  path, not alternatives. This repository's tunnel (`pkg/tunnel`,
+  `charts/cloudflared`) carries public traffic to the estate's origin;
+  that origin is a gateway exposure (a ClusterIP behind the tunnel);
+  tailscale routes whole CIDRs for private access. gateway's private
+  exposure and tailscale's Service-CIDR route are the two ways to reach a
+  private service.
+- **r2broker ↔ access-roster**: `cmd/r2broker`'s `serve` mode verifies a
+  bearer OIDC token against any configured issuer (mechanism only — see
+  `internal/verify`'s package doc); `accessctl r2` (in access-roster)
+  execs against it over HTTP as one such caller (see
+  [cmd/r2broker's package doc](cmd/r2broker/doc.go)). It does not hold an
+  access-roster API token: only a bearer token to verify.
+- **r2broker ↔ audit**: `internal/audit` is r2broker's own audit
+  installation — its own catalogue (`catalogue/r2broker.yaml`, source
+  `r2broker`), recorded through `github.com/truvity/audit`, independent
+  of whatever else on the platform emits `roster.*` actions (see
+  [internal/audit's package doc](internal/audit/audit.go)).
+
 ## Documentation
 
 - [docs/layout.md](docs/layout.md): the recommended root/edge/r2(/status)
@@ -269,15 +315,17 @@ Used in production by its maintainers. Releases are listed on the
 
 ```sh
 devbox shell        # or direnv
-just check          # build + lint + golden renders and go test + leak canary + govulncheck
+just check          # build + lint + test + leak canary + audit catalogue + govulncheck
 just golden         # regenerate tests/golden after a template change — review the diff
 ```
 
-CI runs `build`, `lint`, `test` and `leak-canary`, each as its own job;
-`vuln` runs daily. Every `tests/cases/<chart>/<case>/values.yaml` is
-rendered and compared byte-for-byte with `tests/golden/<chart>/<case>.yaml`
-(a case may pin its release name in a `release` file next to its values);
-a template change is reviewed as a diff, with no cluster involved.
+CI runs `build`, `lint`, `test`, `leak-canary` and `audit-catalogue`, each
+as its own job; `vuln` runs daily, never as a required check on a pull
+request (a new CVE must not turn CI red). Every
+`tests/cases/<chart>/<case>/values.yaml` is rendered and compared
+byte-for-byte with `tests/golden/<chart>/<case>.yaml` (a case may pin its
+release name in a `release` file next to its values); a template change
+is reviewed as a diff, with no cluster involved.
 
 `tests/invalid/<chart>/` holds one fixture per refusal. Each must fail to
 render; `just lint` proves it. A rule without a fixture is a rule that
