@@ -5,6 +5,29 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`charts/r2-broker`: `account.id` and `account.parentTokenId` can each
+  come from the same Secret as the parent token's value, not just a
+  plain value.** New `account.idSecretKey` / `account.parentTokenIdSecretKey`
+  values (default `""`) name a key in `account.parentTokenSecretName`;
+  when set, the chart mounts that key read-only and points
+  `internal/config.Account`'s new `idFile` / `parentTokenIdFile` fields at
+  it instead of `id` / `parentTokenId`. The plain values stay the default
+  and fully supported — this is additive. `values.schema.json` refuses a
+  values file that sets both or neither of a pair. A file's contents are
+  trimmed of exactly one trailing newline; any other whitespace fails the
+  load. See
+  [docs/reference.md#chartsr2-broker-values](docs/reference.md#chartsr2-broker-values).
+- **A new SDK-free package, `pkg/cfnames`, holds the R2 jurisdiction list
+  and the R2 bucket-name syntax check.** `pkg/account`'s
+  `ValidR2Jurisdiction` and `ValidR2BucketName` now delegate to it;
+  behaviour is unchanged. Unlike `pkg/account` and `pkg/r2`, `pkg/cfnames`
+  imports nothing outside the standard library (enforced by its own
+  test), so a downstream config layer that only needs to validate a
+  jurisdiction or a bucket name no longer has to pull in the Pulumi/
+  Cloudflare SDK, or keep its own copy of the jurisdiction list, to do it.
+
 ## v2.6.0
 
 - **`pkg/account` gains `NewChildTokenSet`: the "one root token mints
