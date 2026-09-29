@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"slices"
 	"time"
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/truvity/cloudflare/v2/pkg/cfnames"
 )
 
 // The two permission groups a child token this package mints must never
@@ -35,46 +36,24 @@ func zoneIDValid(id string) bool {
 	return zoneIDPattern.MatchString(id)
 }
 
-// r2Jurisdictions are the values R2BucketScope.Jurisdiction accepts,
-// mirroring pkg/r2's own bucket jurisdictions (see pkg/r2's Config.
-// Jurisdiction) so the two can never disagree about what a bucket's
-// jurisdiction may be.
-var r2Jurisdictions = []string{"", "default", "eu", "fedramp", "us"}
-
 // ValidR2Jurisdiction reports whether jurisdiction is one R2BucketScope
 // (and pkg/r2's own Config.Jurisdiction) accepts: "" or "default" for a
-// non-jurisdictional bucket, or "eu", "fedramp", "us".
+// non-jurisdictional bucket, or "eu", "fedramp", "us". Delegates to
+// pkg/cfnames — the SDK-free single source of truth for this rule, so a
+// downstream config layer that needs the same check without this
+// package's Pulumi/Cloudflare SDK dependency can import pkg/cfnames
+// directly instead of keeping its own copy of the list.
 func ValidR2Jurisdiction(jurisdiction string) bool {
-	return slices.Contains(r2Jurisdictions, jurisdiction)
+	return cfnames.ValidJurisdiction(jurisdiction)
 }
 
 // ValidR2BucketName reports whether name follows Cloudflare's R2 bucket
-// naming rules: https://developers.cloudflare.com/r2/buckets/create-buckets/
-// (accessed 2026-09-27) — "Bucket names can only contain lowercase letters
-// (a-z), numbers (0-9), and hyphens (-)", "cannot begin or end with a
-// hyphen", "3-63 characters in length". The single source of truth for
-// this rule: pkg/r2's own Config.Bucket validation calls this too, so a
-// bucket name and the R2BucketScope naming its own token's resource key
-// can never disagree about what Cloudflare accepts.
+// naming rules. Delegates to pkg/cfnames; see ValidR2Jurisdiction. pkg/r2's
+// own Config.Bucket validation calls this too, so a bucket name and the
+// R2BucketScope naming its own token's resource key can never disagree
+// about what Cloudflare accepts.
 func ValidR2BucketName(name string) bool {
-	if len(name) < 3 || len(name) > 63 {
-		return false
-	}
-
-	for i, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= '0' && r <= '9':
-		case r == '-':
-			if i == 0 || i == len(name)-1 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-
-	return true
+	return cfnames.ValidBucketName(name)
 }
 
 // rotationValid restricts ChildTokenConfig.Rotation to a charset safe to
@@ -255,7 +234,7 @@ func (s R2BucketScope) validate() error {
 	}
 
 	if !ValidR2Jurisdiction(s.Jurisdiction) {
-		return fmt.Errorf("r2 bucket scope: jurisdiction %q must be one of %q", s.Jurisdiction, r2Jurisdictions[1:])
+		return fmt.Errorf("r2 bucket scope: jurisdiction %q must be one of %q", s.Jurisdiction, cfnames.Jurisdictions()[1:])
 	}
 
 	return nil

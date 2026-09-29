@@ -132,6 +132,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	"github.com/truvity/cloudflare/v2/pkg/account"
+	"github.com/truvity/cloudflare/v2/pkg/cfnames"
 )
 
 // Permission levels TokenConfig.Permission accepts.
@@ -149,13 +150,15 @@ var defaultPermissionGroup = map[string]string{
 	PermissionObjectReadOnly:  "Workers R2 Storage Bucket Item Read",
 }
 
-// r2Jurisdictions is this package's own display copy of the values
-// account.ValidR2Jurisdiction accepts, for Validate's error message only —
-// the actual check calls account.ValidR2Jurisdiction, the single source
-// of truth account.R2BucketScope also validates against, so a bucket this
-// package accepts can never be refused again when its token's scope is
-// built.
-var r2Jurisdictions = []string{"eu", "fedramp", "us"}
+// r2Jurisdictions is this package's own display copy of cfnames.
+// Jurisdictions, for Validate's error message only — the actual check
+// calls account.ValidR2Jurisdiction (which itself delegates to
+// pkg/cfnames), the single source of truth account.R2BucketScope also
+// validates against, so a bucket this package accepts can never be
+// refused again when its token's scope is built. The message skips ""
+// and "default": an estate picking a jurisdiction is choosing one of the
+// three real ones, and listing "none" next to them would read oddly.
+var r2Jurisdictions = cfnames.Jurisdictions()[2:]
 
 type (
 	// Lifecycle expires objects after a fixed age. Every field is a
