@@ -51,11 +51,15 @@ type APIMinter struct {
 // temporaryCredentialsRequest is the REST request body. Field names are
 // confirmed verbatim by the API reference cited above: "pass prefixes and
 // objects as top-level fields on the request body".
+//
+// parentAccessKeyId is REQUIRED by that reference ("Access key ID of the
+// parent R2 API token"); up to v2.7.1 it was not sent.
 type temporaryCredentialsRequest struct {
-	Bucket     string   `json:"bucket"`
-	Permission string   `json:"permission"`
-	Prefixes   []string `json:"prefixes,omitempty"`
-	TTLSeconds int      `json:"ttlSeconds"`
+	Bucket            string   `json:"bucket"`
+	ParentAccessKeyID string   `json:"parentAccessKeyId"`
+	Permission        string   `json:"permission"`
+	Prefixes          []string `json:"prefixes,omitempty"`
+	TTLSeconds        int      `json:"ttlSeconds"`
 }
 
 // temporaryCredentialsResponse is the REST response envelope. The
@@ -126,11 +130,16 @@ func (m *APIMinter) Mint(ctx context.Context, req Request) (Credential, error) {
 		return Credential{}, fmt.Errorf("mint: api: accountID is required")
 	}
 
+	if m.Token.ID == "" {
+		return Credential{}, fmt.Errorf("mint: api: parent token id is required")
+	}
+
 	body, err := json.Marshal(temporaryCredentialsRequest{
-		Bucket:     req.Bucket,
-		Permission: string(req.Permission),
-		Prefixes:   req.Prefixes,
-		TTLSeconds: req.TTLSeconds,
+		Bucket:            req.Bucket,
+		ParentAccessKeyID: m.Token.ID,
+		Permission:        string(req.Permission),
+		Prefixes:          req.Prefixes,
+		TTLSeconds:        req.TTLSeconds,
 	})
 	if err != nil {
 		return Credential{}, fmt.Errorf("mint: api: encoding request: %w", err)

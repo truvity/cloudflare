@@ -2,6 +2,7 @@ package mint
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -10,15 +11,49 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v4"
-	josejwt "github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/truvity/cloudflare/v2/internal/config"
 )
 
-func TestLocalMinterMint(t *testing.T) {
+// decodeSession splits a session token into the JWT's three parts and
+// returns the raw JWT, the decoded header and the decoded claims, as JSON
+// maps so that every field name is checked as R2 will read it.
+func decodeSession(t *testing.T, sessionToken string) (string, map[string]any, map[string]any) {
+	t.Helper()
+
+	decoded, err := base64.StdEncoding.DecodeString(sessionToken)
+	require.NoError(t, err)
+
+	raw, ok := strings.CutPrefix(string(decoded), "jwt/")
+	require.True(t, ok, `session token must be base64("jwt/" + jwt)`)
+
+	parts := strings.Split(raw, ".")
+	require.Len(t, parts, 3)
+
+	var header, claims map[string]any
+
+	for i, into := range []*map[string]any{&header, &claims} {
+		body, err := base64.RawURLEncoding.DecodeString(parts[i])
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, into))
+	}
+
+	return raw, header, claims
+}
+
+// hs256 is the signature Cloudflare's example computes:
+// SignJWT(...).sign(new TextEncoder().encode(parentSecretAccessKey)),
+// i.e. HMAC-SHA256 keyed with the UTF-8 bytes of the hex secret.
+func hs256(key, signingInput string) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(signingInput))
+
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func TestLocalMinterFollowsCloudflaresExample(t *testing.T) {
 	fixedNow := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
 
 	m := &LocalMinter{
@@ -26,87 +61,96 @@ func TestLocalMinterMint(t *testing.T) {
 		Now:   func() time.Time { return fixedNow },
 	}
 
-	req := Request{
+	cred, err := m.Mint(context.Background(), Request{
 		AccountID:  "example-account-id",
 		Bucket:     "example-bucket",
-		Prefixes:   []string{"go-build/"},
 		Permission: config.PermissionReadWrite,
 		TTLSeconds: 900,
-	}
-
-	cred, err := m.Mint(context.Background(), req)
+	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "parent-token-id", cred.AccessKeyID, "UNVERIFIED: assumed equal to the parent token's own id")
-	assert.Equal(t, fixedNow.Add(900*time.Second), cred.Expiration)
-	assert.NotEmpty(t, cred.SecretAccessKey)
+	raw, header, claims := decodeSession(t, cred.SessionToken)
 
-	// The session token decodes to "jwt/<signed-jwt>".
-	decoded, err := base64.StdEncoding.DecodeString(cred.SessionToken)
-	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"alg": "HS256", "typ": "JWT"}, header)
+	assert.Equal(t, map[string]any{
+		"sub":    "example-account-id",
+		"iss":    "parent-token-id",
+		"aud":    "example-account-id.r2.cloudflarestorage.com",
+		"iat":    float64(fixedNow.Unix()),
+		"exp":    float64(fixedNow.Add(900 * time.Second).Unix()),
+		"bucket": "example-bucket",
+		"scope":  "object-read-write",
+	}, claims, "no paths claim when the credential is not narrowed")
 
-	rawJWT, ok := strings.CutPrefix(string(decoded), "jwt/")
-	require.True(t, ok, "session token must be base64(\"jwt/\" + jwt), per the doc")
-
-	// UNVERIFIED: SecretAccessKey is the hex SHA-256 of the raw JWT.
-	sum := sha256.Sum256([]byte(rawJWT))
-	assert.Equal(t, hex.EncodeToString(sum[:]), cred.SecretAccessKey)
-
-	// The JWT verifies against SHA-256(parent token value), signed
-	// HS256, and carries the request's own scope.
+	// The key is the parent SECRET ACCESS KEY as text: hex(sha256(value)).
 	parentSecret := sha256.Sum256([]byte("parent-token-secret-value"))
+	key := hex.EncodeToString(parentSecret[:])
+	assert.Equal(t, key, ParentSecretAccessKey("parent-token-secret-value"))
 
-	parsed, err := jose.ParseSigned(rawJWT, []jose.SignatureAlgorithm{jose.HS256})
+	cut := strings.LastIndex(raw, ".")
+	assert.Equal(t, hs256(key, raw[:cut]), raw[cut+1:], "signed with the hex secret's bytes")
+	assert.NotEqual(t, hs256(string(parentSecret[:]), raw[:cut]), raw[cut+1:],
+		"the digest's raw bytes are the v2.7.1 key, which R2 refuses")
+
+	secret := sha256.Sum256([]byte(raw))
+	assert.Equal(t, "parent-token-id", cred.AccessKeyID)
+	assert.Equal(t, hex.EncodeToString(secret[:]), cred.SecretAccessKey)
+	assert.Equal(t, fixedNow.Add(900*time.Second), cred.Expiration)
+}
+
+func TestLocalMinterNarrowsWithPaths(t *testing.T) {
+	m := &LocalMinter{Token: ParentToken{ID: "id", Value: "v"}}
+
+	cred, err := m.Mint(context.Background(), Request{
+		AccountID: "acct", Bucket: "b", Prefixes: []string{"go-build/"},
+		Permission: config.PermissionReadOnly, TTLSeconds: 60,
+	})
 	require.NoError(t, err)
 
-	payload, err := parsed.Verify(parentSecret[:])
+	_, _, claims := decodeSession(t, cred.SessionToken)
+	assert.Equal(t, "object-read-only", claims["scope"])
+	assert.Equal(t, map[string]any{
+		"prefixPaths": []any{"go-build/"},
+		"objectPaths": []any{},
+	}, claims["paths"])
+}
+
+func TestLocalMinterHostOverride(t *testing.T) {
+	m := &LocalMinter{Token: ParentToken{ID: "id", Value: "v"}, Host: "acct.eu.r2.cloudflarestorage.com"}
+
+	cred, err := m.Mint(context.Background(), Request{
+		AccountID: "acct", Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60,
+	})
 	require.NoError(t, err)
 
-	var claims struct {
-		josejwt.Claims
-		unverifiedClaimsShape
-	}
-	require.NoError(t, json.Unmarshal(payload, &claims))
-
-	assert.Equal(t, "example-account-id", claims.AccountID)
-	assert.Equal(t, "example-bucket", claims.Bucket)
-	assert.Equal(t, "object-read-write", claims.Permission)
-	assert.Equal(t, []string{"go-build/"}, claims.Prefixes)
-	assert.Equal(t, "parent-token-id", claims.ParentAccessKeyID)
-	require.NotNil(t, claims.Expiry)
-	assert.Equal(t, fixedNow.Add(900*time.Second).Unix(), int64(*claims.Expiry))
+	_, _, claims := decodeSession(t, cred.SessionToken)
+	assert.Equal(t, "acct.eu.r2.cloudflarestorage.com", claims["aud"])
 }
 
 func TestLocalMinterWrongSecretDoesNotVerify(t *testing.T) {
 	m := &LocalMinter{Token: ParentToken{ID: "id", Value: "correct-secret"}}
 
 	cred, err := m.Mint(context.Background(), Request{
-		Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60,
+		AccountID: "acct", Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60,
 	})
 	require.NoError(t, err)
 
-	decoded, err := base64.StdEncoding.DecodeString(cred.SessionToken)
-	require.NoError(t, err)
-
-	rawJWT, ok := strings.CutPrefix(string(decoded), "jwt/")
-	require.True(t, ok)
-
-	parsed, err := jose.ParseSigned(rawJWT, []jose.SignatureAlgorithm{jose.HS256})
-	require.NoError(t, err)
-
-	wrongSecret := sha256.Sum256([]byte("wrong-secret"))
-	_, err = parsed.Verify(wrongSecret[:])
-	assert.Error(t, err, "a credential signed with a different parent secret must not verify")
+	raw, _, _ := decodeSession(t, cred.SessionToken)
+	cut := strings.LastIndex(raw, ".")
+	assert.NotEqual(t, hs256(ParentSecretAccessKey("wrong-secret"), raw[:cut]), raw[cut+1:],
+		"a credential signed with a different parent secret must not verify")
 }
 
-func TestLocalMinterRequiresParentTokenValue(t *testing.T) {
-	m := &LocalMinter{Token: ParentToken{ID: "id"}}
+func TestLocalMinterRequiresParentToken(t *testing.T) {
+	req := Request{AccountID: "acct", Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60}
 
-	_, err := m.Mint(context.Background(), Request{
-		Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60,
-	})
+	_, err := (&LocalMinter{Token: ParentToken{ID: "id"}}).Mint(context.Background(), req)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parent token value is required")
+
+	_, err = (&LocalMinter{Token: ParentToken{Value: "v"}}).Mint(context.Background(), req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parent token id is required")
 }
 
 func TestLocalMinterValidatesRequest(t *testing.T) {
@@ -116,9 +160,10 @@ func TestLocalMinterValidatesRequest(t *testing.T) {
 		name string
 		req  Request
 	}{
-		{"no bucket", Request{Permission: config.PermissionReadOnly, TTLSeconds: 60}},
-		{"bad permission", Request{Bucket: "b", Permission: "admin-read-write", TTLSeconds: 60}},
-		{"zero ttl", Request{Bucket: "b", Permission: config.PermissionReadOnly}},
+		{"no bucket", Request{AccountID: "acct", Permission: config.PermissionReadOnly, TTLSeconds: 60}},
+		{"bad permission", Request{AccountID: "acct", Bucket: "b", Permission: "admin-read-write", TTLSeconds: 60}},
+		{"zero ttl", Request{AccountID: "acct", Bucket: "b", Permission: config.PermissionReadOnly}},
+		{"no account", Request{Bucket: "b", Permission: config.PermissionReadOnly, TTLSeconds: 60}},
 	}
 
 	for _, tc := range cases {
