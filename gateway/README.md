@@ -210,6 +210,19 @@ which is what lets a browser that has not signed in, and an edge cache
 that holds no cookie, fetch them. [docs/reference.md](docs/reference.md#gateway-routes)
 has every input.
 
+## Consumers
+
+- **truvity/gitops**: charts `gateway-fleet`, `gateway-groups`, `gateway-policies`
+- **opwerm/nexus**: charts `gateway-fleet`, `gateway-policies`
+
+## Neighbours
+
+**gateway ↔ cloudflare ↔ tailscale:** three layers of one exposure path.
+Cloudflare's tunnel carries public traffic to the estate's origin; that
+origin is a gateway exposure (ClusterIP behind the tunnel). Tailscale routes
+whole CIDRs for private access: gateway's private exposure and tailscale's
+Service-CIDR route are the two ways to reach a private service.
+
 ## Documentation
 
 - [docs/adoption.md](docs/adoption.md) — prerequisites, install order, the
@@ -230,7 +243,7 @@ repository. `hack/leak-canary.sh` enforces this in CI, and public history
 cannot be unpublished — so the rule is mechanical, not remembered.
 
 This repository follows the shared
-[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
+[component contract](https://github.com/truvity/policy/blob/master/docs/contracts/component.md).
 
 ## Status
 
