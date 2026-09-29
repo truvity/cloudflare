@@ -24,12 +24,29 @@
     "account": {
       "type": "object",
       "additionalProperties": false,
+      "description": "id/idSecretKey and parentTokenId/parentTokenIdSecretKey are each an exactly-one-of pair: a plain value, or a key in the parentTokenSecretName Secret — never both, never neither.",
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "parentTokenId": { "type": "string", "minLength": 1 },
+        "id": { "type": "string" },
+        "idSecretKey": { "type": "string" },
+        "parentTokenId": { "type": "string" },
+        "parentTokenIdSecretKey": { "type": "string" },
         "parentTokenSecretName": { "type": "string", "minLength": 1 },
         "parentTokenSecretKey": { "type": "string", "minLength": 1 }
-      }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            { "properties": { "id": { "minLength": 1 }, "idSecretKey": { "maxLength": 0 } } },
+            { "properties": { "id": { "maxLength": 0 }, "idSecretKey": { "minLength": 1 } } }
+          ]
+        },
+        {
+          "oneOf": [
+            { "properties": { "parentTokenId": { "minLength": 1 }, "parentTokenIdSecretKey": { "maxLength": 0 } } },
+            { "properties": { "parentTokenId": { "maxLength": 0 }, "parentTokenIdSecretKey": { "minLength": 1 } } }
+          ]
+        }
+      ]
     },
     "minting": {
       "type": "object",

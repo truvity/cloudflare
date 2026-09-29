@@ -637,9 +637,13 @@ each other:
 | `issuer` | yes | the OIDC issuer this broker trusts; no default |
 | `audience` | yes | required in a token's `aud` claim |
 | `groupsClaim` | yes | the claim carrying the token's group list |
-| `account.id` | yes | the Cloudflare account id |
-| `account.parentTokenId` | yes | the parent API token's own id (`developers.cloudflare.com/r2/api/s3/tokens/`'s "Access Key ID"); not sensitive |
+| `account.id` / `account.idFile` | exactly one | the Cloudflare account id, or a path to a file holding it |
+| `account.parentTokenId` / `account.parentTokenIdFile` | exactly one | the parent API token's own id (`developers.cloudflare.com/r2/api/s3/tokens/`'s "Access Key ID"), or a path to a file holding it; not sensitive |
 | `account.parentTokenFile` / `account.parentTokenEnv` | exactly one | where the parent token's *value* comes from; never an inline value |
+
+`idFile` and `parentTokenIdFile` are trimmed of exactly one trailing
+newline; any other whitespace (leading, embedded, or a second trailing
+newline) fails the load rather than being silently stripped.
 | `minting.mode` | no (`local`) | `local` signs credentials itself with an automatic `api` fallback on error; `api` calls Cloudflare's temporary-credentials endpoint for every mint |
 | `grants` | no (`[]`) | group-only rows: `group`, `bucket`, `prefixes` (a list), `permission`, `ttlSeconds` — never a repository, ref or event field |
 
@@ -671,8 +675,9 @@ Content-Type: application/json
 | `replicas` | `2` | |
 | `image.repository` | `ghcr.io/truvity/cloudflare/r2broker` | ko names the image after `cmd/r2broker`'s directory — one word, unlike the chart's own hyphenated name |
 | `issuer`, `audience`, `groupsClaim` | placeholders | every real install overrides `issuer`; `hack/leak-canary.sh` is why the default is `https://issuer.example.com`, not empty |
-| `account.id`, `account.parentTokenId` | placeholders | plain config, not secret |
-| `account.parentTokenSecretName` / `parentTokenSecretKey` | `r2-broker-parent-token` / `token` | the Secret holding the parent token's *value* — created by whatever already owns secrets in your estate, mounted read-only, never created by this chart |
+| `account.id`, `account.parentTokenId` | placeholders | plain config, not secret; each has a `*SecretKey` alternative below |
+| `account.idSecretKey` / `account.parentTokenIdSecretKey` | `""` / `""` | set instead of `account.id` / `account.parentTokenId` (blank that one out) to read it from the SAME Secret as the parent token's value — a key name, mounted read-only and passed to the broker as `idFile` / `parentTokenIdFile`; `values.schema.json` refuses a values file where both or neither of a pair is set |
+| `account.parentTokenSecretName` / `parentTokenSecretKey` | `r2-broker-parent-token` / `token` | the Secret holding the parent token's *value* — created by whatever already owns secrets in your estate, mounted read-only, never created by this chart; also the Secret `idSecretKey` / `parentTokenIdSecretKey` read from, when set |
 | `minting.mode` | `local` | |
 | `grants` | `[]` | safe default: verifies and refuses everything |
 | `service.port` | `8080` | |

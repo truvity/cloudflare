@@ -110,6 +110,16 @@ spec:
                 # name, so the broker's config (parentTokenFile) never
                 # has to know what the estate happened to call it.
                 path: token
+              {{- if .Values.account.idSecretKey }}
+              - key: {{ .Values.account.idSecretKey }}
+                # Matches configmap.yaml's account.idFile.
+                path: account-id
+              {{- end }}
+              {{- if .Values.account.parentTokenIdSecretKey }}
+              - key: {{ .Values.account.parentTokenIdSecretKey }}
+                # Matches configmap.yaml's account.parentTokenIdFile.
+                path: parent-token-id
+              {{- end }}
         {{- if .Values.audit.receiverUrl }}
         # No Secret: the broker needs no audit credential of its own
         # (design §2.8), matching every other application on the shared
