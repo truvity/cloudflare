@@ -5,6 +5,11 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v2.7.1
+
+- OpenTelemetry exporters bumped to the current stable line (`otlploggrpc` v0.22.0, `otlptrace` v1.46.0); govulncheck reports no reachable vulnerability.
+- `doc.go` lists every package, command and chart, including `pkg/r2`, `pkg/cfnames`, `cmd/r2broker` and `charts/r2-broker`; README follows the component contract's heading order with `Consumers` and `Neighbours` (gateway and tailscale as the other layers of the exposure path) and pins the install example.
+
 ## v2.7.0
 
 - **`charts/r2-broker`: `account.id` and `account.parentTokenId` can each
