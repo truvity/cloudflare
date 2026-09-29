@@ -1,8 +1,19 @@
 # Changelog
 
-What changed for a consumer, per version, newest first. A version with no
-heading here is a patch cut automatically for dependency bumps alone; its
-GitHub Release lists them. Every chart is released at every version.
+What changed for a consumer, per version, newest first. Every tag has a
+heading; one whose only change was a dependency or CI-pin bump says so and
+points at the GitHub Release for the commit list. Every chart is released
+at every version.
+
+## v1.5.3
+
+Dependency and CI-pin bumps only — nothing a consumer's render moves for.
+See the GitHub Release for the commit list.
+
+## v1.5.2
+
+Dependency and CI-pin bumps only — nothing a consumer's render moves for.
+See the GitHub Release for the commit list.
 
 ## v1.5.1
 
