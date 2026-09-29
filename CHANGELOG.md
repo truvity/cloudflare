@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.7.0
 
 - **`charts/r2-broker`: `account.id` and `account.parentTokenId` can each
   come from the same Secret as the parent token's value, not just a
