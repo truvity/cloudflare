@@ -246,7 +246,7 @@ Who uses this repository, and through which surface:
 | Consumer | Surface |
 | --- | --- |
 | truvity/gitops | Go `pkg/account`, `pkg/tunnel`, `pkg/zone` (v2); chart `cloudflared` |
-| opwerm/nexus | Go `pkg/tunnel`; chart `cloudflared` |
+| A second, non-AWS estate | Go `pkg/tunnel`; chart `cloudflared` |
 
 `cmd/r2broker` and `charts/r2-broker` also live in this repository, but
 they have no consumer of their own listed here: their callers are
