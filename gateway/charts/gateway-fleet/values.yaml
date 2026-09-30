@@ -186,3 +186,68 @@ exposures: {}
 #          control-plane: envoy-gateway
 #        port: 18000
 #      egress: []
+
+# ---------------------------------------------------------------------------
+# Metrics: scraping the fleet. Off by default, so an existing render is
+# unchanged.
+# ---------------------------------------------------------------------------
+metrics:
+  podMonitor:
+    # Render PodMonitors (monitoring.coreos.com/v1) for the proxies and the
+    # controller. The CRD must exist; the chart does not check.
+    enabled: false
+    interval: ""                   # empty: the scraper's own default
+    labels: {}                     # on every PodMonitor, e.g. a selector label
+    annotations: {}                # merged over commonAnnotations
+
+    proxy:
+      enabled: true
+      name: envoy-proxy
+      port: metrics                # the proxy's stats port (19001)
+      path: /stats/prometheus
+      # Envoy exports a stat family per upstream cluster, and a merged
+      # fleet has one cluster per routed backend, so an unfiltered scrape
+      # is the largest on an estate. These are the families read by Envoy
+      # Gateway's own dashboards (envoy-proxy-global and envoy-clusters,
+      # gateway v1.9.2). Each entry is a regex over the whole metric name;
+      # the entries are joined into one `keep` rule. An EMPTY list keeps
+      # every series. Setting the key replaces this list, it does not extend it.
+      keep:
+        - envoy_cluster_upstream_rq_(xx|total|time_(bucket|sum|count))
+        - envoy_cluster_membership_(total|healthy|excluded|degraded)
+        - envoy_cluster_upstream_cx_(total|active|tx_bytes_total|rx_bytes_total)
+        - envoy_cluster_outlier_detection_ejections_active
+        - envoy_http_downstream_rq_(total|xx|time_(bucket|sum|count))
+        - envoy_http_downstream_cx_(total|tx_bytes_total|rx_bytes_total)
+        - envoy_listener_(downstream_cx_active|ssl_certificate_expiration_unix_time_seconds)
+        - envoy_tcp_downstream_cx_(total|tx_bytes_total|rx_bytes_total)
+        - envoy_tls_certificate_.*
+        - envoy_server_(uptime|memory_heap_size|memory_allocated|live)
+      # Further rules, appended after the keep rule, verbatim. Each MUST
+      # write `action` (the render fails otherwise).
+      metricRelabelings: []
+
+    # The Envoy Gateway controller, installed by upstream's chart. The
+    # defaults are that chart's own namespace, labels and metrics port.
+    controller:
+      enabled: true
+      name: envoy-gateway
+      namespace: envoy-gateway-system
+      port: metrics
+      path: /metrics
+      selector:
+        control-plane: envoy-gateway
+        app.kubernetes.io/instance: envoy-gateway
+
+  # An ingress row on every exposure NetworkPolicy (networkPolicy.enabled)
+  # admitting the scraper to the proxies' stats port. Empty: no row. The
+  # controller's own policy is not this chart's.
+  networkPolicy:
+    from: []
+    #  - namespaceSelector:
+    #      matchLabels:
+    #        kubernetes.io/metadata.name: monitoring
+    #    podSelector:
+    #      matchLabels:
+    #        app.kubernetes.io/name: vmagent
+    port: 19001

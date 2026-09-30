@@ -15,6 +15,36 @@ types: an unknown key fails the render.
 | `classes` | `{}` | one GatewayClass and one EnvoyProxy per entry |
 | `exposures` | `{}` | one Gateway per entry |
 
+### `metrics`
+
+Off by default: an existing render does not change.
+
+| Value | Default | Notes |
+|---|---|---|
+| `metrics.podMonitor.enabled` | `false` | renders `monitoring.coreos.com/v1` PodMonitors; the CRD must exist |
+| `metrics.podMonitor.interval` | `""` | empty: the scraper's own default |
+| `metrics.podMonitor.labels` | `{}` | on every PodMonitor, for a scraper that selects by label |
+| `metrics.podMonitor.annotations` | `{}` | merged over `commonAnnotations` |
+| `metrics.podMonitor.proxy.enabled` | `true` | one PodMonitor per namespace that holds a proxy (each enabled class's namespace, and the namespace of an exposure with a proxy of its own) |
+| `metrics.podMonitor.proxy.name` | `envoy-proxy` | |
+| `metrics.podMonitor.proxy.port`, `.path` | `metrics`, `/stats/prometheus` | the proxy's stats port (19001) |
+| `metrics.podMonitor.proxy.keep` | the families Envoy Gateway's own dashboards read | regexes over the whole metric name, joined into one `keep` rule. **`[]` keeps every series** and renders no rule. Setting the key replaces the list |
+| `metrics.podMonitor.proxy.metricRelabelings` | `[]` | further rules, appended after the keep rule, verbatim. Each must write `action`; the render fails otherwise |
+| `metrics.podMonitor.controller.enabled` | `true` | the controller is upstream's chart; this chart only scrapes it |
+| `metrics.podMonitor.controller.name`, `.namespace` | `envoy-gateway`, `envoy-gateway-system` | |
+| `metrics.podMonitor.controller.port`, `.path` | `metrics`, `/metrics` | |
+| `metrics.podMonitor.controller.selector` | `control-plane: envoy-gateway`, `app.kubernetes.io/instance: envoy-gateway` | |
+| `metrics.networkPolicy.from` | `[]` | NetworkPolicy peers; each exposure NetworkPolicy (`networkPolicy.enabled`) gains one ingress row for them, last. Empty: no row. The controller's own policy is not this chart's |
+| `metrics.networkPolicy.port` | `19001` | |
+
+The default `keep` list exists because Envoy exports a stat family per
+upstream cluster and a merged fleet has one cluster per routed backend:
+unfiltered, the proxies are the largest scrape on an estate. The list is
+checked against the dashboards `envoy-proxy-global.json` and
+`envoy-clusters.json` of Envoy Gateway v1.9.2. Every rule carries `action`
+explicitly: the prometheus-operator CRD defaults it, but the
+VictoriaMetrics operator's conversion should not have to.
+
 ### `classes.<name>`
 
 | Value | Default | Notes |

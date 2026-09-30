@@ -23,6 +23,54 @@
     "exposures": {
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/exposure" }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "podMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": "string" },
+            "labels": { "$ref": "#/definitions/stringMap" },
+            "annotations": { "$ref": "#/definitions/stringMap" },
+            "proxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "name": { "type": "string", "minLength": 1 },
+                "port": { "type": "string", "minLength": 1 },
+                "path": { "type": "string", "minLength": 1 },
+                "keep": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "metricRelabelings": { "type": "array", "items": { "type": "object" } }
+              }
+            },
+            "controller": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "name": { "type": "string", "minLength": 1 },
+                "namespace": { "type": "string", "minLength": 1 },
+                "port": { "type": "string", "minLength": 1 },
+                "path": { "type": "string", "minLength": 1 },
+                "selector": { "$ref": "#/definitions/stringMap" }
+              }
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "array", "items": { "type": "object" } },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        }
+      }
     }
   },
   "definitions": {
