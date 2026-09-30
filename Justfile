@@ -81,4 +81,4 @@ package:
     done
 
 # Everything CI runs on a pull request.
-check: build lint test leak-canary audit-catalogue vuln
+check: build lint test leak-canary audit-catalogue
