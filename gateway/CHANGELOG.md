@@ -5,6 +5,24 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.6.0
+
+- **`gateway-fleet`: `metrics.podMonitor`**, off by default (an existing
+  render is byte-identical). With `enabled: true` the chart renders a
+  PodMonitor for the proxies (`/stats/prometheus`, one per namespace that
+  holds a proxy) and one for the Envoy Gateway controller (`/metrics`;
+  `controller.enabled: false` drops it). The proxy scrape keeps only the
+  families Envoy Gateway's own dashboards read (`proxy.keep`; `[]` keeps
+  everything; setting it replaces the list), then any `proxy.metricRelabelings`
+  of your own. `interval` and `labels` apply to every monitor. Every relabel
+  rule writes `action`, and a rule of yours without one is refused.
+- **`gateway-fleet`: `metrics.networkPolicy.from`**. The peers named there
+  get one ingress row, last, on every exposure NetworkPolicy, for the
+  proxies' stats port (`metrics.networkPolicy.port`, 19001). Empty renders
+  no row.
+- Test cases `gateway-fleet/metrics` and `gateway-fleet/metrics-keep-all`,
+  and two negative fixtures.
+
 ## v1.5.3
 
 Dependency and CI-pin bumps only — nothing a consumer's render moves for.

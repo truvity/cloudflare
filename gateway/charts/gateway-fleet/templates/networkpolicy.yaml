@@ -25,7 +25,12 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  {{- with $np.ingress }}
+  {{- /* The metrics scraper's row goes last, after the estate's own rules. */}}
+  {{- $ingress := $np.ingress | default list }}
+  {{- with $.Values.metrics.networkPolicy.from }}
+  {{- $ingress = append $ingress (dict "from" . "ports" (list (dict "port" $.Values.metrics.networkPolicy.port "protocol" "TCP"))) }}
+  {{- end }}
+  {{- with $ingress }}
   ingress:
     {{- toYaml . | nindent 4 }}
   {{- end }}

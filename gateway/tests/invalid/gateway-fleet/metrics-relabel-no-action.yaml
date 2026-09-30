@@ -1,0 +1,12 @@
+# The prometheus-operator CRD defaults `action`; a converter may not. A
+# rule that leaves it out is refused rather than left to the converter.
+classes:
+  internal:
+    mergeGateways: true
+metrics:
+  podMonitor:
+    enabled: true
+    proxy:
+      metricRelabelings:
+        - regex: envoy_response_code_class
+          sourceLabels: [__name__]

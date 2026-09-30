@@ -1,0 +1,4 @@
+# A typo under metrics must fail the render, not switch nothing on.
+metrics:
+  podMonitor:
+    enable: true

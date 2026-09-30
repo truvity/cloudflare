@@ -351,3 +351,24 @@ A dict is a reference, so the registry accumulates across one render.
 {{- end -}}
 {{- $_ := set .registry $key .by -}}
 {{- end -}}
+
+{{/*
+The metricRelabelings of the proxy PodMonitor: the keep rule built from the
+keep list (none when the list is empty), then the estate's own rules. Every
+rule must write `action`: the prometheus-operator CRD defaults it, a
+converter may not.
+*/}}
+{{- define "gateway.podMonitor.rules" -}}
+{{- /* .keep: list of regexes, .extra: verbatim relabel rules. */ -}}
+{{- $rules := list -}}
+{{- if .keep -}}
+{{- $rules = append $rules (dict "action" "keep" "sourceLabels" (list "__name__") "regex" (join "|" .keep)) -}}
+{{- end -}}
+{{- range $i, $r := .extra -}}
+{{- if not (hasKey $r "action") -}}
+{{- fail (printf "metrics.podMonitor.proxy.metricRelabelings[%d]: every rule must write `action` explicitly" $i) -}}
+{{- end -}}
+{{- $rules = append $rules $r -}}
+{{- end -}}
+{{- toYaml $rules -}}
+{{- end -}}

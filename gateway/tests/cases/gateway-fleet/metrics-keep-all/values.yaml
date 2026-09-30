@@ -1,0 +1,14 @@
+# An empty keep list keeps every series: no relabel rule is rendered. The
+# controller monitor is switched off, and the NetworkPolicy row stays off
+# because no scraper is named.
+classes:
+  internal:
+    mergeGateways: true
+
+metrics:
+  podMonitor:
+    enabled: true
+    proxy:
+      keep: []
+    controller:
+      enabled: false

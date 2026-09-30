@@ -1,0 +1,89 @@
+{{- /*
+PodMonitors for the Envoy Gateway fleet, behind metrics.podMonitor.enabled.
+
+  proxy       every proxy Envoy Gateway provisions, on its stats port. One
+              object per namespace that holds a proxy: the enabled classes'
+              namespaces, and the namespace of an exposure with a proxy of
+              its own. The default `keep` list is applied to the scrape.
+  controller  the Envoy Gateway controller (upstream's chart installs it;
+              this chart only scrapes it). Off with controller.enabled.
+
+PodMonitor is the prometheus-operator kind; the VictoriaMetrics operator
+converts it. Every relabel rule therefore writes `action` out: the
+prometheus-operator CRD defaults it to `replace`, a converter may not.
+*/ -}}
+{{- $pm := .Values.metrics.podMonitor }}
+{{- if $pm.enabled }}
+{{- if $pm.proxy.enabled }}
+{{- $namespaces := dict }}
+{{- range $name, $spec := .Values.classes }}
+{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if and $c.enabled $c.proxy.enabled }}{{- $_ := set $namespaces $c.namespace true }}{{- end }}
+{{- end }}
+{{- range $name, $spec := .Values.exposures }}
+{{- $raw := $spec | default dict }}
+{{- $c := include "gateway.class.resolve" (dict "name" $raw.class "spec" (get $.Values.classes ($raw.class | default ""))) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- if and $e.enabled $c.enabled (include "gateway.exposure.ownProxy" (dict "class" $c "exposure" $e)) }}{{- $_ := set $namespaces $e.namespace true }}{{- end }}
+{{- end }}
+{{- range $ns := keys $namespaces | sortAlpha }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $pm.proxy.name }}
+  namespace: {{ $ns }}
+  {{- with $pm.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $pm.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: envoy
+      app.kubernetes.io/component: proxy
+      app.kubernetes.io/managed-by: envoy-gateway
+  podMetricsEndpoints:
+    - port: {{ $pm.proxy.port }}
+      path: {{ $pm.proxy.path }}
+      {{- with $pm.interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with include "gateway.podMonitor.rules" (dict "keep" $pm.proxy.keep "extra" $pm.proxy.metricRelabelings) | fromYamlArray }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}
+
+{{- if $pm.controller.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $pm.controller.name }}
+  namespace: {{ $pm.controller.namespace }}
+  {{- with $pm.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $pm.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- toYaml $pm.controller.selector | nindent 6 }}
+  podMetricsEndpoints:
+    - port: {{ $pm.controller.port }}
+      path: {{ $pm.controller.path }}
+      {{- with $pm.interval }}
+      interval: {{ . }}
+      {{- end }}
+{{- end }}
+{{- end }}
