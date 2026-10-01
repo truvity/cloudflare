@@ -270,12 +270,13 @@ secret store, a chart, a Pulumi export) is the caller's job.
 
 ### Role presets
 
-Three optional functions build a `[]ChildTokenPolicy` for a common child
+Four optional functions build a `[]ChildTokenPolicy` for a common child
 role, using the exact live Cloudflare permission-group names documented
 above — nothing broader, nothing hidden:
 
 ```go
 func EdgePolicies(zoneIDs ...string) []ChildTokenPolicy
+func EdgePoliciesWithWAF(wafZoneIDs []string, zoneIDs ...string) []ChildTokenPolicy
 func R2AdminPolicies() []ChildTokenPolicy
 func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 ```
@@ -283,6 +284,7 @@ func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 | Preset | Grants |
 | --- | --- |
 | `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write` and `Cache Settings Write` on each zone in `zoneIDs` — a stack that manages zones (`pkg/zone`) and runs a tunnel (`pkg/tunnel`) |
+| `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` | Everything `EdgePolicies(zoneIDs...)` grants, plus one policy per zone in `wafZoneIDs` granting only `Zone WAF Write` there — what `pkg/zone`'s `Args.TrustedClients` needs. Opt-in: an empty `wafZoneIDs` returns `EdgePolicies` unchanged. `wafZoneIDs` is independent of `zoneIDs`; list a zone in both when the token also manages it |
 | `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`pkg/r2`, called with `Config.Token.Enabled: false`) |
 | `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `pkg/r2`'s deprecated `Config.Token` (see [pkg/r2](#pkgr2)) |
 
@@ -402,8 +404,10 @@ lists empty manages no ruleset at all; one empty and the other not is
 refused, because the rule would match nothing.
 
 **Token permission.** Writing the ruleset needs `Zone WAF Write` on the
-zone. `EdgePolicies` does not include it; add it to the policies of the
-token that applies the zone.
+zone. `EdgePolicies` does not include it; use
+`account.EdgePoliciesWithWAF([]string{zoneID}, zoneID)` (the preset's WAF
+option, which appends one `Zone WAF Write` policy per listed zone) for the
+token that applies the zone, for example the zone ID of `example.com`.
 
 **A zone has one entry point ruleset per phase.** A zone that declares
 `trustedClients` owns the whole `http_request_firewall_custom` phase: custom

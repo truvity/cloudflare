@@ -5,6 +5,15 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`account`: `EdgePoliciesWithWAF`, the edge preset with an opt-in WAF
+  grant.** `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` returns exactly
+  what `EdgePolicies(zoneIDs...)` returns, plus one zone-scoped policy per
+  zone in `wafZoneIDs` granting `Zone WAF Write`, the permission
+  `zone.Args.TrustedClients` needs. `EdgePolicies` itself is unchanged, and
+  an empty `wafZoneIDs` gives identical output. See `docs/reference.md`.
+
 ## v2.8.0
 
 - **`zone`: `TrustedClients`, one skip rule for known client ranges.** A new
