@@ -1,0 +1,21 @@
+# A repeated header is a mistake.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+
+clientTraffic:
+  earlyRequestHeaders:
+    remove:
+      - x-auth-request-email
+      - x-auth-request-email

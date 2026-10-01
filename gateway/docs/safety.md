@@ -219,6 +219,17 @@ are a conflict the controller resolves by age, not by intent. A
 listener-level policy (`tlsPolicies` with a `sectionName`) is more specific
 and wins for its listener without an opt-out.
 
+### A claim header the client can also send
+
+`claimToHeaders` ADDS the header; it does not overwrite one the request
+already carries. A client that sends the same header leaves its own value
+first, and a backend that reads the first value is told whatever the client
+chose. Name every such header in `gateway-fleet`'s
+`clientTraffic.earlyRequestHeaders.remove`: it is removed from the request
+before any filter, so the only copy left is the one the gateway sets from
+the verified token. A listener-level policy replaces the Gateway-level one
+for its listener, so keep claim headers off listeners that carry one.
+
 ### `mode: off` is not the string "off"
 
 In YAML 1.1, which Helm reads, an unquoted `off` (like `no`, `yes`, `on`)

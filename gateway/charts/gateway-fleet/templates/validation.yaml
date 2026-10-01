@@ -20,6 +20,19 @@ registries built across the whole release.
 {{- end }}
 {{- end }}
 
+{{- /* Headers removed before any filter. A pseudo-header or one of the
+       connection-framing and credential headers cannot go: stripping it
+       breaks every request rather than closing a gap. */ -}}
+{{- $earlyRemove := .Values.clientTraffic.earlyRequestHeaders.remove | default list -}}
+{{- range $h := $earlyRemove }}
+{{- if hasPrefix ":" $h }}
+{{- fail (printf "clientTraffic.earlyRequestHeaders.remove: %q is a pseudo-header; removing it would break every request" $h) }}
+{{- end }}
+{{- if has $h (list "host" "content-length" "transfer-encoding" "connection" "keep-alive" "upgrade" "te" "trailer" "cookie" "authorization" "proxy-authorization") }}
+{{- fail (printf "clientTraffic.earlyRequestHeaders.remove: %q is a connection-framing or credential header; removing it before the filters would break traffic or authentication" $h) }}
+{{- end }}
+{{- end }}
+
 {{- /* Registries: identity → first claimant, for every kind this chart owns. */ -}}
 {{- $objects := dict -}}
 {{- $services := dict -}}
@@ -110,6 +123,9 @@ registries built across the whole release.
 {{- if and (eq $e.health.protocol "HTTPS") $e.health.certificate.enabled }}
 {{- include "gateway.claim" (dict "registry" $objects "kind" "Certificate" "namespace" $e.namespace "name" $e.health.certificate.name "by" $by) }}
 {{- include "gateway.claim" (dict "registry" $claim "kind" "Secret" "namespace" $e.namespace "name" $e.health.tls.secretName "by" $by) }}
+{{- end }}
+{{- if and $earlyRemove (not $e.clientTrafficPolicy.enabled) }}
+{{- fail (printf "exposures.%s: clientTraffic.earlyRequestHeaders.remove is set but clientTrafficPolicy.enabled is false — this exposure's client copies of those headers would not be removed" $name) }}
 {{- end }}
 {{- if $e.clientTrafficPolicy.enabled }}
 {{- include "gateway.claim" (dict "registry" $objects "kind" "ClientTrafficPolicy" "namespace" $e.namespace "name" $e.clientTrafficPolicy.name "by" $by) }}

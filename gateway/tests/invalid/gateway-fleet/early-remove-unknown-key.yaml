@@ -1,0 +1,20 @@
+# A typo under clientTraffic must fail the render.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+
+clientTraffic:
+  earlyRequestHeader:
+    remove:
+      - x-a
