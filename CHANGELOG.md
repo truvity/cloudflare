@@ -5,6 +5,20 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`zone`: `TrustedClients`, one skip rule for known client ranges.** A new
+  optional `Args.TrustedClients` (`trustedClients`: `zone`, `hosts`,
+  `ranges`, `description`) creates one zone Ruleset child,
+  `firewall-custom-<name>`, in the `http_request_firewall_custom` phase with
+  one `skip` rule: a request to one of the hosts from an address in one of
+  the ranges skips the remaining custom rules, managed rules, rate
+  limiting, Super Bot Fight Mode and the legacy security products. Hosts
+  must be lower-case exact names inside the zone; ranges must be CIDR
+  blocks with no host bits, no shorter than /8 (IPv4) or /16 (IPv6). Both
+  lists empty manages no ruleset. The token needs `Zone WAF Write` on the
+  zone, which `EdgePolicies` does not grant. See `docs/reference.md`.
+
 ## v2.7.2
 
 - **`r2broker`: locally signed credentials are ones R2 accepts.** The local

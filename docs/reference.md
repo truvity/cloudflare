@@ -315,6 +315,11 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 		Hosts:                   []string{"app.example", "*.tenants.example"},
 		RespectOriginBrowserTTL: true,
 	},
+	TrustedClients: &zone.TrustedClients{
+		Zone:   "example.com",
+		Hosts:  []string{"api.example.com"},
+		Ranges: []string{"192.0.2.0/24"},
+	},
 }, acct.Use())
 ```
 
@@ -327,6 +332,7 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 | `MinTLSVersion` | `minTlsVersion` | `1.0`, `1.1`, `1.2`, `1.3` | the zone setting `min_tls_version`: the lowest version a browser may negotiate |
 | `TotalTLS` | `totalTls` | see below | Total TLS: a certificate per proxied hostname |
 | `Cache` | `cache` | see below | the zone's cache rules: which hostnames may be cached at all |
+| `TrustedClients` | `trustedClients` | see below | one rule that skips the security features for known client ranges on named hosts |
 
 `TotalTLS`:
 
@@ -370,12 +376,49 @@ cache rules when this is first applied, adopt them with `pulumi import`
 onto the child name below, or delete them first — Cloudflare will
 otherwise refuse a second entry point ruleset for the phase.
 
+`TrustedClients`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `Zone` | `zone` | the zone's lower-case domain (`example.com`); required when hosts are set |
+| `Hosts` | `hosts` | exact lower-case hostnames, the zone itself or a name inside it. No wildcards |
+| `Ranges` | `ranges` | CIDR blocks, IPv4 or IPv6, no host bits set; shorter than /8 (IPv4) or /16 (IPv6) is refused as too broad |
+| `Description` | `description` | the rule's description; empty uses `Trusted clients: skip security features` |
+
+One zone custom-firewall rule with action `skip`, logging on, and the
+expression `(http.host in {...}) and (ip.src in {...})` (both sets sorted,
+so authoring order never changes the plan). A matching request skips the
+remaining custom rules (`ruleset: current`), the phases
+`http_ratelimit`, `http_request_firewall_managed` and
+`http_request_sbfm` (rate limiting, managed rules, Super Bot Fight Mode),
+and the legacy products `bic`, `hot`, `rateLimit`, `securityLevel`,
+`uaBlock`, `waf` and `zoneLockdown`.
+
+It exists for a machine-to-machine caller whose egress is known and
+published (for example the address range a connector platform calls from):
+the caller then never meets a challenge a later rule might introduce. It is
+insurance for a known caller, not a way around a rule that blocks it. Both
+lists empty manages no ruleset at all; one empty and the other not is
+refused, because the rule would match nothing.
+
+**Token permission.** Writing the ruleset needs `Zone WAF Write` on the
+zone. `EdgePolicies` does not include it; add it to the policies of the
+token that applies the zone.
+
+**A zone has one entry point ruleset per phase.** A zone that declares
+`trustedClients` owns the whole `http_request_firewall_custom` phase: custom
+rules added in the dashboard are replaced, not merged. This library manages
+no other rule in that phase, so it composes with `cache` (a different
+phase). A zone that already has custom firewall rules must adopt them with
+`pulumi import` onto the child name below, or delete them first, because
+Cloudflare refuses a second entry point ruleset for the phase.
+
 ### Outputs and names
 
 | | |
 | --- | --- |
 | `Zone.ZoneID` | the zone id, as an output |
-| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>` (`cloudflare.Ruleset`), each only when its field is set |
+| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>` and `firewall-custom-<name>` (`cloudflare.Ruleset`), each only when its field is set |
 
 ## pkg/tunnel
 
