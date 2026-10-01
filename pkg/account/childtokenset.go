@@ -114,6 +114,28 @@ func EdgePolicies(zoneIDs ...string) []ChildTokenPolicy {
 	return policies
 }
 
+// EdgePoliciesWithWAF is EdgePolicies plus the "Zone WAF Write" grant
+// that pkg/zone's Args.TrustedClients needs to write its custom-firewall
+// ruleset. It returns exactly what EdgePolicies(zoneIDs...) returns, then
+// appends one more ZoneScope policy per entry of wafZoneIDs, in order,
+// each granting only "Zone WAF Write" on that zone. wafZoneIDs is
+// independent of zoneIDs (nothing is cross-checked), so list a zone in
+// both when the same token also manages its DNS, settings and cache. An
+// empty wafZoneIDs returns EdgePolicies(zoneIDs...) unchanged: the WAF
+// grant is strictly opt-in, and EdgePolicies itself never includes it.
+func EdgePoliciesWithWAF(wafZoneIDs []string, zoneIDs ...string) []ChildTokenPolicy {
+	policies := EdgePolicies(zoneIDs...)
+
+	for _, zoneID := range wafZoneIDs {
+		policies = append(policies, ChildTokenPolicy{
+			PermissionGroups: []string{"Zone WAF Write"},
+			Scope:            ZoneScope{ZoneID: zoneID},
+		})
+	}
+
+	return policies
+}
+
 // R2AdminPolicies is the policy set for an account-wide R2 administrator
 // child: create, list and configure the lifecycle of every bucket on the
 // account (Workers R2 Storage Write, WholeAccountScope). Pair it with

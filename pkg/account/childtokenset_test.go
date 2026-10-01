@@ -189,6 +189,25 @@ func TestEdgePoliciesNoZones(t *testing.T) {
 	assert.Equal(t, WholeAccountScope{}, policies[0].Scope)
 }
 
+func TestEdgePoliciesWithWAF(t *testing.T) {
+	const zoneA, zoneB = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+
+	base := EdgePolicies(zoneA, zoneB)
+
+	assert.Equal(t, base, EdgePoliciesWithWAF(nil, zoneA, zoneB), "no WAF zones: output is unchanged")
+	assert.Equal(t, base, EdgePoliciesWithWAF([]string{}, zoneA, zoneB))
+
+	got := EdgePoliciesWithWAF([]string{zoneA}, zoneA, zoneB)
+	require.Len(t, got, len(base)+1, "exactly one extra policy")
+	assert.Equal(t, base, got[:len(base)], "the edge grant itself is untouched")
+	assert.Equal(t, []string{"Zone WAF Write"}, got[len(base)].PermissionGroups)
+	assert.Equal(t, ZoneScope{ZoneID: zoneA}, got[len(base)].Scope)
+
+	two := EdgePoliciesWithWAF([]string{zoneA, zoneB}, zoneA)
+	require.Len(t, two, 4)
+	assert.Equal(t, ZoneScope{ZoneID: zoneB}, two[3].Scope)
+}
+
 func TestR2AdminPoliciesShape(t *testing.T) {
 	policies := R2AdminPolicies()
 	require.Len(t, policies, 1)
