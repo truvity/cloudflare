@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.8.0
 
 - **`zone`: `TrustedClients`, one skip rule for known client ranges.** A new
   optional `Args.TrustedClients` (`trustedClients`: `zone`, `hosts`,
