@@ -236,18 +236,18 @@ func TestValidate(t *testing.T) {
 		{"trusted clients ok", Args{ZoneID: "z", TrustedClients: validTrusted()}, ""},
 		{"empty trusted clients manages nothing", Args{ZoneID: "z", TrustedClients: &TrustedClients{}}, "nothing to apply"},
 		{"hosts without ranges", Args{ZoneID: "z", TrustedClients: &TrustedClients{Zone: "example.com", Hosts: []string{"a.example.com"}}}, "must both be non-empty"},
-		{"no zone domain", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Zone = "" })}, "trustedClients.zone"},
-		{"upper-case trusted host", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"A.example.com"} })}, "lower-case exact hostname"},
-		{"wildcard trusted host", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"*.example.com"} })}, "lower-case exact hostname"},
-		{"host outside zone", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"a.example.net"} })}, "inside example.com"},
-		{"suffix lookalike", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"badexample.com"} })}, "inside example.com"},
-		{"duplicate trusted host", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"a.example.com", "a.example.com"} })}, "listed twice"},
-		{"not a CIDR", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.1"} })}, "CIDR block"},
-		{"host bits set", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.1/24"} })}, "no host bits"},
-		{"IPv4 too broad", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"0.0.0.0/7"} })}, "too broad"},
-		{"IPv6 too broad", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"2000::/15"} })}, "too broad"},
-		{"IPv4 /8 ok", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"10.0.0.0/8"} })}, ""},
-		{"duplicate range", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.0/24", "192.0.2.0/24"} })}, "listed twice"},
+		{"no zone domain", withTrusted(func(t *TrustedClients) { t.Zone = "" }), "trustedClients.zone"},
+		{"upper-case trusted host", withTrusted(func(t *TrustedClients) { t.Hosts = []string{"A.example.com"} }), "lower-case exact hostname"},
+		{"wildcard trusted host", withTrusted(func(t *TrustedClients) { t.Hosts = []string{"*.example.com"} }), "lower-case exact hostname"},
+		{"host outside zone", withTrusted(func(t *TrustedClients) { t.Hosts = []string{"a.example.net"} }), "inside example.com"},
+		{"suffix lookalike", withTrusted(func(t *TrustedClients) { t.Hosts = []string{"badexample.com"} }), "inside example.com"},
+		{"duplicate trusted host", withTrusted(func(t *TrustedClients) { t.Hosts = []string{"a.example.com", "a.example.com"} }), "listed twice"},
+		{"not a CIDR", withTrusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.1"} }), "CIDR block"},
+		{"host bits set", withTrusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.1/24"} }), "no host bits"},
+		{"IPv4 too broad", withTrusted(func(t *TrustedClients) { t.Ranges = []string{"0.0.0.0/7"} }), "too broad"},
+		{"IPv6 too broad", withTrusted(func(t *TrustedClients) { t.Ranges = []string{"2000::/15"} }), "too broad"},
+		{"IPv4 /8 ok", withTrusted(func(t *TrustedClients) { t.Ranges = []string{"10.0.0.0/8"} }), ""},
+		{"duplicate range", withTrusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.0/24", "192.0.2.0/24"} }), "listed twice"},
 		{"cache alone is enough to manage", Args{ZoneID: "z", Cache: &Cache{}}, ""},
 	}
 
@@ -337,4 +337,8 @@ func TestTrustedClientsAndCacheUseSeparatePhases(t *testing.T) {
 	m := run(t, Args{ZoneID: "z", Cache: &Cache{Hosts: []string{"app.example.com"}}, TrustedClients: validTrusted()})
 	assert.Equal(t, "http_request_cache_settings", m.res[rulesetType+"/cache-rules-example"]["phase"].StringValue())
 	assert.Equal(t, "http_request_firewall_custom", m.res[firewallName]["phase"].StringValue())
+}
+
+func withTrusted(mutate func(*TrustedClients)) Args {
+	return Args{ZoneID: "z", TrustedClients: trusted(mutate)}
 }
