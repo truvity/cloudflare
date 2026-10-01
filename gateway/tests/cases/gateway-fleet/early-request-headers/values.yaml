@@ -1,0 +1,35 @@
+# Two exposures, each with its own ClientTrafficPolicy: the removal list
+# renders on every one of them. Names match the claimToHeaders of the
+# gateway-policies chart.
+classes:
+  internal: {}
+
+exposures:
+  public:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+  private:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: private-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+
+clientTraffic:
+  earlyRequestHeaders:
+    remove:
+      - x-auth-request-email
+      - x-auth-request-user

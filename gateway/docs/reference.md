@@ -15,6 +15,23 @@ types: an unknown key fails the render.
 | `classes` | `{}` | one GatewayClass and one EnvoyProxy per entry |
 | `exposures` | `{}` | one Gateway per entry |
 
+### `clientTraffic`
+
+| Value | Default | Notes |
+|---|---|---|
+| `clientTraffic.earlyRequestHeaders.remove` | `[]` | lowercase header names removed from every request before any HTTP filter runs, on every ClientTrafficPolicy the chart renders (`spec.headers.earlyRequestHeaders.remove`). Empty renders no `headers` block, so an existing render is unchanged. Needs `clientTrafficPolicy.enabled: true` on every enabled exposure (the render fails otherwise). Refused: pseudo-headers (`:authority`), uppercase or non-token names, duplicates, and `host`, `content-length`, `transfer-encoding`, `connection`, `keep-alive`, `upgrade`, `te`, `trailer`, `cookie`, `authorization`, `proxy-authorization` |
+
+Why it exists: the JWT filter's `claimToHeaders` (see `gateway-policies`)
+copies a verified claim into a header by ADDING it. A header the client
+already sent under that name is not replaced; it stays first, and a backend
+that reads the first value takes the client's. A signed-in user could then
+present another identity to any backend that trusts the header. Listing the
+header here removes the client's copy before the JWT filter runs. List every
+header named in any `claimToHeaders`. A listener-level ClientTrafficPolicy
+(`gateway-policies` `tlsPolicies` with a `sectionName`) replaces the
+Gateway-level one for its listener and carries no such list, so do not
+point one at a listener whose claim headers matter.
+
 ### `metrics`
 
 Off by default: an existing render does not change.
@@ -362,7 +379,7 @@ cookie key to manage.
 | `oidc.idToken.remoteJWKS.cacheDuration` | `300s` | |
 | `oidc.idToken.remoteJWKS.backendRefs` | `[]` | `{name, namespace, port}`: fetch the keys from an in-cluster Service instead of the public URL (`uri` still names the path) |
 | `oidc.idToken.remoteJWKS.backendSettings` | `{}` | as `oidc.backendSettings`, for the connection that fetches the keys. Worth stating whenever the key URI and the token endpoint share a host: Envoy Gateway names a derived cluster after host and port alone, so both collapse onto ONE cluster and the first built wins — a keepalive given only to `oidc.backendSettings` is then dropped in silence. See [safety.md](safety.md#and-stating-it-in-one-place-may-not-be-enough) |
-| `oidc.idToken.claimToHeaders` | `[]` | `{header, claim}`: set from the verified token, overwriting whatever the request carried under that name |
+| `oidc.idToken.claimToHeaders` | `[]` | `{header, claim}`: copy a claim of the verified token into a request header. The header is ADDED, not overwritten: a copy the client sent under the same name stays first, and a backend that reads the first value sees the client's. Every header named here must also be in `gateway-fleet`'s `clientTraffic.earlyRequestHeaders.remove`, which strips the client's copy before any filter runs; the two charts cannot check each other, so the rule is yours to keep |
 
 #### `jwt` — machine routes
 
@@ -376,7 +393,7 @@ cookie key to manage.
 | `jwt.remoteJWKS.backendRefs` | `[]` | as for `oidc.idToken` — the in-cluster issuer's Service |
 | `jwt.remoteJWKS.backendSettings` | `{}` | as for `oidc.idToken` — how the gateway reaches the keys, and the same cluster-name collision to watch for |
 | `jwt.extractFrom` | `{}` | `{}` is Envoy Gateway's default, `Authorization: Bearer`. Otherwise `{headers: [{name, valuePrefix}], cookies, params}` |
-| `jwt.claimToHeaders` | `[]` | |
+| `jwt.claimToHeaders` | `[]` | as for `oidc.idToken.claimToHeaders`: the header is added, so list it in `clientTraffic.earlyRequestHeaders.remove` of `gateway-fleet` |
 
 #### `authorization` — who passes
 

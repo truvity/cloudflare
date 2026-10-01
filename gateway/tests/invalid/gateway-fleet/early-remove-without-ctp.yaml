@@ -1,0 +1,18 @@
+# The list is set but this exposure renders no ClientTrafficPolicy, so its
+# headers would go unstripped in silence.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+clientTraffic:
+  earlyRequestHeaders:
+    remove:
+      - x-auth-request-email

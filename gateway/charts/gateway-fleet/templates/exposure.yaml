@@ -136,6 +136,15 @@ spec:
       caCertificateRefs:
         {{- toYaml $ctp.tls.clientValidation.caCertificateRefs | nindent 8 }}
     {{- end }}
+  {{- with $.Values.clientTraffic.earlyRequestHeaders.remove }}
+  {{- /* Envoy runs these removals before every HTTP filter, including the
+         JWT filter that copies verified claims into headers. Without them a
+         client's own copy of such a header stays first in the request. */}}
+  headers:
+    earlyRequestHeaders:
+      remove:
+        {{- toYaml . | nindent 8 }}
+  {{- end }}
 {{- end }}
 {{- if $e.health.directResponse.enabled }}
 {{- $dr := $e.health.directResponse }}

@@ -5,6 +5,26 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **Security hardening: `gateway-fleet` `clientTraffic.earlyRequestHeaders.remove`.**
+  A header the gateway sets from verified token claims
+  (`claimToHeaders`, for example `x-auth-request-email`) is added to the
+  request, not written over a copy the client sent, so a client could supply
+  the header ahead of time and a backend reading the first value would see
+  the client's. The new list, empty by default (an existing render is
+  byte-identical), renders `spec.headers.earlyRequestHeaders.remove` on every
+  ClientTrafficPolicy the chart renders, which removes those headers before
+  any HTTP filter runs. **Set it to every header named in a `claimToHeaders`.**
+  It needs `clientTrafficPolicy.enabled: true` on every enabled exposure (the
+  render fails otherwise) and refuses pseudo-headers, non-lowercase names,
+  duplicates and headers whose removal would break traffic (`host`,
+  `content-length`, `transfer-encoding`, `cookie`, `authorization`, ...).
+- Docs: `claimToHeaders` ADDS the header; the earlier wording said it
+  overwrote the client's copy, which was wrong. `gateway-policies` values and
+  docs now state the pairing rule.
+- Test case `gateway-fleet/early-request-headers` and nine negative fixtures.
+
 ## v1.6.0
 
 - **`gateway-fleet`: `metrics.podMonitor`**, off by default (an existing

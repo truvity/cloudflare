@@ -207,8 +207,12 @@ defaults:
         # silently dropped when the JWKS side is built first. State the
         # same settings on both and the collision cannot matter.
         backendSettings: {}
-      # [{header, claim}]: set from the verified token, overwriting whatever
-      # the request carried under that name.
+      # [{header, claim}]: copy a claim of the verified token into a request
+      # header. The header is ADDED: a copy the client sent under the same
+      # name stays first. Every header named here MUST also be listed in the
+      # gateway-fleet chart's clientTraffic.earlyRequestHeaders.remove, which
+      # strips the client's copy before any filter runs. The charts cannot
+      # check each other; the rule is the consumer's to keep.
       claimToHeaders: []
 
   # Bearer tokens, for machine routes: every request must carry a token the
@@ -227,6 +231,8 @@ defaults:
     # Authorization header with the Bearer prefix. Verbatim otherwise:
     # {headers: [{name, valuePrefix}], cookies: [...], params: [...]}
     extractFrom: {}
+    # As oidc.idToken.claimToHeaders: added, not overwritten; list each
+    # header in gateway-fleet's clientTraffic.earlyRequestHeaders.remove.
     claimToHeaders: []
 
   # Who may pass once authenticated.

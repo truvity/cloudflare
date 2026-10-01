@@ -188,6 +188,31 @@ exposures: {}
 #      egress: []
 
 # ---------------------------------------------------------------------------
+# Client traffic: request headers a client must not choose.
+# ---------------------------------------------------------------------------
+clientTraffic:
+  earlyRequestHeaders:
+    # Header names (lowercase) removed from every request before ANY HTTP
+    # filter runs, on every ClientTrafficPolicy this chart renders
+    # (ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove).
+    #
+    # Why: the JWT filter's claimToHeaders ADDS a header; it does not replace
+    # one the client sent. A client that supplies the same header ahead of
+    # time leaves its own value first, and a backend that reads the first
+    # value sees the forgery. List here every header named in any
+    # claimToHeaders of the gateway-policies chart (for example
+    # x-auth-request-email). Empty (the default) renders no `headers` block.
+    #
+    # Needs an exposure with clientTrafficPolicy.enabled: true; the render
+    # fails for an enabled exposure without one, since its headers would
+    # otherwise go unstripped in silence. Pseudo-headers and headers whose
+    # removal would break traffic (host, content-length, transfer-encoding,
+    # cookie, authorization, ...) are refused.
+    remove: []
+    #  - x-auth-request-email
+    #  - x-auth-request-user
+
+# ---------------------------------------------------------------------------
 # Metrics: scraping the fleet. Off by default, so an existing render is
 # unchanged.
 # ---------------------------------------------------------------------------
