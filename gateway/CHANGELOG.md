@@ -23,7 +23,13 @@ at every version.
 - Docs: `claimToHeaders` ADDS the header; the earlier wording said it
   overwrote the client's copy, which was wrong. `gateway-policies` values and
   docs now state the pairing rule.
-- Test case `gateway-fleet/early-request-headers` and nine negative fixtures.
+- **`gateway-fleet`: `clientTrafficPolicy.tls.enabled`** (default `true`,
+  every existing render is byte-identical). `false` renders no `tls` block,
+  so an exposure can carry a ClientTrafficPolicy holding only the header
+  removal without gaining a TLS floor. Refused together with
+  `tls.clientValidation.enabled`, and refused when the remove list is empty.
+- Test cases `gateway-fleet/early-request-headers` and
+  `gateway-fleet/early-request-headers-no-tls`, and eleven negative fixtures.
 
 ## v1.6.0
 

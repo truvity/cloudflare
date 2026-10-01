@@ -1,0 +1,36 @@
+# A headers-only ClientTrafficPolicy on an exposure that has no TLS floor of
+# its own: tls.enabled false renders no `tls` block. The second exposure
+# keeps its TLS floor next to the same removal list.
+classes:
+  internal: {}
+
+exposures:
+  public:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+      tls:
+        enabled: false
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+  private:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: private-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+
+clientTraffic:
+  earlyRequestHeaders:
+    remove:
+      - x-auth-request-email

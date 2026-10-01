@@ -161,6 +161,11 @@ exposures: {}
 #      annotations: {}
 #      labels: {}
 #      tls:
+#        # false renders no `tls` block: the policy then carries only
+#        # clientTraffic.earlyRequestHeaders.remove, and the exposure's TLS
+#        # settings stay Envoy Gateway's defaults. Needs a non-empty
+#        # remove list (an empty policy is refused).
+#        enabled: true
 #        minVersion: "1.3"
 #        maxVersion: "1.3"
 #        # Client certificates. This is what turns an exposure into one that
