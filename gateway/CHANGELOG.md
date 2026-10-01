@@ -5,7 +5,7 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
-## Unreleased
+## v1.7.0
 
 - **Security hardening: `gateway-fleet` `clientTraffic.earlyRequestHeaders.remove`.**
   A header the gateway sets from verified token claims
