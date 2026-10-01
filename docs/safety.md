@@ -89,7 +89,10 @@ exception.
 | an `ssl` other than `off`, `flexible`, `full`, `strict` | a value outside the set Cloudflare accepts, found during the apply instead of before it |
 | a `minTlsVersion` other than `1.0`, `1.1`, `1.2`, `1.3` | the same |
 | a `totalTls.certificateAuthority` other than `google`, `lets_encrypt`, `ssl_com` | the same |
-| a zone with none of `ssl`, `minTlsVersion`, `totalTls`, `cache` | a declared zone that manages nothing: it reads as managed and is not. Omit the zone instead |
+| `trustedClients` with only one of `hosts` and `ranges` | a skip rule that matches nothing |
+| a `trustedClients.hosts` entry that is upper-case, a wildcard, outside `zone`, or listed twice | a rule that is applied, reported healthy and matches nothing, or exempts a host the zone does not own |
+| a `trustedClients.ranges` entry that is not a CIDR, has host bits, or is shorter than /8 (IPv4) / /16 (IPv6) | a range that is not what was meant, or that trusts a large part of the internet |
+| a zone with none of `ssl`, `minTlsVersion`, `totalTls`, `cache`, `trustedClients` (non-empty) | a declared zone that manages nothing: it reads as managed and is not. Omit the zone instead |
 | a `cache.hosts` entry that is empty | a filter expression matching the empty name, which is no host |
 | a `cache.hosts` entry with an upper-case letter | a rule that is applied, reported healthy and matches nothing: Cloudflare compares a lower-cased host |
 | a `cache.hosts` entry containing `/`, `:`, `"`, `\` or a space | a URL or a quoted fragment pasted where a hostname goes, which would either match nothing or end the expression early |

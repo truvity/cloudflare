@@ -28,6 +28,8 @@ package zone
 
 import (
 	"fmt"
+	"net/netip"
+	"sort"
 	"strings"
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
@@ -65,6 +67,33 @@ const (
 	// Browser Cache TTL, the zone setting: 0 is Cloudflare's "Respect
 	// Existing Headers".
 	browserCacheTTLRespectHeaders = 0
+)
+
+// The trusted-clients ruleset. Same rule as the cache ruleset: a zone has
+// ONE entry point ruleset per phase, so a zone that declares trusted
+// clients owns the whole http_request_firewall_custom phase.
+const (
+	firewallPhase       = "http_request_firewall_custom"
+	firewallRulesetName = "default"
+	// skipRuleset also skips the rest of the custom ruleset itself.
+	skipRuleset = "current"
+
+	defaultTrustedDescription = "Trusted clients: skip security features"
+
+	// Shortest prefixes a trusted range may have: anything broader is
+	// close to "the internet" and defeats the rule's purpose.
+	minTrustedBitsV4 = 8
+	minTrustedBitsV6 = 16
+)
+
+// What a trusted client is exempted from, besides the rest of the custom
+// rules. Phases: rate limiting, managed rules, Super Bot Fight Mode.
+// Products: the legacy security products (browser integrity check,
+// hotlink protection, legacy rate limiting, security level, user-agent
+// rules, WAF, zone lockdown).
+var (
+	skipPhases   = []string{"http_ratelimit", "http_request_firewall_managed", "http_request_sbfm"}
+	skipProducts = []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock", "waf", "zoneLockdown"}
 )
 
 var (
@@ -124,6 +153,34 @@ type (
 		RespectOriginBrowserTTL bool `json:"respectOriginBrowserTtl,omitempty" yaml:"respectOriginBrowserTtl,omitempty"`
 	}
 
+	// TrustedClients exempts client address ranges from the zone's
+	// Cloudflare security features on named hosts: ONE zone custom-firewall
+	// rule with action `skip`. A request to one of Hosts from an address in
+	// Ranges skips the remaining custom rules, managed rules, rate
+	// limiting, Super Bot Fight Mode and the legacy security products.
+	//
+	// For a known machine-to-machine caller whose egress is published (a
+	// connector platform's address range): it keeps that caller from ever
+	// meeting a challenge a later rule might introduce. It is not a
+	// workaround for a rule that blocks it today.
+	//
+	// Both lists empty manages no ruleset at all. One empty and the other
+	// not is refused: the rule would match nothing.
+	TrustedClients struct {
+		// Zone is the zone's domain ("example.com"). Required when Hosts
+		// is not empty: every host must be the zone itself or a name
+		// inside it.
+		Zone string `json:"zone,omitempty" yaml:"zone,omitempty"`
+		// Hosts are exact lower-case hostnames inside Zone. No wildcards.
+		Hosts []string `json:"hosts" yaml:"hosts"`
+		// Ranges are CIDR blocks, IPv4 or IPv6, with no host bits set.
+		// Shorter than /8 (IPv4) or /16 (IPv6) is refused as too broad.
+		Ranges []string `json:"ranges" yaml:"ranges"`
+		// Description of the rule, shown in the dashboard and in security
+		// events. Empty uses "Trusted clients: skip security features".
+		Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	}
+
 	// Args is one zone's settings. Every field is optional: an unset
 	// field is a setting this estate does not manage.
 	Args struct {
@@ -143,6 +200,9 @@ type (
 		// Cache is which hostnames may be cached at all. Nil leaves the
 		// zone's caching as it is, extensions and all.
 		Cache *Cache `json:"cache,omitempty" yaml:"cache,omitempty"`
+		// TrustedClients is the zone's one skip rule for known client
+		// ranges. Nil, or both lists empty, manages no firewall ruleset.
+		TrustedClients *TrustedClients `json:"trustedClients,omitempty" yaml:"trustedClients,omitempty"`
 	}
 
 	// Zone is the applied settings for one zone.
@@ -191,7 +251,13 @@ func (a *Args) Validate() error {
 		}
 	}
 
-	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil {
+	if a.TrustedClients != nil {
+		if err := a.TrustedClients.validate(a.ZoneID); err != nil {
+			return err
+		}
+	}
+
+	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.managed() {
 		return fmt.Errorf("zone %q: nothing to apply — omit the zone instead of declaring one that manages no setting", a.ZoneID)
 	}
 
@@ -232,6 +298,87 @@ func (c *Cache) validate(zoneID string) error {
 	}
 
 	return nil
+}
+
+// managed reports whether the block declares a rule. Nil and an empty
+// block manage nothing.
+func (t *TrustedClients) managed() bool {
+	return t != nil && (len(t.Hosts) > 0 || len(t.Ranges) > 0)
+}
+
+// validate reports the first problem with a trusted-clients block: a rule
+// that would match nothing, or too much.
+func (t *TrustedClients) validate(zoneID string) error {
+	if !t.managed() {
+		return nil
+	}
+
+	if len(t.Hosts) == 0 || len(t.Ranges) == 0 {
+		return fmt.Errorf("zone %q: trustedClients.hosts and ranges must both be non-empty (leave both empty to manage no rule)", zoneID)
+	}
+
+	if t.Zone == "" || t.Zone != strings.ToLower(t.Zone) {
+		return fmt.Errorf("zone %q: trustedClients.zone must be the zone's lower-case domain", zoneID)
+	}
+
+	seen := map[string]struct{}{}
+
+	for i, host := range t.Hosts {
+		if host != strings.ToLower(host) || strings.ContainsAny(host, `*/:"\ `) || host == "" ||
+			(host != t.Zone && !strings.HasSuffix(host, "."+t.Zone)) {
+			return fmt.Errorf("zone %q: trustedClients.hosts[%d] %q must be a lower-case exact hostname inside %s", zoneID, i, host, t.Zone)
+		}
+
+		if _, dup := seen[host]; dup {
+			return fmt.Errorf("zone %q: trustedClients.hosts[%d] %q is listed twice", zoneID, i, host)
+		}
+
+		seen[host] = struct{}{}
+	}
+
+	seen = map[string]struct{}{}
+
+	for i, r := range t.Ranges {
+		prefix, err := netip.ParsePrefix(r)
+		if err != nil || prefix.Masked() != prefix || prefix.Addr().Is4In6() {
+			return fmt.Errorf("zone %q: trustedClients.ranges[%d] %q must be a CIDR block with no host bits set", zoneID, i, r)
+		}
+
+		if (prefix.Addr().Is4() && prefix.Bits() < minTrustedBitsV4) || (prefix.Addr().Is6() && prefix.Bits() < minTrustedBitsV6) {
+			return fmt.Errorf("zone %q: trustedClients.ranges[%d] %q is too broad to trust (shortest allowed: /%d IPv4, /%d IPv6)",
+				zoneID, i, r, minTrustedBitsV4, minTrustedBitsV6)
+		}
+
+		if _, dup := seen[r]; dup {
+			return fmt.Errorf("zone %q: trustedClients.ranges[%d] %q is listed twice", zoneID, i, r)
+		}
+
+		seen[r] = struct{}{}
+	}
+
+	return nil
+}
+
+// trustedExpression matches a request to one of the hosts from an address
+// in one of the ranges. Both sets are sorted, so the expression never
+// depends on authoring order.
+func trustedExpression(t *TrustedClients) string {
+	return fmt.Sprintf("(http.host in {%s}) and (ip.src in {%s})", sortedSet(t.Hosts, true), sortedSet(t.Ranges, false))
+}
+
+// sortedSet renders a Cloudflare set literal body: host sets take quoted
+// strings, IP sets bare addresses.
+func sortedSet(values []string, quote bool) string {
+	sorted := append([]string(nil), values...)
+	sort.Strings(sorted)
+
+	for i, v := range sorted {
+		if quote {
+			sorted[i] = fmt.Sprintf("%q", v)
+		}
+	}
+
+	return strings.Join(sorted, " ")
 }
 
 // hostExpression is the Cloudflare filter that matches the listed hosts.
@@ -308,7 +455,7 @@ func cacheRules(hosts []string) cloudflare.RulesetRuleArray {
 
 // New applies one zone's settings. Children are named "setting-<name>-ssl",
 // "setting-<name>-min-tls-version", "setting-<name>-browser-cache-ttl",
-// "total-tls-<name>" and "cache-rules-<name>", a documented contract:
+// "total-tls-<name>", "cache-rules-<name>" and "firewall-custom-<name>", a documented contract:
 // consumers alias existing resources onto these names.
 func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOption) (*Zone, error) {
 	if err := args.Validate(); err != nil {
@@ -376,6 +523,35 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 			}, child...); err != nil {
 				return nil, fmt.Errorf("zone %q: browser cache ttl: %w", name, err)
 			}
+		}
+	}
+
+	if args.TrustedClients.managed() {
+		description := args.TrustedClients.Description
+		if description == "" {
+			description = defaultTrustedDescription
+		}
+
+		if _, err := cloudflare.NewRuleset(ctx, "firewall-custom-"+name, &cloudflare.RulesetArgs{
+			ZoneId: zoneID,
+			Kind:   pulumi.String(cacheRulesetKind),
+			Phase:  pulumi.String(firewallPhase),
+			Name:   pulumi.String(firewallRulesetName),
+			Rules: cloudflare.RulesetRuleArray{
+				cloudflare.RulesetRuleArgs{
+					Action:      pulumi.String("skip"),
+					Description: pulumi.String(description),
+					Expression:  pulumi.String(trustedExpression(args.TrustedClients)),
+					ActionParameters: &cloudflare.RulesetRuleActionParametersArgs{
+						Ruleset:  pulumi.String(skipRuleset),
+						Phases:   pulumi.ToStringArray(skipPhases),
+						Products: pulumi.ToStringArray(skipProducts),
+					},
+					Logging: &cloudflare.RulesetRuleLoggingArgs{Enabled: pulumi.Bool(true)},
+				},
+			},
+		}, child...); err != nil {
+			return nil, fmt.Errorf("zone %q: trusted clients: %w", name, err)
 		}
 	}
 

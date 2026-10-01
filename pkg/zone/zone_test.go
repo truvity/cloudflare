@@ -233,6 +233,21 @@ func TestValidate(t *testing.T) {
 			Args{ZoneID: "z", Cache: &Cache{Hosts: []string{"app.example", "app.example"}}},
 			`"app.example" is listed twice`,
 		},
+		{"trusted clients ok", Args{ZoneID: "z", TrustedClients: validTrusted()}, ""},
+		{"empty trusted clients manages nothing", Args{ZoneID: "z", TrustedClients: &TrustedClients{}}, "nothing to apply"},
+		{"hosts without ranges", Args{ZoneID: "z", TrustedClients: &TrustedClients{Zone: "example.com", Hosts: []string{"a.example.com"}}}, "must both be non-empty"},
+		{"no zone domain", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Zone = "" })}, "trustedClients.zone"},
+		{"upper-case trusted host", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"A.example.com"} })}, "lower-case exact hostname"},
+		{"wildcard trusted host", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"*.example.com"} })}, "lower-case exact hostname"},
+		{"host outside zone", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"a.example.net"} })}, "inside example.com"},
+		{"suffix lookalike", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"badexample.com"} })}, "inside example.com"},
+		{"duplicate trusted host", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Hosts = []string{"a.example.com", "a.example.com"} })}, "listed twice"},
+		{"not a CIDR", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.1"} })}, "CIDR block"},
+		{"host bits set", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.1/24"} })}, "no host bits"},
+		{"IPv4 too broad", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"0.0.0.0/7"} })}, "too broad"},
+		{"IPv6 too broad", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"2000::/15"} })}, "too broad"},
+		{"IPv4 /8 ok", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"10.0.0.0/8"} })}, ""},
+		{"duplicate range", Args{ZoneID: "z", TrustedClients: trusted(func(t *TrustedClients) { t.Ranges = []string{"192.0.2.0/24", "192.0.2.0/24"} })}, "listed twice"},
 		{"cache alone is enough to manage", Args{ZoneID: "z", Cache: &Cache{}}, ""},
 	}
 
@@ -249,4 +264,77 @@ func TestValidate(t *testing.T) {
 			assert.Contains(t, err.Error(), c.want)
 		})
 	}
+}
+
+func validTrusted() *TrustedClients {
+	return &TrustedClients{
+		Zone:   "example.com",
+		Hosts:  []string{"b.example.com", "a.example.com"},
+		Ranges: []string{"198.51.100.0/24", "192.0.2.0/24", "2001:db8::/32"},
+	}
+}
+
+func trusted(mutate func(*TrustedClients)) *TrustedClients {
+	t := validTrusted()
+	mutate(t)
+
+	return t
+}
+
+const firewallName = rulesetType + "/firewall-custom-example"
+
+func TestTrustedClientsIsOneSkipRule(t *testing.T) {
+	m := run(t, Args{ZoneID: "zone-1", TrustedClients: validTrusted()})
+
+	rs, ok := m.res[firewallName]
+	require.True(t, ok, "the firewall ruleset was not registered")
+	assert.Equal(t, "http_request_firewall_custom", rs["phase"].StringValue())
+	assert.Equal(t, "zone", rs["kind"].StringValue())
+	assert.Equal(t, "default", rs["name"].StringValue())
+
+	rules := rs["rules"].ArrayValue()
+	require.Len(t, rules, 1)
+
+	rule := rules[0].ObjectValue()
+	assert.Equal(t, "skip", rule["action"].StringValue())
+	assert.Equal(t, "Trusted clients: skip security features", rule["description"].StringValue())
+	assert.Equal(t,
+		`(http.host in {"a.example.com" "b.example.com"}) and (ip.src in {192.0.2.0/24 198.51.100.0/24 2001:db8::/32})`,
+		rule["expression"].StringValue())
+	assert.True(t, rule["logging"].ObjectValue()["enabled"].BoolValue())
+
+	params := rule["actionParameters"].ObjectValue()
+	assert.Equal(t, "current", params["ruleset"].StringValue())
+
+	var phases, products []string
+	for _, v := range params["phases"].ArrayValue() {
+		phases = append(phases, v.StringValue())
+	}
+
+	for _, v := range params["products"].ArrayValue() {
+		products = append(products, v.StringValue())
+	}
+
+	assert.Equal(t, []string{"http_ratelimit", "http_request_firewall_managed", "http_request_sbfm"}, phases)
+	assert.Equal(t, []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock", "waf", "zoneLockdown"}, products)
+}
+
+func TestTrustedClientsDescription(t *testing.T) {
+	m := run(t, Args{ZoneID: "z", TrustedClients: trusted(func(c *TrustedClients) { c.Description = "Connector egress" })})
+	rule := m.res[firewallName]["rules"].ArrayValue()[0].ObjectValue()
+	assert.Equal(t, "Connector egress", rule["description"].StringValue())
+}
+
+func TestEmptyTrustedClientsRendersNoRuleset(t *testing.T) {
+	m := run(t, Args{ZoneID: "z", SSL: "full", TrustedClients: &TrustedClients{}})
+	assert.NotContains(t, m.res, firewallName)
+
+	m = run(t, Args{ZoneID: "z", SSL: "full"})
+	assert.NotContains(t, m.res, firewallName)
+}
+
+func TestTrustedClientsAndCacheUseSeparatePhases(t *testing.T) {
+	m := run(t, Args{ZoneID: "z", Cache: &Cache{Hosts: []string{"app.example.com"}}, TrustedClients: validTrusted()})
+	assert.Equal(t, "http_request_cache_settings", m.res[rulesetType+"/cache-rules-example"]["phase"].StringValue())
+	assert.Equal(t, "http_request_firewall_custom", m.res[firewallName]["phase"].StringValue())
 }
