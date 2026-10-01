@@ -1,0 +1,21 @@
+# Client validation is part of the TLS block, which is switched off.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef: {name: example-ca, kind: ClusterIssuer, group: cert-manager.io}
+
+    clientTrafficPolicy:
+      enabled: true
+      tls:
+        enabled: false
+        clientValidation:
+          enabled: true
+          caCertificateRefs: [{kind: ConfigMap, name: example-ca}]
+clientTraffic:
+  earlyRequestHeaders:
+    remove: [x-auth-request-email]

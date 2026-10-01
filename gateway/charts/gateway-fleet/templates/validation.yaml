@@ -124,6 +124,14 @@ registries built across the whole release.
 {{- include "gateway.claim" (dict "registry" $objects "kind" "Certificate" "namespace" $e.namespace "name" $e.health.certificate.name "by" $by) }}
 {{- include "gateway.claim" (dict "registry" $claim "kind" "Secret" "namespace" $e.namespace "name" $e.health.tls.secretName "by" $by) }}
 {{- end }}
+{{- if and $e.clientTrafficPolicy.enabled (not $e.clientTrafficPolicy.tls.enabled) }}
+{{- if $e.clientTrafficPolicy.tls.clientValidation.enabled }}
+{{- fail (printf "exposures.%s.clientTrafficPolicy: tls.clientValidation.enabled needs tls.enabled — the TLS block is not rendered" $name) }}
+{{- end }}
+{{- if not $earlyRemove }}
+{{- fail (printf "exposures.%s.clientTrafficPolicy has tls.enabled: false and clientTraffic.earlyRequestHeaders.remove is empty — the policy would render nothing; turn the policy off or set one of them" $name) }}
+{{- end }}
+{{- end }}
 {{- if and $earlyRemove (not $e.clientTrafficPolicy.enabled) }}
 {{- fail (printf "exposures.%s: clientTraffic.earlyRequestHeaders.remove is set but clientTrafficPolicy.enabled is false — this exposure's client copies of those headers would not be removed" $name) }}
 {{- end }}

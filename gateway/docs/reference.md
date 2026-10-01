@@ -27,7 +27,21 @@ already sent under that name is not replaced; it stays first, and a backend
 that reads the first value takes the client's. A signed-in user could then
 present another identity to any backend that trusts the header. Listing the
 header here removes the client's copy before the JWT filter runs. List every
-header named in any `claimToHeaders`. A listener-level ClientTrafficPolicy
+header named in any `claimToHeaders`. To add the removal to an exposure
+that has no TLS floor of its own, enable its `clientTrafficPolicy` with
+`tls.enabled: false`: the policy then carries only `headers`.
+
+Coverage (Envoy Gateway v1.9.1): a ClientTrafficPolicy that targets a
+Gateway applies to every listener of that Gateway, including the listeners
+that come from ListenerSets attached to it, except listeners claimed by a
+more specific policy (a `sectionName` target, or a policy targeting the
+ListenerSet). That more specific policy replaces this one for its listeners
+without merging, so it must carry its own removal. On a merged Gateway
+class, a policy per Gateway is accepted when the listeners are HTTPS (each
+has its own filter chain, and early header mutation is per filter chain). On
+a plain-HTTP port shared by listeners of two Gateways, Envoy Gateway refuses
+the policy ("applied to multiple http (non https) listeners on the same
+port"), so keep such listeners on one Gateway. A listener-level ClientTrafficPolicy
 (`gateway-policies` `tlsPolicies` with a `sectionName`) replaces the
 Gateway-level one for its listener and carries no such list, so do not
 point one at a listener whose claim headers matter.
@@ -122,6 +136,7 @@ VictoriaMetrics operator's conversion should not have to.
 | `health.directResponse.body` | `ok` | |
 | `clientTrafficPolicy.enabled` | `false` | the TLS floor for everything the exposure terminates; attached ListenerSets inherit it |
 | `clientTrafficPolicy.name` | `<gateway>-tls` | |
+| `clientTrafficPolicy.tls.enabled` | `true` | `false` renders no `tls` block, so the policy carries only `clientTraffic.earlyRequestHeaders.remove` and the exposure's TLS settings stay Envoy Gateway's defaults. Refused with `clientValidation.enabled`, and refused when the remove list is empty (the policy would render nothing) |
 | `clientTrafficPolicy.tls.minVersion` / `.maxVersion` | `"1.3"` / `"1.3"` | |
 | `clientTrafficPolicy.tls.clientValidation.enabled` | `false` | turns the exposure into one only a certificate holder can reach |
 | `clientTrafficPolicy.tls.clientValidation.optional`, `.allowExpiredCertificate` | `false` | |

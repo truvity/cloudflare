@@ -1,0 +1,15 @@
+# A policy with no TLS block and nothing to remove would render nothing.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef: {name: example-ca, kind: ClusterIssuer, group: cert-manager.io}
+
+    clientTrafficPolicy:
+      enabled: true
+      tls:
+        enabled: false

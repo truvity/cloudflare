@@ -126,6 +126,7 @@ spec:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: {{ $e.gatewayName }}
+  {{- if $ctp.tls.enabled }}
   tls:
     minVersion: {{ $ctp.tls.minVersion | quote }}
     maxVersion: {{ $ctp.tls.maxVersion | quote }}
@@ -136,6 +137,7 @@ spec:
       caCertificateRefs:
         {{- toYaml $ctp.tls.clientValidation.caCertificateRefs | nindent 8 }}
     {{- end }}
+  {{- end }}
   {{- with $.Values.clientTraffic.earlyRequestHeaders.remove }}
   {{- /* Envoy runs these removals before every HTTP filter, including the
          JWT filter that copies verified claims into headers. Without them a

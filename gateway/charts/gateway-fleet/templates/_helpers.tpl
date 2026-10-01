@@ -252,6 +252,7 @@ clientTrafficPolicy:
   annotations: {}
   labels: {}
   tls:
+    enabled: true
     minVersion: "1.3"
     maxVersion: "1.3"
     clientValidation:
