@@ -7,7 +7,7 @@ end of a tunnel and an R2 temporary-credentials broker as Helm charts.
 | Artifact | What | Status |
 | --- | --- | --- |
 | `pkg/account` | One API token bound to one account, as the resource option everything in that account is created with; `NewChildToken` mints a least-privilege, account-owned token scoped to one zone, one R2 bucket or the whole account, and `NewChildTokenSet` mints a whole map of them at once, in sorted order, with zero-diff naming | shipped |
-| `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS, cache rules, trusted client ranges | shipped |
+| `pkg/zone` | The zone settings an estate decides: origin SSL mode, minimum TLS version, Total TLS, cache rules, trusted client ranges, rate limiting rules checked against the zone plan | shipped |
 | `pkg/tunnel` | A remotely managed tunnel, its ordered ingress rules, proxied DNS records and opt-in Advanced Certificate packs, from one config struct | shipped |
 | `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | shipped |
 | `pkg/cfnames` | Pure Cloudflare naming and validity rules — the R2 jurisdiction list and the R2 bucket-name syntax check — with no SDK import of any kind, not even this module's own `pkg/account` or `pkg/r2` | shipped |
