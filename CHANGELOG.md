@@ -5,6 +5,26 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v2.10.0
+
+- **`zone`: `RateLimits`, the zone's rate limiting rules, validated against
+  the plan.** A new optional `Args.RateLimits` (`rateLimits`: `plan` and
+  `rules`) manages the zone's whole `http_ratelimit` entry point ruleset as
+  one `cloudflare.Ruleset` child, `ratelimit-<name>`. Each rule is a name,
+  `endpoints` (host and path or path-prefix pairs, ORed into one expression
+  with every value restricted to a character set that needs no escaping) or
+  a hand-written `expression`, `characteristics` (default `ip.src`;
+  `cf.colo.id` is added for you), `period`, `requests`, `mitigationTimeout`
+  and `action`. `plan` is `free`, `pro` or `business` and the limits are
+  constants per plan: rule count (Pro: 2), periods (Pro: 10 or 60), block
+  durations, counting keys, and the fields Pro lacks (no request method, no
+  separate counting expression) are refused before the apply, as is the
+  Enterprise-only `log` action. Several endpoints in one rule share one
+  counter per address per data center, which is how a small quota covers
+  several endpoints; see `docs/reference.md`. Nil manages nothing, so
+  existing zones are unchanged; a declared zone owns the whole phase, and
+  the token needs `Zone WAF Write` (`EdgePoliciesWithWAF`).
+
 ## v2.9.0
 
 - **`account`: `EdgePoliciesWithWAF`, the edge preset with an opt-in WAF

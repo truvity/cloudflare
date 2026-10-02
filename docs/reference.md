@@ -322,6 +322,17 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 		Hosts:  []string{"api.example.com"},
 		Ranges: []string{"192.0.2.0/24"},
 	},
+	RateLimits: &zone.RateLimits{
+		Plan: zone.PlanPro,
+		Rules: []zone.RateLimitRule{{
+			Name:              "Public ingest",
+			Endpoints:         []zone.Endpoint{{Host: "app.example.com", Path: "/collect"}},
+			Period:            10,
+			Requests:          20,
+			MitigationTimeout: 10,
+			Action:            "block",
+		}},
+	},
 }, acct.Use())
 ```
 
@@ -335,6 +346,7 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 | `TotalTLS` | `totalTls` | see below | Total TLS: a certificate per proxied hostname |
 | `Cache` | `cache` | see below | the zone's cache rules: which hostnames may be cached at all |
 | `TrustedClients` | `trustedClients` | see below | one rule that skips the security features for known client ranges on named hosts |
+| `RateLimits` | `rateLimits` | see below | the zone's whole `http_ratelimit` ruleset: rate limiting rules, validated against the zone plan's limits |
 
 `TotalTLS`:
 
@@ -417,12 +429,74 @@ phase). A zone that already has custom firewall rules must adopt them with
 `pulumi import` onto the child name below, or delete them first, because
 Cloudflare refuses a second entry point ruleset for the phase.
 
+`RateLimits`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `Plan` | `plan` | required: `free`, `pro` or `business`. Every limit below depends on it; nothing checks the zone's real plan |
+| `Rules` | `rules` | the rules, in evaluation order; at most 1 (free), 2 (pro) or 5 (business) |
+
+`RateLimitRule`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `Name` | `name` | required, unique; the rule's description |
+| `Endpoints` | `endpoints` | host and path pairs the rule protects (below); a request matching ANY of them is counted |
+| `Expression` | `expression` | a hand-written Cloudflare expression, instead of `endpoints`; passed through (length checked, and on plans without the method field a mention of it is refused) |
+| `CountingExpression` | `countingExpression` | business and above: count something other than what the rule matches. Refused on free and pro |
+| `Characteristics` | `characteristics` | the counter's key. Empty is `ip.src`. `cf.colo.id` is added for you, as the API requires it. Free and Pro: `ip.src` only. Business: `ip.src` or `cf.unique_visitor_id` |
+| `Period` | `period` | counting window, seconds. Free 10; Pro 10 or 60; Business 10, 60, 120, 300, 600 |
+| `Requests` | `requests` | allowed per period before the action fires, at least 1 |
+| `MitigationTimeout` | `mitigationTimeout` | seconds the action keeps applying. For `block`: Free 10; Pro 10, 60, 120, 300, 600, 3600; Business up to 86400. For the challenge actions: 0 or omitted (they throttle) |
+| `Action` | `action` | `block`, `managed_challenge`, `js_challenge` or `challenge`. `log` is Enterprise-only and refused |
+
+`Endpoint`: `host` (exact lower-case hostname), exactly one of `path`
+(exact, starts with `/`, no query string) and `pathPrefix`, and optionally
+`methods` (upper-case; business and above, because the Pro rule expression
+has no request method field, so on Pro every method, a CORS preflight
+included, is counted).
+
+Endpoints render to one expression: each is
+`(http.host eq "h" and http.request.uri.path eq "/p")`, joined with `or`, in
+the order written. Values are held to a character set that needs no
+escaping (hostnames to letters, digits, dots and hyphens; paths to
+printable ASCII without a quote, a backslash, `?` or `#`), so a pasted
+quote is refused instead of escaped into a rule that matches something
+nobody meant.
+
+The limits are the plan table in
+[Cloudflare's rate limiting availability](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability)
+and [parameters](https://developers.cloudflare.com/waf/rate-limiting-rules/parameters/).
+Where the two pages list different period values for a lower plan the
+intersection is accepted. The counter always includes the data center
+(`cf.colo.id`): Cloudflare keeps counters per data center, so the limit is
+per address per data center, not a global one.
+
+**Sharing the rule quota.** A Pro zone holds two rules, so list every
+endpoint that deserves the same limit in ONE rule's `endpoints`. They share
+a single counter per address (per data center): 20 requests per 10 seconds
+is 20 across all of that rule's endpoints together, not 20 each, and an
+address that trips it is blocked from all of them for the mitigation
+timeout. Group by caller profile, not by app: browsers posting telemetry
+(many addresses, each slow) in one rule, machine-to-machine ingest (few
+addresses, fast) in another.
+
+**A zone has one entry point ruleset per phase.** A zone that declares
+`rateLimits` owns the whole `http_ratelimit` phase: rules added in the
+dashboard are replaced, not merged. This library manages no other rule in
+that phase (`trustedClients` only SKIPS it for its own hosts and ranges).
+If the zone already has rate limiting rules, adopt them with
+`pulumi import` onto the child name below, or delete them first. A
+declared block with no rules applies an empty ruleset, which is how the
+last rule is removed. Writing the ruleset needs `Zone WAF Write` on the
+zone (`account.EdgePoliciesWithWAF`).
+
 ### Outputs and names
 
 | | |
 | --- | --- |
 | `Zone.ZoneID` | the zone id, as an output |
-| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>` and `firewall-custom-<name>` (`cloudflare.Ruleset`), each only when its field is set |
+| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>`, `firewall-custom-<name>` and `ratelimit-<name>` (`cloudflare.Ruleset`), each only when its field is set |
 
 ## pkg/tunnel
 

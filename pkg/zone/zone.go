@@ -16,6 +16,11 @@
 // hostname is a DNS record and nothing else. It requires Advanced
 // Certificate Manager on the zone's plan, which is why it is opt-in.
 //
+// Rate limiting rules protect public endpoints from a single noisy client.
+// The plan decides how many rules a zone may hold and what they can count,
+// so the plan is part of the declaration and every limit is checked before
+// the apply, not after it.
+//
 // The library's contract, shared by every public truvity module:
 //
 //   - Mechanism only. Nothing here knows a zone id or a domain; Args is a
@@ -203,6 +208,10 @@ type (
 		// TrustedClients is the zone's one skip rule for known client
 		// ranges. Nil, or both lists empty, manages no firewall ruleset.
 		TrustedClients *TrustedClients `json:"trustedClients,omitempty" yaml:"trustedClients,omitempty"`
+		// RateLimits is the zone's whole http_ratelimit ruleset. Nil
+		// leaves the phase alone; non-nil owns it, replacing any rule
+		// created elsewhere.
+		RateLimits *RateLimits `json:"rateLimits,omitempty" yaml:"rateLimits,omitempty"`
 	}
 
 	// Zone is the applied settings for one zone.
@@ -257,7 +266,13 @@ func (a *Args) Validate() error {
 		}
 	}
 
-	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.managed() {
+	if a.RateLimits != nil {
+		if err := a.RateLimits.validate(a.ZoneID); err != nil {
+			return err
+		}
+	}
+
+	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.managed() && !a.RateLimits.managed() {
 		return fmt.Errorf("zone %q: nothing to apply — omit the zone instead of declaring one that manages no setting", a.ZoneID)
 	}
 
@@ -455,7 +470,7 @@ func cacheRules(hosts []string) cloudflare.RulesetRuleArray {
 
 // New applies one zone's settings. Children are named "setting-<name>-ssl",
 // "setting-<name>-min-tls-version", "setting-<name>-browser-cache-ttl",
-// "total-tls-<name>", "cache-rules-<name>" and "firewall-custom-<name>", a documented contract:
+// "total-tls-<name>", "cache-rules-<name>", "firewall-custom-<name>" and "ratelimit-<name>", a documented contract:
 // consumers alias existing resources onto these names.
 func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOption) (*Zone, error) {
 	if err := args.Validate(); err != nil {
@@ -552,6 +567,18 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 			},
 		}, child...); err != nil {
 			return nil, fmt.Errorf("zone %q: trusted clients: %w", name, err)
+		}
+	}
+
+	if args.RateLimits.managed() {
+		if _, err := cloudflare.NewRuleset(ctx, "ratelimit-"+name, &cloudflare.RulesetArgs{
+			ZoneId: zoneID,
+			Kind:   pulumi.String(cacheRulesetKind),
+			Phase:  pulumi.String(rateLimitPhase),
+			Name:   pulumi.String(rateLimitRulesetName),
+			Rules:  rateLimitRules(args.RateLimits.Rules),
+		}, child...); err != nil {
+			return nil, fmt.Errorf("zone %q: rate limits: %w", name, err)
 		}
 	}
 
