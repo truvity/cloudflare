@@ -10,7 +10,7 @@ require (
 	github.com/pulumi/pulumi-cloudflare/sdk/v6 v6.19.0
 	github.com/pulumi/pulumi/sdk/v3 v3.260.0
 	github.com/stretchr/testify v1.12.1
-	github.com/truvity/audit v0.3.1
+	github.com/truvity/audit/sdk v0.6.1
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sys v0.48.0
 	google.golang.org/protobuf v1.36.12
@@ -18,6 +18,7 @@ require (
 
 require (
 	connectrpc.com/connect v1.20.0 // indirect
+	connectrpc.com/otelconnect v0.10.0 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
@@ -40,6 +41,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/deckarep/golang-set/v2 v2.5.0 // indirect
 	github.com/djherbis/times v1.5.0 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
@@ -66,9 +68,6 @@ require (
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/lestrrat-go/dsig v1.4.0 // indirect
-	github.com/lestrrat-go/jwx/v4 v4.4.0 // indirect
-	github.com/lestrrat-go/option/v3 v3.0.0-alpha1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
@@ -96,11 +95,8 @@ require (
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/texttheater/golang-levenshtein v1.0.1 // indirect
-	github.com/truvity/access-roster v1.27.1 // indirect
-	github.com/truvity/gateway-auth v0.7.1 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
-	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	github.com/zclconf/go-cty v1.13.2 // indirect
@@ -129,8 +125,8 @@ require (
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260825221802-da73d73af1c5 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.4.2 // indirect

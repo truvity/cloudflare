@@ -51,7 +51,9 @@ leak-canary:
 audit-catalogue:
     #!/usr/bin/env bash
     set -euo pipefail
-    version=$(go list -m -f '{{{{.Version}}' github.com/truvity/audit)
+    # The SDK packages and cmd/audit tool are released together at the same version.
+    # Derive the version from the SDK requirement in go.mod.
+    version=$(go list -m -f '{{{{.Version}}' github.com/truvity/audit/sdk)
     audit="go run github.com/truvity/audit/cmd/audit@${version}"
     $audit validate catalogue/r2broker.yaml
     $audit check-emitters internal/audit --catalogue catalogue/r2broker.yaml

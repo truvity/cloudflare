@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/truvity/audit/emit"
-	auditv1 "github.com/truvity/audit/gen/audit/v1"
-	"github.com/truvity/audit/record"
-	"github.com/truvity/audit/sink"
+	"github.com/truvity/audit/sdk/emit"
+	auditv1 "github.com/truvity/audit/sdk/gen/audit/v1"
+	"github.com/truvity/audit/sdk/record"
+	"github.com/truvity/audit/sdk/sink"
 
 	"github.com/truvity/cloudflare/v2/internal/audit"
 )
