@@ -10,7 +10,7 @@ require (
 	github.com/pulumi/pulumi-cloudflare/sdk/v6 v6.19.0
 	github.com/pulumi/pulumi/sdk/v3 v3.260.0
 	github.com/stretchr/testify v1.12.1
-	github.com/truvity/audit v0.3.1
+	github.com/truvity/audit v0.4.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sys v0.48.0
 	google.golang.org/protobuf v1.36.12

@@ -216,8 +216,8 @@ github.com/texttheater/golang-levenshtein v1.0.1 h1:+cRNoVrfiwufQPhoMzB6N0Yf/Mqa
 github.com/texttheater/golang-levenshtein v1.0.1/go.mod h1:PYAKrbF5sAiq9wd+H82hs7gNaen0CplQ9uvm6+enD/8=
 github.com/truvity/access-roster v1.27.1 h1:92AJcaG5Vl+55tY7lbY+KvmSTsb1s7acpdGOjFLaZVQ=
 github.com/truvity/access-roster v1.27.1/go.mod h1:lOK1TimFr6PxEFvvtVX7vY3/FuiRXltfD5lfVqDnl/o=
-github.com/truvity/audit v0.3.1 h1:Hbl+eg6vNvl+XBGuMHkcnIRu7XdArGVgKOX0X/B+/UA=
-github.com/truvity/audit v0.3.1/go.mod h1:xd1fyQzwqAPXCGbYm8RkuSVRccpWFRd5TRSPNUFOMug=
+github.com/truvity/audit v0.4.0 h1:7p6iLtcQmkWJPTN7s/cjxpoB9RUeRbHCGfP+H7gy2xo=
+github.com/truvity/audit v0.4.0/go.mod h1:j6BE7+jkEQZDxmf7i6vDS/YAc0M9gp/TW55TPseVMZM=
 github.com/truvity/gateway-auth v0.7.1 h1:jSoeB+u9aergNMeNHW3c7g291RxdCED6TaOflwJNSak=
 github.com/truvity/gateway-auth v0.7.1/go.mod h1:5ZrYGw0qmVo+Xgpa/Au5BiDVkxSKcz+ZUil4JlQo+eU=
 github.com/uber/jaeger-client-go v2.30.0+incompatible h1:D6wyKGCecFaSRUpo8lCVbaOOb6ThwMmTEbhRwtKR97o=
