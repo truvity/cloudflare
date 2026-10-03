@@ -1,0 +1,9 @@
+# telemetry.otlp: the endpoint, the protocol and the OTEL_* extras, rendered
+# in that order with the extras sorted.
+telemetry:
+  otlp:
+    endpoint: http://observability-emitters-gateway.observability.svc:4318
+    protocol: http/protobuf
+    extraEnv:
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio

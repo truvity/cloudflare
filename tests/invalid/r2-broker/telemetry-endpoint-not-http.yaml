@@ -1,0 +1,3 @@
+telemetry:
+  otlp:
+    endpoint: observability-emitters-gateway.observability.svc:4318
