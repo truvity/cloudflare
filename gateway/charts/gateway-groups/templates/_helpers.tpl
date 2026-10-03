@@ -72,6 +72,7 @@ networkPolicy:
     namespace: ""
     podLabels: {}
   ports: []
+routes: []
 {{- end -}}
 
 {{/*
@@ -136,4 +137,56 @@ Certificates reconciling one object, and the survivor is a race.
 {{- fail (printf "%s %s/%s is claimed by both %s and %s — two objects cannot share one name" .kind .namespace .name (get .registry $key) .by) -}}
 {{- end -}}
 {{- $_ := set .registry $key .by -}}
+{{- end -}}
+
+{{/*
+One HTTPRoute rule, resolved: the fields the API server would default are
+written out, because an undeclared default inside a list item is a permanent
+GitOps diff (backendRefs group, kind and weight).
+  {{- $r := include "groups.route.rule" (dict "in" $rule "where" "groups.x.routes[0].rules[0]") | fromYaml }}
+*/}}
+{{- define "groups.route.rule" -}}
+{{- $in := .in -}}
+{{- range $k, $v := $in -}}
+{{- if not (has $k (list "name" "matches" "filters" "backend" "backends" "extra")) -}}
+{{- fail (printf "%s.%s is not a key this chart reads — known keys: name, matches, filters, backend, backends, extra" $.where $k) -}}
+{{- end -}}
+{{- end -}}
+{{- if not $in.matches -}}
+{{- fail (printf "%s.matches is empty — a rule with no match answers every request of the host, which is never what a platform route means; name the paths" .where) -}}
+{{- end -}}
+{{- if and $in.backend $in.backends -}}
+{{- fail (printf "%s sets both backend and backends — one or the other" .where) -}}
+{{- end -}}
+{{- $backends := list -}}
+{{- if $in.backend }}{{- $backends = list $in.backend }}{{- end -}}
+{{- if $in.backends }}{{- $backends = $in.backends }}{{- end -}}
+{{- if and (not $backends) (not $in.filters) -}}
+{{- fail (printf "%s has neither a backend nor filters — it would match requests and answer nothing" .where) -}}
+{{- end -}}
+{{- $rule := dict "matches" $in.matches -}}
+{{- with $in.name }}{{- $_ := set $rule "name" . }}{{- end -}}
+{{- with $in.filters }}{{- $_ := set $rule "filters" . }}{{- end -}}
+{{- if $backends -}}
+{{- $refs := list -}}
+{{- range $i, $b := $backends -}}
+{{- range $k, $v := $b -}}
+{{- if not (has $k (list "group" "kind" "name" "port" "weight")) -}}
+{{- fail (printf "%s.backend.%s is not a key this chart reads — known keys: group, kind, name, port, weight" $.where $k) -}}
+{{- end -}}
+{{- end -}}
+{{- if not $b.name -}}
+{{- fail (printf "%s.backend.name is required" $.where) -}}
+{{- end -}}
+{{- if or (le (int $b.port) 0) (gt (int $b.port) 65535) -}}
+{{- fail (printf "%s.backend.port %v is not a port" $.where $b.port) -}}
+{{- end -}}
+{{- $refs = append $refs (dict "group" ($b.group | default "") "kind" ($b.kind | default "Service") "name" $b.name "port" (int $b.port) "weight" (hasKey $b "weight" | ternary (int $b.weight) 1)) -}}
+{{- end -}}
+{{- $_ := set $rule "backendRefs" $refs -}}
+{{- end -}}
+{{- if $in.extra -}}
+{{- $rule = mergeOverwrite $rule (deepCopy $in.extra) -}}
+{{- end -}}
+{{- toYaml $rule -}}
 {{- end -}}

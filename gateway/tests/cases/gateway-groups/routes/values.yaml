@@ -1,0 +1,120 @@
+# The platform's own routes, one per shape: a console with one named rule a
+# policy can target, a read path that matches several prefixes, a
+# method-restricted door with a wave of its own, and a sign-in redirect
+# that carries query-parameter matches and a filter.
+commonAnnotations:
+  example.com/sync-wave: "66"
+
+defaults:
+  namespace: envoy-gateway-system
+  parent:
+    name: private
+  certificate:
+    issuerRef:
+      name: example-ca
+      kind: ClusterIssuer
+      group: cert-manager.io
+  allowedRoutes:
+    namespaces:
+      from: Selector
+      selector:
+        matchLabels:
+          gateway.example.com/route-grant: "true"
+
+groups:
+  # One host, one rule named `app`: the name is what a SecurityPolicy
+  # targets, and the route answers on every host of the group.
+  console:
+    domains:
+      - console.example.com
+    routes:
+      - name: console
+        namespace: example-console
+        rules:
+          - name: app
+            matches:
+              - path: {type: PathPrefix, value: /}
+            backend: {name: console, port: 8080}
+
+  # Several prefixes to one backend, no rule name: nothing targets it.
+  telemetry:
+    domains:
+      - telemetry.internal.example
+    routes:
+      - name: telemetry-read
+        namespace: example-telemetry
+        rules:
+          - matches:
+              - path: {type: PathPrefix, value: /query/}
+              - path: {type: PathPrefix, value: /select/}
+            backend: {name: gateway, port: 8427}
+      - name: telemetry-write
+        namespace: example-telemetry
+        rules:
+          - matches:
+              - path: {type: Exact, value: /api/v1/write}
+              - path: {type: Exact, value: /insert/native}
+            backend: {name: gateway, port: 8427}
+
+  # POST of exactly one path; the route is created after the objects that
+  # guard it, so its wave is its own.
+  webhook:
+    domains:
+      - hooks.example.com
+    routes:
+      - name: webhook
+        namespace: example-telemetry
+        annotations:
+          example.com/sync-wave: "67"
+        hostnames:
+          - hooks.example.com
+        rules:
+          - name: receive
+            matches:
+              - path: {type: Exact, value: /}
+                method: POST
+            backend: {name: receiver, port: 8080, weight: 1}
+
+  # A rule that matches the query string, one that redirects and one that
+  # proxies; Gateway API ranks the most specific match first, so the order
+  # written is not the order served.
+  portal:
+    domains:
+      - portal.example.com
+    routes:
+      - name: portal
+        namespace: example-portal
+        labels:
+          app.kubernetes.io/name: portal
+        rules:
+          - matches:
+              - path: {type: Exact, value: /login}
+                queryParams:
+                  - {name: code, type: RegularExpression, value: ".+"}
+            backend: {name: portal-api, port: 80}
+          - matches:
+              - path: {type: Exact, value: /login}
+            filters:
+              - type: RequestRedirect
+                requestRedirect:
+                  path: {type: ReplaceFullPath, replaceFullPath: /}
+                  statusCode: 302
+          - matches:
+              - path: {type: PathPrefix, value: /}
+            backend: {name: portal-api, port: 80}
+            extra:
+              timeouts:
+                request: 30s
+
+  # Disabled with its routes: nothing renders.
+  retired:
+    enabled: false
+    domains:
+      - old.example.com
+    routes:
+      - name: retired
+        namespace: example-old
+        rules:
+          - matches:
+              - path: {type: PathPrefix, value: /}
+            backend: {name: old, port: 80}

@@ -194,6 +194,32 @@ wins. The other keys are per group only.
 | `networkPolicy.from.podLabels` | *required* when enabled | the gateway's pod labels |
 | `networkPolicy.ports` | *required* when enabled | `[{port, protocol}]` |
 
+### `groups.<name>.routes`
+
+The HTTPRoutes the **platform** owns on a group's ListenerSet: a console the
+estate publishes, a read path, a door for a machine caller. A project's own
+route stays in the project's chart (`gateway-routes`); a route in this list
+is for the case where the workload's chart must not choose which listener
+answers for it. Standard Gateway API only: a policy on a route (a body
+limit, a rate limit) is the gateway implementation's. A disabled group
+renders none of its routes.
+
+| Value | Default | Notes |
+|---|---|---|
+| `routes[].name` | *required* | the HTTPRoute's object name; unique per namespace across all groups |
+| `routes[].namespace` | *required* | the namespace of the route, which the group's `allowedRoutes` must admit |
+| `routes[].annotations`, `.labels` | `{}` | an annotation overrides the same key of `commonAnnotations`, which is how a route takes a sync wave of its own |
+| `routes[].hostnames` | every domain of the group | each must be a domain the group serves; a hostname the group does not serve attaches to no listener, so it fails the render |
+| `routes[].rules[].name` | unset | the section name a policy targets; unique within the route |
+| `routes[].rules[].matches` | *required*, non-empty | HTTPRouteMatch entries, verbatim (path, method, headers, query parameters); a rule with no match would answer every request |
+| `routes[].rules[].backend` | unset | `{name, port, group, kind, weight}`; group `""`, kind `Service` and weight `1` are written out, because an undeclared default inside a list item is a permanent GitOps diff |
+| `routes[].rules[].backends` | unset | the same, several, for a split; not with `backend` |
+| `routes[].rules[].filters` | unset | HTTPRoute filters, verbatim; a rule needs a backend or filters (a redirect has no backend) |
+| `routes[].rules[].extra` | `{}` | deep-merged over the rule, last: timeouts, retry, session persistence |
+
+The parent is the group's own ListenerSet, so a route cannot name a listener
+that does not exist.
+
 ## gateway-policies
 
 The policies that protect what the other two charts expose. With an empty
