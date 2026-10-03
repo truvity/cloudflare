@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v2.11.0
 
 - **`r2broker` and `charts/r2-broker`: OpenTelemetry.** `r2broker serve` now
   pushes metrics and traces over OTLP/HTTP, configured by OpenTelemetry's own
