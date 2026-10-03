@@ -1,0 +1,86 @@
+{{- /* The group's own HTTPRoutes, parented to its ListenerSet. A platform
+       group's route is the edge's business, not the workload's: the
+       workload's chart does not get to choose which listener answers for
+       it. A project's own route stays in the project's chart
+       (gateway-routes); this is for the routes the platform owns. Only the
+       standard Gateway API is rendered here: a policy on a route (a body
+       limit, a rate limit) is the gateway implementation's, and belongs to
+       the fleet chart's side of the estate. */}}
+{{- $names := dict }}
+{{- range $name, $spec := .Values.groups }}
+{{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
+{{- if and $g.enabled $g.routes }}
+{{- $hosts := list }}
+{{- range $entry := $g.domains }}
+{{- $d := include "groups.domain.resolve" (dict "entry" $entry "group" $g) | fromYaml }}
+{{- $hosts = append $hosts $d.host }}
+{{- end }}
+{{- range $i, $route := $g.routes }}
+{{- $where := printf "groups.%s.routes[%d]" $name $i }}
+{{- range $k, $v := $route }}
+{{- if not (has $k (list "name" "namespace" "annotations" "labels" "hostnames" "rules")) }}
+{{- fail (printf "%s.%s is not a key this chart reads — known keys: name, namespace, annotations, labels, hostnames, rules" $where $k) }}
+{{- end }}
+{{- end }}
+{{- if not $route.name }}
+{{- fail (printf "%s.name is required — the HTTPRoute's object name" $where) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" $route.name) }}
+{{- fail (printf "%s.name %q is not a DNS subdomain — it is an object name" $where $route.name) }}
+{{- end }}
+{{- if not $route.namespace }}
+{{- fail (printf "%s.namespace is required — the namespace of the backend, which the group's allowedRoutes must admit" $where) }}
+{{- end }}
+{{- include "groups.claim" (dict "registry" $names "kind" "HTTPRoute" "namespace" $route.namespace "name" $route.name "by" $where) }}
+{{- /* A route may answer only on hostnames its group serves: one the
+       group does not serve attaches to no listener, and the route is
+       accepted by nothing while looking fine. Left out, the route answers
+       on every hostname of its group. */}}
+{{- $hostnames := $route.hostnames | default $hosts }}
+{{- range $h := $hostnames }}
+{{- if not (has $h $hosts) }}
+{{- fail (printf "%s.hostnames has %q, which group %s does not serve (it serves %s) — the route would attach to no listener" $where $h $name (join ", " $hosts)) }}
+{{- end }}
+{{- end }}
+{{- if not $route.rules }}
+{{- fail (printf "%s.rules is empty — a route with no rule answers nothing" $where) }}
+{{- end }}
+{{- $rules := list }}
+{{- $ruleNames := dict }}
+{{- range $j, $rule := $route.rules }}
+{{- $rw := printf "%s.rules[%d]" $where $j }}
+{{- if $rule.name }}
+{{- if hasKey $ruleNames $rule.name }}
+{{- fail (printf "%s.name %q is used twice in this route — a policy targets a rule by its name" $rw $rule.name) }}
+{{- end }}
+{{- $_ := set $ruleNames $rule.name true }}
+{{- end }}
+{{- $rules = append $rules (include "groups.route.rule" (dict "in" $rule "where" $rw) | fromYaml) }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $route.name }}
+  namespace: {{ $route.namespace }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $route.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $route.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: {{ $g.listenerSetName }}
+      namespace: {{ $g.namespace }}
+  hostnames:
+    {{- toYaml $hostnames | nindent 4 }}
+  rules:
+    {{- toYaml $rules | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

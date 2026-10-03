@@ -5,6 +5,20 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **`gateway-groups`: `groups.<name>.routes`.** The HTTPRoutes the platform
+  owns on a group's ListenerSet, parented to it, with the group's
+  hostnames as the default and the only allowed values (a hostname the group
+  does not serve fails the render instead of attaching to no listener).
+  Rules are named, matched verbatim (path, method, query parameters),
+  and send to `backend`/`backends` or carry filters; the API server's
+  defaults (backend group, kind, weight) are written out. An annotation on a
+  route overrides `commonAnnotations`, so a route can take a sync wave of
+  its own. Empty by default: an existing render is byte-identical. Standard
+  Gateway API only; a policy attached to a route stays with the fleet side.
+  Test case `gateway-groups/routes` and ten negative fixtures.
+
 ## v1.7.0
 
 - **Security hardening: `gateway-fleet` `clientTraffic.earlyRequestHeaders.remove`.**

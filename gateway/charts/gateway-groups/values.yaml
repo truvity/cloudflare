@@ -102,3 +102,19 @@ groups: {}
 #        namespace: ""         # the namespace the gateway's pods run in
 #        podLabels: {}         # the gateway's pod labels
 #      ports: []               # [{port: 8080, protocol: TCP}]
+#
+#    # The HTTPRoutes the platform owns on this group's ListenerSet, for a
+#    # route the workload's own chart must not place. A project's route
+#    # stays in the project's chart (gateway-routes).
+#    routes:
+#      - name: console
+#        namespace: example-console
+#        annotations: {}        # over commonAnnotations: a sync wave of its own
+#        hostnames: []          # default: every domain; each must be one the group serves
+#        rules:
+#          - name: app          # what a policy targets; unique in the route
+#            matches:           # HTTPRouteMatch, verbatim; required
+#              - path: {type: PathPrefix, value: /}
+#            backend: {name: console, port: 8080}   # group "", kind Service, weight 1 are written out
+#            filters: []        # a redirect has filters and no backend
+#            extra: {}          # merged over the rule: timeouts, retry

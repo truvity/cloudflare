@@ -1,0 +1,11 @@
+defaults:
+  parent: {name: private}
+  certificate: {issuerRef: {name: ca, kind: ClusterIssuer, group: cert-manager.io}}
+groups:
+  g:
+    domains: [g.example.com]
+    routes:
+      - name: r
+        namespace: ns
+        rules:
+          - matches: [{path: {type: PathPrefix, value: /}}]

@@ -1,0 +1,398 @@
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: console-example-com-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  secretName: console-example-com-tls
+  dnsNames:
+    - "console.example.com"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: portal-example-com-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  secretName: portal-example-com-tls
+  dnsNames:
+    - "portal.example.com"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: telemetry-internal-example-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  secretName: telemetry-internal-example-tls
+  dnsNames:
+    - "telemetry.internal.example"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hooks-example-com-tls
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  secretName: hooks-example-com-tls
+  dnsNames:
+    - "hooks.example.com"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: console
+  namespace: example-console
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: console
+      namespace: envoy-gateway-system
+  hostnames:
+    - console.example.com
+  rules:
+    - backendRefs:
+      - group: ""
+        kind: Service
+        name: console
+        port: 8080
+        weight: 1
+      matches:
+      - path:
+          type: PathPrefix
+          value: /
+      name: app
+
+---
+# Source: gateway-groups/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: portal
+  namespace: example-portal
+  annotations:
+    example.com/sync-wave: "66"
+  labels:
+    app.kubernetes.io/name: portal
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: portal
+      namespace: envoy-gateway-system
+  hostnames:
+    - portal.example.com
+  rules:
+    - backendRefs:
+      - group: ""
+        kind: Service
+        name: portal-api
+        port: 80
+        weight: 1
+      matches:
+      - path:
+          type: Exact
+          value: /login
+        queryParams:
+        - name: code
+          type: RegularExpression
+          value: .+
+    - filters:
+      - requestRedirect:
+          path:
+            replaceFullPath: /
+            type: ReplaceFullPath
+          statusCode: 302
+        type: RequestRedirect
+      matches:
+      - path:
+          type: Exact
+          value: /login
+    - backendRefs:
+      - group: ""
+        kind: Service
+        name: portal-api
+        port: 80
+        weight: 1
+      matches:
+      - path:
+          type: PathPrefix
+          value: /
+      timeouts:
+        request: 30s
+
+---
+# Source: gateway-groups/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: telemetry-read
+  namespace: example-telemetry
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: telemetry
+      namespace: envoy-gateway-system
+  hostnames:
+    - telemetry.internal.example
+  rules:
+    - backendRefs:
+      - group: ""
+        kind: Service
+        name: gateway
+        port: 8427
+        weight: 1
+      matches:
+      - path:
+          type: PathPrefix
+          value: /query/
+      - path:
+          type: PathPrefix
+          value: /select/
+
+---
+# Source: gateway-groups/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: telemetry-write
+  namespace: example-telemetry
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: telemetry
+      namespace: envoy-gateway-system
+  hostnames:
+    - telemetry.internal.example
+  rules:
+    - backendRefs:
+      - group: ""
+        kind: Service
+        name: gateway
+        port: 8427
+        weight: 1
+      matches:
+      - path:
+          type: Exact
+          value: /api/v1/write
+      - path:
+          type: Exact
+          value: /insert/native
+
+---
+# Source: gateway-groups/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: webhook
+  namespace: example-telemetry
+  annotations:
+    example.com/sync-wave: "67"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: webhook
+      namespace: envoy-gateway-system
+  hostnames:
+    - hooks.example.com
+  rules:
+    - backendRefs:
+      - group: ""
+        kind: Service
+        name: receiver
+        port: 8080
+        weight: 1
+      matches:
+      - method: POST
+        path:
+          type: Exact
+          value: /
+      name: receive
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: console
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: private
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant: "true"
+      hostname: console.example.com
+      name: console-example-com
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: console-example-com-tls
+        mode: Terminate
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: portal
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: private
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant: "true"
+      hostname: portal.example.com
+      name: portal-example-com
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: portal-example-com-tls
+        mode: Terminate
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: telemetry
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: private
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant: "true"
+      hostname: telemetry.internal.example
+      name: telemetry-internal-example
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: telemetry-internal-example-tls
+        mode: Terminate
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: webhook
+  namespace: envoy-gateway-system
+  annotations:
+    example.com/sync-wave: "66"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: private
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant: "true"
+      hostname: hooks.example.com
+      name: hooks-example-com
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: hooks-example-com-tls
+        mode: Terminate
