@@ -5,6 +5,23 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`r2broker` and `charts/r2-broker`: OpenTelemetry.** `r2broker serve` now
+  pushes metrics and traces over OTLP/HTTP, configured by OpenTelemetry's own
+  environment only (`OTEL_EXPORTER_OTLP_ENDPOINT` and friends) and only when a
+  collector is named: without one nothing is installed and nothing is exported.
+  It publishes `r2broker_grants` (steady), `r2broker_credentials_minted_total`
+  (by `path`), `r2broker_credentials_failed_total` (by `outcome`),
+  `r2broker_credentials_duration_seconds`, `r2broker_mint_api_fallbacks_total`
+  and a server span per credential request. The chart gains
+  `telemetry.otlp` (`endpoint`, `protocol`, `extraEnv`), which renders
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL` and
+  `OTEL_SERVICE_NAME=r2-broker`; it refuses a non-http(s) endpoint and any
+  `extraEnv` key that is not `OTEL_*`. Empty renders nothing, so an existing
+  release renders byte for byte what it did. See `docs/reference.md`,
+  Telemetry.
+
 ## v2.10.1
 
 - Dependency updates.
