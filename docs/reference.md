@@ -804,7 +804,44 @@ Content-Type: application/json
 | `service.port` | `8080` | |
 | `audit.receiverUrl` | `""` | the shared audit platform's receiver; empty means log-only (design §2.8) |
 | `audit.tokenExpirationSeconds` | `3600` | the broker's own projected ServiceAccount token (audience `audit`), mounted only when `receiverUrl` is set — no Secret, no audit credential of its own |
+| `telemetry.otlp.endpoint` | `""` | the collector or metrics gateway, an http(s) URL. Empty renders nothing and the broker exports nothing; a release that never set it is byte-identical to one before the value existed ([Telemetry](#telemetry)) |
+| `telemetry.otlp.protocol` | `http/protobuf` | `http/protobuf` or `http/json`; the exporters are OTLP/HTTP, not gRPC. Rendered only with an `endpoint` |
+| `telemetry.otlp.extraEnv` | `{}` | other OpenTelemetry SDK variables (`OTEL_TRACES_SAMPLER`, `OTEL_METRIC_EXPORT_INTERVAL`, ...), `OTEL_*` keys only and not `OTEL_EXPORTER_OTLP_ENDPOINT`; the chart refuses anything else, because a secret reaches a pod through a Secret, never through a value rendered into the manifest |
 | `podDisruptionBudget.enabled` | `true` | a centrally-deployed broker is meant to stay up across drains |
+
+### Telemetry
+
+Telemetry is OpenTelemetry's own environment and nothing else
+(truvity/policy 0006): nothing about it is in the broker's config file. The
+chart's `telemetry.otlp` renders `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_SERVICE_NAME=r2-broker` on the
+container, then each `extraEnv` entry, sorted. `r2broker serve` pushes over
+OTLP/HTTP only when a collector is named (`OTEL_EXPORTER_OTLP_ENDPOINT`, or the
+per-signal `..._METRICS_ENDPOINT` / `..._TRACES_ENDPOINT`); otherwise it
+installs nothing, opens no listener and every instrument is a no-op. The
+sampler is the SDK's own (`OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG`);
+unset, a parent-based `always_on`. The `credentials` CLI mode exports nothing.
+
+Names are as the estate's gateway stores them: dots become underscores, a
+counter gains `_total`, a unit becomes a suffix.
+
+| series | type | attributes | what it answers |
+| --- | --- | --- | --- |
+| `r2broker_grants` | gauge | | grant rows loaded. Exported every interval whether or not anybody asks for a credential, so it is the series an absence alert watches |
+| `r2broker_credentials_minted_total` | counter | `path` (`local`, `api`) | credentials minted, and by which path |
+| `r2broker_credentials_failed_total` | counter | `outcome` (`unauthenticated`, `refused`, `mint_failed`) | requests answered 401, 403 or 502 |
+| `r2broker_credentials_duration_seconds` | histogram | `outcome` (adds `minted`) | time to answer one `POST /v1/credentials`, verification and minting included |
+| `r2broker_mint_api_fallbacks_total` | counter | | mints produced by the Cloudflare API: with `minting.mode: local`, a local signing that failed, the drift signal design section 1.2 asks for |
+
+`http_server_*` series from `otelhttp` come with them for the one route.
+No attribute is a caller, a group, a bucket or a prefix: those grow with the
+estate, and a series with too many labels is dropped by the store while the
+write answers 200.
+
+Traces: one server span per `POST /v1/credentials` (`otelhttp`), continued from
+a caller's W3C `traceparent`. `GET /healthz` is not traced. Spans carry the
+HTTP method, route and status and the peer's address; the handler adds no
+attribute, and no header, token or body reaches a span.
 
 ### Audit
 
