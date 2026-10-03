@@ -5,6 +5,10 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v2.10.1
+
+- Dependency updates.
+
 ## v2.10.0
 
 - **`zone`: `RateLimits`, the zone's rate limiting rules, validated against
