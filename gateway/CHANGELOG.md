@@ -5,7 +5,7 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
-## Unreleased
+## v1.8.0
 
 - **`gateway-groups`: `groups.<name>.routes`.** The HTTPRoutes the platform
   owns on a group's ListenerSet, parented to it, with the group's
