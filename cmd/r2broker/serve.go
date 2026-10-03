@@ -16,10 +16,14 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+
 	auditpkg "github.com/truvity/cloudflare/v2/internal/audit"
 	"github.com/truvity/cloudflare/v2/internal/broker"
 	"github.com/truvity/cloudflare/v2/internal/config"
 	"github.com/truvity/cloudflare/v2/internal/mint"
+	"github.com/truvity/cloudflare/v2/internal/telemetry"
 	"github.com/truvity/cloudflare/v2/internal/version"
 )
 
@@ -67,8 +71,31 @@ func serve(args []string) error {
 
 	logger := slog.New(slog.NewJSONHandler(stderr, nil))
 
+	// Telemetry is OpenTelemetry's own environment: with no collector named
+	// nothing is installed and every instrument below is a no-op.
+	stopTelemetry, err := telemetry.Start(ctx, version.Version, logger)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer flushCancel()
+
+		if err := stopTelemetry(flushCtx); err != nil {
+			logger.Warn("flushing telemetry", "error", errString(err))
+		}
+	}()
+
+	metrics, err := telemetry.NewBroker(otel.GetMeterProvider(), len(cfg.Grants))
+	if err != nil {
+		return err
+	}
+
 	observe := func(path mint.Path, mintErr error) {
 		if path == mint.PathAPI {
+			metrics.APIFallback(ctx)
+
 			// A shift from "local" to "api" for a mint that would
 			// otherwise have signed locally is the drift-detection
 			// signal design §1.2 asks for: alert on it, don't just log
@@ -94,11 +121,11 @@ func serve(args []string) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
-	mux.Handle("POST /v1/credentials", &credentialsHandler{broker: b, logger: logger, trail: trail})
+	mux.Handle("POST /v1/credentials", &credentialsHandler{broker: b, logger: logger, trail: trail, metrics: metrics})
 
 	server := &http.Server{
 		Addr:              *addr,
-		Handler:           mux,
+		Handler:           otelhttp.NewHandler(mux, "r2broker", otelhttp.WithFilter(notHealthz)),
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
@@ -124,6 +151,11 @@ func serve(args []string) error {
 	}
 }
 
+// notHealthz keeps the probes out of the traces and the HTTP metrics: two
+// kubelet probes a few seconds apart per pod would otherwise be most of what
+// the trace store holds.
+func notHealthz(r *http.Request) bool { return r.URL.Path != "/healthz" }
+
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
@@ -139,11 +171,16 @@ type credentialsHandler struct {
 	// (Trail.Record is a no-op on it), which is what keeps every test
 	// that builds a bare credentialsHandler without one working.
 	trail *auditpkg.Trail
+	// metrics counts what the broker answered. Nil is fine: its methods
+	// are no-ops, so a bare handler in a test needs none.
+	metrics *telemetry.Broker
 }
 
 func (h *credentialsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
+
+	started := time.Now()
 
 	token := bearerToken(r.Header.Get("Authorization"))
 
@@ -159,6 +196,7 @@ func (h *credentialsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	h.record(ctx, result, body)
+	h.metrics.Request(ctx, outcomeName(result.Outcome), string(result.MintPath), time.Since(started).Seconds())
 
 	switch result.Outcome {
 	case broker.OutcomeMinted:
@@ -179,6 +217,22 @@ func (h *credentialsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, result.Err)
 	default:
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("unhandled outcome"))
+	}
+}
+
+// outcomeName is the `outcome` attribute value of a broker.Outcome.
+func outcomeName(o broker.Outcome) string {
+	switch o {
+	case broker.OutcomeMinted:
+		return telemetry.OutcomeMinted
+	case broker.OutcomeUnauthenticated:
+		return telemetry.OutcomeUnauthenticated
+	case broker.OutcomeRefused:
+		return telemetry.OutcomeRefused
+	case broker.OutcomeMintFailed:
+		return telemetry.OutcomeMintFailed
+	default:
+		return "unknown"
 	}
 }
 

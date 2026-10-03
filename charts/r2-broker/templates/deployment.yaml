@@ -68,6 +68,10 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          {{- with (include "r2-broker.otelEnv" . | trim) }}
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
