@@ -70,6 +70,35 @@
         }
       }
     },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The OpenTelemetry SDK environment the pod carries: where signals go, never the configuration file.",
+      "properties": {
+        "otlp": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "OTLP export. With `endpoint` set the pod gets OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_PROTOCOL and OTEL_SERVICE_NAME=r2-broker, then each `extraEnv` entry; empty renders nothing.",
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "description": "The collector or metrics gateway, an http(s) URL. Empty: no export.",
+              "pattern": "^(https?://[^/?#\\s]+.*)?$"
+            },
+            "protocol": {
+              "enum": ["http/protobuf", "http/json"],
+              "description": "The OTLP protocol. The exporters are OTLP/HTTP; gRPC is not supported."
+            },
+            "extraEnv": {
+              "type": "object",
+              "description": "Other OpenTelemetry SDK variables, `OTEL_*` only. It cannot carry OTEL_EXPORTER_OTLP_ENDPOINT: `endpoint` is where that is set.",
+              "propertyNames": { "pattern": "^OTEL_" },
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "audit": {
       "type": "object",
       "additionalProperties": false,

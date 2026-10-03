@@ -110,6 +110,23 @@ audit:
   receiverUrl: ""
   tokenExpirationSeconds: 3600
 
+# Telemetry is the OpenTelemetry SDK's own environment (policy 0006), never the
+# config file. With `otlp.endpoint` set the pod gets OTEL_EXPORTER_OTLP_ENDPOINT,
+# OTEL_EXPORTER_OTLP_PROTOCOL and OTEL_SERVICE_NAME=r2-broker, then each
+# `extraEnv` entry. Unset, nothing is rendered and the broker exports nothing.
+# See docs/reference.md for what it publishes.
+telemetry:
+  otlp:
+    # The collector or metrics gateway, an http(s) URL, for example
+    # http://gateway.observability.svc:4318. Empty: no export.
+    endpoint: ""
+    # `http/protobuf` (the estate's convention) or `http/json`. The exporters
+    # are OTLP/HTTP; gRPC is not one of them.
+    protocol: http/protobuf
+    # Other OpenTelemetry SDK variables, OTEL_* only, such as
+    # OTEL_METRIC_EXPORT_INTERVAL or OTEL_TRACES_SAMPLER. Values are strings.
+    extraEnv: {}
+
 service:
   port: 8080
 
