@@ -1,0 +1,5 @@
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    extraEnv:
+      AWS_SECRET_ACCESS_KEY: x

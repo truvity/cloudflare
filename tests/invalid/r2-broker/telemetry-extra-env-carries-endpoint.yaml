@@ -1,0 +1,5 @@
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    extraEnv:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://elsewhere:4318
