@@ -1,0 +1,12 @@
+# A connection setting with no ClientTrafficPolicy to carry it.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef: {name: example-ca, kind: ClusterIssuer, group: cert-manager.io}
+clientTraffic:
+  idleTimeout: 2m

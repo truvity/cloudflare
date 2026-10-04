@@ -20,8 +20,24 @@ types: an unknown key fails the render.
 | Value | Default | Notes |
 |---|---|---|
 | `clientTraffic.earlyRequestHeaders.remove` | `[]` | lowercase header names removed from every request before any HTTP filter runs, on every ClientTrafficPolicy the chart renders (`spec.headers.earlyRequestHeaders.remove`). Empty renders no `headers` block, so an existing render is unchanged. Needs `clientTrafficPolicy.enabled: true` on every enabled exposure (the render fails otherwise). Refused: pseudo-headers (`:authority`), uppercase or non-token names, duplicates, and `host`, `content-length`, `transfer-encoding`, `connection`, `keep-alive`, `upgrade`, `te`, `trailer`, `cookie`, `authorization`, `proxy-authorization` |
+| `clientTraffic.connection.maxConnectionDuration` | unset | cap on how long a downstream connection lives, as a Gateway API duration (`5m`, `1h30m`); renders `spec.connection.connectionLimit.maxConnectionDuration` on every ClientTrafficPolicy the chart renders. Unset renders nothing |
+| `clientTraffic.idleTimeout` | unset | `spec.timeout.http.idleTimeout`: how long a connection with no active request is kept (Envoy default: 1h). Unset renders nothing |
+| `clientTraffic.http1.disableSafeMaxConnectionDuration` | unset | `spec.http1.disableSafeMaxConnectionDuration`. By default an HTTP/1 connection past the cap is closed at the next request (with `Connection: close`); `true` closes it shortly after the cap instead. Refused without `connection.maxConnectionDuration`. Unset renders nothing |
 
-Why it exists: the JWT filter's `claimToHeaders` (see `gateway-policies`)
+Why the connection settings exist: a client that keeps connections open
+(cloudflared's tunnel) stays on the Envoy filter chain it first reached. After
+a ListenerSet move that chain is drained and the client gets 404 until it
+reconnects (38 minutes on 2026-09-17). With `connection.maxConnectionDuration`
+set on the single Gateway-level policy, the client reconnects within the cap
+whatever order the move was synced in, so recovery no longer depends on sync
+order. The policy that carries the claim-header removal list carries the cap
+too, so the list is not repeated on a second policy (a ListenerSet-level
+policy would override this one). HTTP/2 streams are cut at the cap, so pick a
+value longer than your slowest legitimate request. Any of the three settings
+makes a policy with `tls.enabled: false` non-empty; each needs
+`clientTrafficPolicy.enabled: true` on every enabled exposure.
+
+Why the removal list exists: the JWT filter's `claimToHeaders` (see `gateway-policies`)
 copies a verified claim into a header by ADDING it. A header the client
 already sent under that name is not replaced; it stays first, and a backend
 that reads the first value takes the client's. A signed-in user could then

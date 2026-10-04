@@ -1,0 +1,15 @@
+# A duration is Gateway API format (5m, 1h30m); "5 minutes" is not.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef: {name: example-ca, kind: ClusterIssuer, group: cert-manager.io}
+    clientTrafficPolicy:
+      enabled: true
+clientTraffic:
+  connection:
+    maxConnectionDuration: 5 minutes

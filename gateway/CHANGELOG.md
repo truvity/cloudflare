@@ -18,6 +18,18 @@ at every version.
   is claimed once as for every type. Additive: an existing render is
   byte-identical. Test cases `gateway-policies/deny-allow-listenerset`,
   `deny-allow-route-rule` and five negative fixtures.
+- **`gateway-fleet`: optional connection age and idle timeout on the client
+  traffic policy.** `clientTraffic.connection.maxConnectionDuration`,
+  `clientTraffic.idleTimeout` and `clientTraffic.http1.disableSafeMaxConnectionDuration`
+  render `spec.connection.connectionLimit.maxConnectionDuration`,
+  `spec.timeout.http.idleTimeout` and `spec.http1.disableSafeMaxConnectionDuration`
+  on the Gateway-level ClientTrafficPolicy, next to the claim-header removal
+  list, so one policy carries both. Capping the connection age makes a client
+  that holds keep-alive connections (cloudflared) reconnect within the cap
+  after a ListenerSet move, whatever order it was synced in; HTTP/2 streams are
+  cut at the cap. Each key is omitted when unset, so an existing render is
+  byte-identical. Test case `gateway-fleet/connection-lifetime` and three
+  negative fixtures.
 
 ## v1.8.0
 

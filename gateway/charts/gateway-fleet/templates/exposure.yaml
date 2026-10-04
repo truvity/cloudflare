@@ -147,6 +147,23 @@ spec:
       remove:
         {{- toYaml . | nindent 8 }}
   {{- end }}
+  {{- with $.Values.clientTraffic.idleTimeout }}
+  timeout:
+    http:
+      idleTimeout: {{ . | quote }}
+  {{- end }}
+  {{- with $.Values.clientTraffic.connection.maxConnectionDuration }}
+  {{- /* The cap on how long a downstream connection lives, so a client that
+         keeps one open (cloudflared's tunnel) reconnects within it, whatever
+         order a listener move was synced in. */}}
+  connection:
+    connectionLimit:
+      maxConnectionDuration: {{ . | quote }}
+  {{- end }}
+  {{- if not (kindIs "invalid" $.Values.clientTraffic.http1.disableSafeMaxConnectionDuration) }}
+  http1:
+    disableSafeMaxConnectionDuration: {{ $.Values.clientTraffic.http1.disableSafeMaxConnectionDuration }}
+  {{- end }}
 {{- end }}
 {{- if $e.health.directResponse.enabled }}
 {{- $dr := $e.health.directResponse }}

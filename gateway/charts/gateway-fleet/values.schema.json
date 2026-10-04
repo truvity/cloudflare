@@ -41,6 +41,21 @@
               }
             }
           }
+        },
+        "connection": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxConnectionDuration": { "$ref": "#/definitions/optionalDuration" }
+          }
+        },
+        "idleTimeout": { "$ref": "#/definitions/optionalDuration" },
+        "http1": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "disableSafeMaxConnectionDuration": { "type": ["boolean", "null"] }
+          }
         }
       }
     },
@@ -94,6 +109,10 @@
     }
   },
   "definitions": {
+    "optionalDuration": {
+      "type": "string",
+      "pattern": "^(([0-9]{1,5}(h|m|s|ms)){1,4})?$"
+    },
     "stringMap": {
       "type": "object",
       "additionalProperties": { "type": "string" }

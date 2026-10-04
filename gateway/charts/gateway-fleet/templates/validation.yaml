@@ -24,6 +24,11 @@ registries built across the whole release.
        connection-framing and credential headers cannot go: stripping it
        breaks every request rather than closing a gap. */ -}}
 {{- $earlyRemove := .Values.clientTraffic.earlyRequestHeaders.remove | default list -}}
+{{- $ct := .Values.clientTraffic -}}
+{{- $ctLifetime := or $ct.connection.maxConnectionDuration $ct.idleTimeout (not (kindIs "invalid" $ct.http1.disableSafeMaxConnectionDuration)) -}}
+{{- if and (not (kindIs "invalid" $ct.http1.disableSafeMaxConnectionDuration)) (not $ct.connection.maxConnectionDuration) }}
+{{- fail "clientTraffic.http1.disableSafeMaxConnectionDuration has no effect without clientTraffic.connection.maxConnectionDuration" }}
+{{- end -}}
 {{- range $h := $earlyRemove }}
 {{- if hasPrefix ":" $h }}
 {{- fail (printf "clientTraffic.earlyRequestHeaders.remove: %q is a pseudo-header; removing it would break every request" $h) }}
@@ -128,12 +133,15 @@ registries built across the whole release.
 {{- if $e.clientTrafficPolicy.tls.clientValidation.enabled }}
 {{- fail (printf "exposures.%s.clientTrafficPolicy: tls.clientValidation.enabled needs tls.enabled — the TLS block is not rendered" $name) }}
 {{- end }}
-{{- if not $earlyRemove }}
-{{- fail (printf "exposures.%s.clientTrafficPolicy has tls.enabled: false and clientTraffic.earlyRequestHeaders.remove is empty — the policy would render nothing; turn the policy off or set one of them" $name) }}
+{{- if not (or $earlyRemove $ctLifetime) }}
+{{- fail (printf "exposures.%s.clientTrafficPolicy has tls.enabled: false and neither clientTraffic.earlyRequestHeaders.remove nor a connection setting is set — the policy would render nothing; turn the policy off or set one of them" $name) }}
 {{- end }}
 {{- end }}
 {{- if and $earlyRemove (not $e.clientTrafficPolicy.enabled) }}
 {{- fail (printf "exposures.%s: clientTraffic.earlyRequestHeaders.remove is set but clientTrafficPolicy.enabled is false — this exposure's client copies of those headers would not be removed" $name) }}
+{{- end }}
+{{- if and $ctLifetime (not $e.clientTrafficPolicy.enabled) }}
+{{- fail (printf "exposures.%s: a clientTraffic connection setting is set but clientTrafficPolicy.enabled is false — this exposure would keep unbounded client connections" $name) }}
 {{- end }}
 {{- if $e.clientTrafficPolicy.enabled }}
 {{- include "gateway.claim" (dict "registry" $objects "kind" "ClientTrafficPolicy" "namespace" $e.namespace "name" $e.clientTrafficPolicy.name "by" $by) }}
