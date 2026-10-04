@@ -1,0 +1,20 @@
+# Allow on ONE RULE of a route (`sectionName` is the rule's own name) and
+# deny on another rule of it; the rest of the route follows whatever the
+# listener-level policy says.
+tlsBaseline:
+  enabled: false
+
+defaults:
+  namespace: example-shop
+
+securityPolicies:
+  health-allow:
+    type: allow
+    targetRefs:
+      - name: example-shop
+        sectionName: health
+  admin-deny:
+    type: deny
+    targetRefs:
+      - name: example-shop
+        sectionName: admin

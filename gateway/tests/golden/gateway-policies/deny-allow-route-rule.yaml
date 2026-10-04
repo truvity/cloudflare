@@ -1,0 +1,31 @@
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: admin-deny
+  namespace: example-shop
+spec:
+  authorization:
+    defaultAction: Deny
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: example-shop
+    sectionName: admin
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: health-allow
+  namespace: example-shop
+spec:
+  authorization:
+    defaultAction: Allow
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: example-shop
+    sectionName: health

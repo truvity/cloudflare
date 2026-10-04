@@ -1,0 +1,5 @@
+# An allow that targets nothing allows nothing.
+securityPolicies:
+  open:
+    type: allow
+    namespace: example

@@ -60,7 +60,7 @@
             "type": "object",
             "properties": {
               "enabled": { "type": "boolean" },
-              "type": { "type": "string", "enum": ["oidc", "jwt"] },
+              "type": { "type": "string", "enum": ["oidc", "jwt", "deny", "allow"] },
               "name": { "type": "string" },
               "targetRefs": {
                 "type": "array",

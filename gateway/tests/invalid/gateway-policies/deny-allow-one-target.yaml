@@ -1,0 +1,11 @@
+# A deny and an allow on one section: the controller applies the older and
+# marks the newer Conflicted.
+defaults:
+  namespace: example
+securityPolicies:
+  gate:
+    type: deny
+    targetRefs: [{kind: ListenerSet, name: shop, sectionName: https}]
+  open:
+    type: allow
+    targetRefs: [{kind: ListenerSet, name: shop, sectionName: https}]

@@ -217,7 +217,7 @@ The SecurityPolicy spec for one resolved entry.
 {{- $authzProvider = $o.idToken.providerName -}}
 {{- end -}}
 {{- $_ := set $spec "oidc" $oidc -}}
-{{- else -}}
+{{- else if eq $p.type "jwt" -}}
 {{- $j := $p.jwt -}}
 {{- $jp := dict
       "name" $j.providerName
@@ -245,6 +245,10 @@ The SecurityPolicy spec for one resolved entry.
 {{- $rule := dict "name" $a.ruleName "action" "Allow" "principal" (dict "jwt" (dict "provider" $authzProvider "claims" (list $claim))) -}}
 {{- $_ := set $spec "authorization" (dict "defaultAction" "Deny" "rules" (list $rule)) -}}
 {{- end -}}
+{{- /* deny / allow: the default action alone, written out even for Deny so a
+       controller that changes its default cannot change this policy. */ -}}
+{{- if eq $p.type "deny" }}{{- $_ := set $spec "authorization" (dict "defaultAction" "Deny") }}{{- end -}}
+{{- if eq $p.type "allow" }}{{- $_ := set $spec "authorization" (dict "defaultAction" "Allow") }}{{- end -}}
 {{- $spec = include "policies.merge" (dict "base" $spec "over" $p.extraSpec) | fromYaml -}}
 {{- toYaml $spec -}}
 {{- end -}}

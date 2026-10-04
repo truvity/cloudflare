@@ -272,7 +272,16 @@ defaults:
 securityPolicies: {}
 #  console:
 #    enabled: true
-#    type: oidc                     # oidc | jwt
+#    type: oidc                     # oidc | jwt | deny | allow
+#                                   # deny: default-deny (authorization
+#                                   # defaultAction Deny) — put it on a
+#                                   # ListenerSet so a route with no policy of
+#                                   # its own is refused, not served open.
+#                                   # allow: defaultAction Allow, for a route
+#                                   # or rule that is public on purpose (a
+#                                   # route-level policy replaces the
+#                                   # listener's). Both need targetRefs and
+#                                   # csrf off; neither takes oidc/jwt.
 #    name: ""                       # default: the map key
 #    namespace: ""                  # required (here or in defaults)
 #    annotations: {}

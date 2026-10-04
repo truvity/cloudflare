@@ -108,7 +108,7 @@ tests/invalid/gateway-policies/ that must fail.
 {{- if and (eq $p.authorization.posture "groups") (not $o.idToken.enabled) }}
 {{- fail (printf "%s: authorization.posture groups on an oidc policy needs oidc.idToken.enabled — the rule reads the groups claim from the verified ID token" $by) }}
 {{- end }}
-{{- else }}
+{{- else if eq $p.type "jwt" }}
 {{- $j := $p.jwt }}
 {{- if not $j.issuer }}
 {{- fail (printf "%s.jwt.issuer is required (or defaults.jwt.issuer) — token validation stays off until it is given an issuer" $by) }}
@@ -121,6 +121,14 @@ tests/invalid/gateway-policies/ that must fail.
 {{- end }}
 {{- if ne $p.csrf.mode "off" }}
 {{- fail (printf "%s.csrf.mode %q on a jwt policy — a machine client sends no Origin, so CSRF on an API or webhook refuses every mutating request; CSRF belongs on cookie-authenticated (oidc) routes" $by $p.csrf.mode) }}
+{{- end }}
+{{- else }}
+{{- /* deny / allow: no sign-in, no tokens — only the default action. */}}
+{{- if ne $p.csrf.mode "off" }}
+{{- fail (printf "%s.csrf.mode %q on a %s policy — there is no sign-in or token here, so no cookie for CSRF to protect" $by $p.csrf.mode $p.type) }}
+{{- end }}
+{{- if ne $p.authorization.posture "authenticated" }}
+{{- fail (printf "%s.authorization.posture %q on a %s policy — the action is the whole policy; there is no rule to add a group check to" $by $p.authorization.posture $p.type) }}
 {{- end }}
 {{- end }}
 

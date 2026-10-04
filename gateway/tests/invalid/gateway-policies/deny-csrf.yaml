@@ -1,0 +1,7 @@
+# A deny policy has no cookie for CSRF to protect.
+securityPolicies:
+  gate:
+    type: deny
+    namespace: example
+    targetRefs: [{kind: ListenerSet, name: shop}]
+    csrf: {mode: shadow}

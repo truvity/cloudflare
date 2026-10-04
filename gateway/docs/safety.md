@@ -123,6 +123,7 @@ should serve. Neither shows in the object; both show only in traffic.
 | an `http://` issuer, endpoint or redirect (schema) | tokens and codes readable by anyone on the path |
 | a `jwt` entry without an issuer, an audience or a JWKS URI | a machine route that accepts every token the issuer ever signed, for anything |
 | CSRF `shadow` or `enforce` on a `jwt` entry | refusing every mutating request of a machine client, which sends no `Origin` |
+| a `deny` or `allow` entry with CSRF on, or the `groups` posture | a policy with no cookie for CSRF to protect, or a group rule it never renders (their `targetRefs` must also be non-empty, and a target is claimed once like any other) |
 | `additionalOrigins` with CSRF `off`, a shadow fraction above one, an origin that is not an origin (schema) | a setting nobody reads, or one the API server rejects after the rest has applied |
 | the `groups` posture with no groups, or on an `oidc` entry without `idToken.enabled` | a route nobody can use, or a rule with no verified claim to read (the API server refuses a JWT principal with no JWT provider) |
 | `idToken.enabled` without a JWKS URI | an ID token that cannot be verified |
