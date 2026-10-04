@@ -1,0 +1,30 @@
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: public-docs
+  namespace: example-shop
+spec:
+  authorization:
+    defaultAction: Allow
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: example-docs
+
+---
+# Source: gateway-policies/templates/security-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: shop-default-deny
+  namespace: example-shop
+spec:
+  authorization:
+    defaultAction: Deny
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: shop
+    sectionName: https

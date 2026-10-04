@@ -1,0 +1,21 @@
+# Default-deny on a ListenerSet, with an explicit allow for one public
+# route on the same host. A route-level policy replaces the listener-level
+# one, so the route named by `public-docs` is served and every other route
+# on the ListenerSet is refused until it gets a policy of its own.
+tlsBaseline:
+  enabled: false
+
+defaults:
+  namespace: example-shop
+
+securityPolicies:
+  shop-default-deny:
+    type: deny
+    targetRefs:
+      - kind: ListenerSet
+        name: shop
+        sectionName: https
+  public-docs:
+    type: allow
+    targetRefs:
+      - name: example-docs

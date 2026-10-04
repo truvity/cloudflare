@@ -5,6 +5,20 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **`gateway-policies`: `securityPolicies.<name>.type: deny` and `allow`.**
+  A SecurityPolicy that carries only `authorization.defaultAction`: `deny`
+  renders `Deny` (written out, though it is the controller's default), `allow`
+  renders `Allow`. Meant for a default-deny on a ListenerSet, so a route that
+  lands before its own policy is refused instead of served unauthenticated,
+  and an explicit allow on a route or rule (`sectionName`) that is public on
+  purpose; a route-level policy replaces the listener-level one. Neither type
+  takes `oidc`/`jwt`; CSRF must be off, `targetRefs` non-empty, and a target
+  is claimed once as for every type. Additive: an existing render is
+  byte-identical. Test cases `gateway-policies/deny-allow-listenerset`,
+  `deny-allow-route-rule` and five negative fixtures.
+
 ## v1.8.0
 
 - **`gateway-groups`: `groups.<name>.routes`.** The HTTPRoutes the platform

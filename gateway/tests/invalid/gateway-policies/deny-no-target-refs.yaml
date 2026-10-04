@@ -1,0 +1,5 @@
+# A deny that targets nothing denies nothing.
+securityPolicies:
+  gate:
+    type: deny
+    namespace: example

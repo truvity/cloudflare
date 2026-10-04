@@ -378,7 +378,7 @@ Entry-only keys:
 | Value | Default | Notes |
 |---|---|---|
 | `enabled` | `true` | |
-| `type` | `oidc` | `oidc`: the gateway signs the browser in. `jwt`: every request carries a bearer token |
+| `type` | `oidc` | `oidc`: the gateway signs the browser in. `jwt`: every request carries a bearer token. `deny`: default-deny (`authorization.defaultAction: Deny`), no sign-in or token. `allow`: `defaultAction: Allow`, for a route or rule that is public on purpose. `deny` and `allow` take no `oidc`/`jwt` and need CSRF `off` (the default for them). A route-level policy replaces the listener-level one, so a `deny` on a ListenerSet refuses every route that has no policy of its own, and an `allow` on a route or one of its rules (`sectionName`) opens just that |
 | `name` | the map key | |
 | `targetRefs` | *required* | `{kind, name, sectionName}`; `kind` `HTTPRoute` (default), `GRPCRoute`, `Gateway` or `ListenerSet`. Two entries on one target are refused: the controller would apply the older and silently ignore the newer |
 | `extraSpec` | `{}` | deep-merged over the generated spec, last, for fields this chart does not model |

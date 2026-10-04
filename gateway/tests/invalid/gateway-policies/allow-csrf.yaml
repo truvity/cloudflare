@@ -1,0 +1,7 @@
+# An allow policy has no cookie for CSRF to protect.
+securityPolicies:
+  open:
+    type: allow
+    namespace: example
+    targetRefs: [{name: docs}]
+    csrf: {mode: enforce}
