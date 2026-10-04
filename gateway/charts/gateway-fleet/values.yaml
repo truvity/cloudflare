@@ -217,6 +217,26 @@ clientTraffic:
     #  - x-auth-request-email
     #  - x-auth-request-user
 
+  # Connection lifetime on the same ClientTrafficPolicy. Each key is omitted
+  # from the render when unset, so an existing render is unchanged.
+  #
+  # Why: a long-lived client (cloudflared) keeps its keep-alive connections on
+  # an Envoy filter chain that a ListenerSet move has drained, and gets 404
+  # until it reconnects. Capping the connection age makes it reconnect within
+  # the cap whatever order the move was synced in. HTTP/2 streams are cut at
+  # the cap. Durations are Gateway API durations (for example 5m, 1h30m).
+  connection:
+    # ClientTrafficPolicy.spec.connection.connectionLimit.maxConnectionDuration
+    maxConnectionDuration: ""
+  # ClientTrafficPolicy.spec.timeout.http.idleTimeout (Envoy default: 1h).
+  idleTimeout: ""
+  http1:
+    # ClientTrafficPolicy.spec.http1.disableSafeMaxConnectionDuration. Unset
+    # (null) renders nothing. true closes an HTTP/1 connection shortly after
+    # the cap instead of at the next request; no effect without
+    # connection.maxConnectionDuration.
+    disableSafeMaxConnectionDuration: null
+
 # ---------------------------------------------------------------------------
 # Metrics: scraping the fleet. Off by default, so an existing render is
 # unchanged.

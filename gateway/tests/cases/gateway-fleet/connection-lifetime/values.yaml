@@ -1,0 +1,28 @@
+# Connection age cap, idle timeout and the HTTP/1 close behavior on the
+# Gateway-level ClientTrafficPolicy, next to the claim-header removal list:
+# one policy carries both, nothing is duplicated.
+classes:
+  internal: {}
+
+exposures:
+  public:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+
+clientTraffic:
+  earlyRequestHeaders:
+    remove:
+      - x-auth-request-email
+  connection:
+    maxConnectionDuration: 5m
+  idleTimeout: 2m
+  http1:
+    disableSafeMaxConnectionDuration: true

@@ -1,0 +1,15 @@
+# disableSafeMaxConnectionDuration has no effect without a connection cap.
+classes:
+  internal: {}
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef: {name: example-ca, kind: ClusterIssuer, group: cert-manager.io}
+    clientTrafficPolicy:
+      enabled: true
+clientTraffic:
+  http1:
+    disableSafeMaxConnectionDuration: true
