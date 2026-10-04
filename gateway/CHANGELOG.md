@@ -5,7 +5,7 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
-## Unreleased
+## v1.9.0
 
 - **`gateway-policies`: `securityPolicies.<name>.type: deny` and `allow`.**
   A SecurityPolicy that carries only `authorization.defaultAction`: `deny`
