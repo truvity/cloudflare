@@ -52,9 +52,12 @@ lint:
       echo "$chart: $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
     done
 
-# Golden renders: render every test case and compare with tests/golden.
+# Golden renders: render every test case and compare with tests/golden; then
+# the Go library's tests (catalog/).
 test:
     hack/golden.sh
+    go vet ./...
+    go test ./...
 
 # Regenerate the golden renders — review the diff before committing.
 golden:

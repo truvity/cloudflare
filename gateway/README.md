@@ -10,6 +10,7 @@ that is not.
 | `charts/gateway-groups` | One ListenerSet per project group, a listener and a Certificate per domain, an optional BackendTLSPolicy and the ingress rule that lets the gateway reach the group's workloads | shipped |
 | `charts/gateway-policies` | The policies that protect what the other two expose: a TLS floor on every Gateway of a namespace unless it opts out, stricter TLS per listener, an OIDC or JWT SecurityPolicy per protected route with an `authenticated` or `groups` posture and CSRF, and BackendTLSPolicy for private-chain backends | shipped from v1.2.0 |
 | `charts/gateway-routes` | A library chart for the application's side: one HTTPRoute whose rules are named, `app` for the gated surface and `static` for the public assets, so a policy can gate one of them | shipped from v1.3.0 |
+| `catalog` (Go, `github.com/truvity/gateway/catalog`) | The edge catalog as data: loader, validation, queries, the grants a ListenerSet admits by, and the per-project groups generated from a list of projects | shipped from v1.10.0 |
 
 Charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
 

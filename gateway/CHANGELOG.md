@@ -5,6 +5,26 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **A Go library: `github.com/truvity/gateway/catalog`.** The edge catalog
+  an estate keeps (exposures, and per cluster the groups whose ListenerSets
+  attach to them) as a loader and a validator, the queries every reader of
+  it needs (`Groups`, `ExposuresOn`, `TunnelHosts`, `Classes`, ...), and the
+  Gateway API grant shapes. Moved here from the estate repository that wrote
+  it first; nothing in the charts changes, and no chart render differs.
+- **Per-project groups are generated.** An exposure with a `project_groups`
+  section gets one group per project per cluster, from the projects the
+  caller passes to `Config.WithProjects`: named after the project,
+  answering to its hostnames on that cluster, admitting only its own
+  namespace (by `kubernetes.io/metadata.name`), served from its own
+  ListenerSet. Adding a hostname to a project is the whole change for its
+  listener. `project_groups.overrides` keeps what is already live (a group
+  name, listener and Secret names, a description). A generated group never
+  replaces a written one: a name clash is an error, and so is an override
+  for a project with nothing to serve on that cluster.
+- `just test` also runs the Go tests; the devbox carries Go.
+
 ## v1.9.1
 
 - Dependency updates.
