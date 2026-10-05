@@ -5,7 +5,7 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
-## Unreleased
+## v1.10.0
 
 - **A Go library: `github.com/truvity/gateway/catalog`.** The edge catalog
   an estate keeps (exposures, and per cluster the groups whose ListenerSets
