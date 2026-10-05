@@ -5,6 +5,10 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.9.1
+
+- Dependency updates.
+
 ## v1.9.0
 
 - **`gateway-policies`: `securityPolicies.<name>.type: deny` and `allow`.**
