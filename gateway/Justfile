@@ -63,6 +63,10 @@ test:
 golden:
     hack/golden.sh update
 
+# Go vulnerability check (the catalog library).
+vuln:
+    govulncheck ./...
+
 # The reason this repository can be public. Runs in CI as its own job.
 leak-canary:
     hack/leak-canary.sh
