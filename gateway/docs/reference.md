@@ -607,3 +607,48 @@ generates the policies targets `app` by that name (`sectionName: app` in a
 `gateway-policies` `targetRefs` entry). Envoy matches the **most specific**
 path prefix, so `static` wins over `app`'s `/` however the rules are
 ordered.
+
+## catalog (Go library)
+
+`github.com/truvity/gateway/catalog` reads the file an estate keeps to say
+which names it serves, on which way in, and from whose namespaces. The
+`gateway-groups` values are derived from it by the estate's own generator;
+the library is what every reader of the file shares.
+
+```yaml
+version: 1
+exposures:
+  public:
+    class: edge
+    arrival: cloudflare-tunnel      # or private-clusterip, nlb
+    project_groups:                 # optional: generate the per-project groups
+      overrides:
+        <cluster>:
+          <project>:
+            group: <name>           # keep a live group name
+            description: <text>
+            names:                  # keep live listener and Secret names, by host
+              <host>: {listener_name: <name>, secret_name: <name>}
+    clusters:
+      <cluster>:
+        groups:                     # the groups nobody generates: platform consoles, wildcards
+          <name>:
+            domains: [<host>, {host: <host>, listener_name: <n>, secret_name: <n>}]
+            route_namespaces: [<namespace>]
+            listener_set: true
+```
+
+```go
+c, err := catalog.Load(fsys)          // refuses unknown keys
+err = c.WithProjects([]catalog.Project{{
+    Name: "shop",                     // also the namespace its routes live in
+    Endpoints: []catalog.Endpoint{{Environment: "dev", Hostname: "shop.dev.example.com"}},
+}})
+```
+
+With `project_groups`, every project that has an endpoint on a cluster the
+exposure runs on gets one group there, and an endpoint's `Environment` is the
+cluster it is served from. Call `WithProjects` once, before anything reads the
+groups; a catalog with `project_groups` is not validated until then.
+`NamespacesGrant` and `NamespaceGrant` write a ListenerSet's `allowedRoutes`
+by `kubernetes.io/metadata.name`, which nobody can relabel.
