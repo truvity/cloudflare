@@ -5,6 +5,10 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.13.0
+
+- **Feature: `catalog.ClientProxy`.** The gateway's half of a console's sign-in row, with its rules: the route and the named rule it binds to, the posture (`authenticated` by default, `groups` with an `allow` list), `ForwardsBearer` (true unless the row says otherwise), and the cookie defences (`csrf` off, shadow or enforce, additional origins only with a check on, `same_site`). `Validate` refuses each contradiction with a message naming the row; the group names of `allow` are the estate's vocabulary and are checked by a callback the caller passes. `IsRouteRuleName` is Gateway API's own rule-name pattern. Constants: `PostureAuthenticated`, `PostureGroups`, `CSRFOff`, `CSRFShadow`, `CSRFEnforce`. The charts are unchanged.
+
 ## v1.12.0
 
 - **Feature: `catalog.PrivateEntry`.** The shared private entry of a cluster (one Gateway with a pinned ClusterIP in front, a health listener, a TLS floor and, where a cross-cluster group needs it, an internal load balancer) is derived by the library: `NewPrivateEntry`, `PrivateEntry.GroupCertificate` (the certificate policy its private groups take, so the entry and the groups beside it can never be issued apart), and `PrivateEntry.WriteValues` (the `privateEntry` block, with the load balancer annotations and the optional tighter health check). The object names are inputs: each is the identity of a live object.
