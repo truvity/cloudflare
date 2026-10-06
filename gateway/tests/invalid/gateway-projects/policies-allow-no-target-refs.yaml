@@ -1,0 +1,5 @@
+policies:
+  securityPolicies:
+    open:
+      type: allow
+      namespace: example

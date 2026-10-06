@@ -1,0 +1,10 @@
+# gateway-projects: the values of gateway-groups under `groups` and of
+# gateway-policies under `policies`, each merged over that chart's defaults
+# (charts/gateway-groups/values.yaml, charts/gateway-policies/values.yaml
+# list every key). The two sections do not share keys, so a default in one
+# never reaches the other.
+groups: {}
+# NOTE: gateway-policies renders its TLS floor (tlsBaseline) by default, in
+# the release namespace: a project's release usually sets
+# `policies.tlsBaseline.enabled: false`, the floor being a fleet-level object.
+policies: {}

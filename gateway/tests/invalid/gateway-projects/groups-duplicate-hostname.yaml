@@ -1,0 +1,14 @@
+groups:
+  defaults:
+    parent:
+      name: public
+    certificate:
+      issuerRef:
+        name: ca
+  groups:
+    one:
+      domains:
+      - shared.example.com
+    two:
+      domains:
+      - shared.example.com

@@ -1,0 +1,17 @@
+groups:
+  defaults:
+    parent:
+      name: public
+    certificate:
+      issuerRef:
+        name: ca
+  groups:
+    store:
+      domains:
+      - a.example.com
+      backendTLS:
+        enabled: true
+        targetRefs:
+        - group: ''
+          kind: Service
+          name: store

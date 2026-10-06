@@ -1,0 +1,20 @@
+groups:
+  defaults:
+    parent:
+      name: public
+    certificate:
+      issuerRef:
+        name: ca
+  groups:
+    store:
+      domains:
+      - a.example.com
+      backendTLS:
+        enabled: true
+        targetRefs: []
+        validation:
+          hostname: store.example.com
+          caCertificateRefs:
+          - group: ''
+            kind: ConfigMap
+            name: example-ca

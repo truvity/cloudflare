@@ -1,0 +1,23 @@
+apiVersion: v2
+name: gateway-projects
+description: >-
+  The edge of every project on one Kubernetes cluster, in one release: the
+  ListenerSets, listeners and Certificates of gateway-groups and the
+  SecurityPolicies of gateway-policies (default-deny, allow, sign-in, bearer
+  tokens), each fed the values its own chart takes. A project is one entry in
+  `groups.groups`; removing the entry removes its objects. The chart decides
+  nothing about which project gets what.
+type: application
+# Placeholder: the git tag is the sole version authority. The release
+# workflow stamps both fields from the tag.
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/truvity/gateway
+sources:
+  - https://github.com/truvity/gateway
+keywords:
+  - envoy-gateway
+  - gateway-api
+maintainers:
+  - name: Truvity
+    url: https://github.com/truvity
