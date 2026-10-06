@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`pkg/edge`: the edge stack factory.** One `edge.Args` (accounts with their already-resolved tokens, zones in `pkg/zone`'s own shape, tunnels, the in-cluster origin) deploys a provider per account, each zone's settings and one tunnel per cluster and account, and exports `tunnelIds`. `Args.Sink` receives each tunnel's secret token, so where it lives stays the caller's decision. `AccountOptions`, `ZoneOptions` and `TunnelOptions` add resource options, typically aliases, so an estate adopting the factory over resources it already has gets an empty first preview. Moved out of an estate's deploy glue; no resource name changes.
+- **`pkg/tokensplit`: the root of a token split.** `Deploy` mints `edge`, `status`, `r2-admin` and one `r2-parent-<bucket>` child per enabled bucket from the root token and hands each to a `Writer`; `ParseRootToken`, `ParseChild` and `SoleAccount` are the read side's refusals (whitespace, missing fields, a child of another account, more than one account). Zone ids are matched by account and the Zone WAF grant is an input.
+- **`pkg/r2`: `DeployStack`.** Every enabled bucket of one account as that account's bucket-admin child; it mints no tokens.
+
 ## v2.11.1
 
 - Dependency updates.
