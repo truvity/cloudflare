@@ -1,0 +1,51 @@
+# A merged fleet on the fleet preset (presets/fleet.yaml): the preset's filter
+# order, access-log fields and zone spread reach the class proxy, the estate
+# adds its own tolerations through proxyDefaults, and passthrough fills the
+# graceful-drain defaults. The NetworkPolicy lists its egress as rows.
+proxyDefaults:
+  pod:
+    tolerations:
+      - key: example.com/pool
+        operator: Exists
+
+classes:
+  internal:
+    mergeGateways: true
+    proxy:
+      passthrough: true
+
+exposures:
+  public:
+    class: internal
+    clientTrafficPolicy:
+      enabled: true
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-origin-ca
+    networkPolicy:
+      enabled: true
+      egressTo:
+        - namespace: example-ui
+          podLabels:
+            app.kubernetes.io/name: example-ui
+          port: 8080
+        - namespace: example-metrics
+          port: 9090
+          protocol: TCP
+        - namespace: "*"
+          podLabels:
+            app.kubernetes.io/name: example-proxy
+          port: 4180
+        - namespaceExpressions:
+            - key: example.com/tier
+              operator: In
+              values: [primary, ci]
+      egress:
+        - to:
+            - ipBlock:
+                cidr: 10.0.0.0/8
+          ports:
+            - port: 53
+              protocol: UDP

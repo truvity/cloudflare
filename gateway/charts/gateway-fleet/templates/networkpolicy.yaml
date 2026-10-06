@@ -1,7 +1,7 @@
 {{- range $name, $spec := .Values.exposures }}
 {{- $raw := $spec | default dict }}
-{{- $c := include "gateway.class.resolve" (dict "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
-{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
 {{- if and $e.enabled $c.enabled $e.networkPolicy.enabled }}
 {{- $np := $e.networkPolicy }}
 ---
@@ -34,7 +34,12 @@ spec:
   ingress:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- if or $np.xds.enabled $np.egress }}
+  {{- $egress := list }}
+  {{- range $np.egressTo }}
+  {{- $egress = append $egress (include "gateway.egress.row" . | fromYaml) }}
+  {{- end }}
+  {{- $egress = concat $egress ($np.egress | default list) }}
+  {{- if or $np.xds.enabled $egress }}
   egress:
     {{- if $np.xds.enabled }}
     # xDS to the controller. Structural: without it the proxies never receive
@@ -47,7 +52,7 @@ spec:
         - port: {{ $np.xds.port }}
           protocol: TCP
     {{- end }}
-    {{- with $np.egress }}
+    {{- with $egress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   {{- end }}

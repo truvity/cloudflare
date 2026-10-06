@@ -11,7 +11,7 @@ registries built across the whole release.
 
 {{- $classes := dict -}}
 {{- range $name, $spec := .Values.classes }}
-{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $name "spec" $spec) | fromYaml }}
 {{- if $c.enabled }}
 {{- $_ := set $classes $name $c }}
 {{- if and $c.mergeGateways (not $c.proxy.enabled) }}
@@ -44,7 +44,7 @@ registries built across the whole release.
 {{- $claim := dict -}}
 
 {{- range $name, $spec := .Values.classes }}
-{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $name "spec" $spec) | fromYaml }}
 {{- if and $c.enabled $c.proxy.enabled }}
 {{- include "gateway.claim" (dict "registry" $objects "kind" "EnvoyProxy" "namespace" $c.namespace "name" $c.proxy.name "by" (printf "classes.%s" $name)) }}
 {{- include "gateway.claim" (dict "registry" $services "kind" "Service" "namespace" $c.namespace "name" $c.proxy.service.name "by" (printf "classes.%s" $name)) }}
@@ -66,7 +66,7 @@ registries built across the whole release.
 {{- fail (printf "exposures.%s.class %q is not an enabled entry of classes" $name $className) }}
 {{- end }}
 {{- $c := get $classes $className }}
-{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
 {{- if $e.enabled }}
 
 {{- /* A merged class collapses every Gateway onto the class proxy, so a

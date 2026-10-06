@@ -1,0 +1,39 @@
+# The proxy settings an ext_authz-gated, browser-facing fleet wants on every
+# proxy. List it in `valueFiles`, before the estate's own values:
+#
+#   helm template gateway-fleet gateway-fleet -f presets/fleet.yaml -f mine.yaml
+#
+# What an estate still states itself: tolerations and node selection (they
+# follow its own taints), replicas and the services.
+proxyDefaults:
+  # Run ext_authz before jwt_authn. An access proxy (HTTP ext_authz) injects the
+  # access token as a header that the JWT filter then validates. Fleet-wide but
+  # inert for any SecurityPolicy without an extAuth block.
+  filterOrder:
+    - name: envoy.filters.http.ext_authz
+      before: envoy.filters.http.jwt_authn
+  # Access-log fields the controller's default line does not carry, so a request
+  # can be attributed to the client that sent it:
+  #   origin / referer  exactly what a CSRF filter reads. Empty on both is what a
+  #                     `missing_source_origin` count means, so the decision the
+  #                     filter would take is readable from the line.
+  #   sec-fetch-*       a browser sets these and nothing else does: they separate
+  #                     a real cross-site form post from a script.
+  #   cf-ray            a tunnel's request id, to reach the edge's own record of a
+  #                     request (client ASN, bot score) for one the fleet only
+  #                     sees as an address.
+  # No cookie, no authorization header, no query string. The referer is logged
+  # WITHOUT its query (%REQ_WITHOUT_QUERY%): a same-origin referer would
+  # otherwise re-log the previous page's query string, and an OIDC callback
+  # carries an authorization code there.
+  accessLog:
+    extraFields:
+      origin: "%REQ(ORIGIN)%"
+      referer: "%REQ_WITHOUT_QUERY(REFERER)%"
+      sec-fetch-site: "%REQ(SEC-FETCH-SITE)%"
+      sec-fetch-mode: "%REQ(SEC-FETCH-MODE)%"
+      cf-ray: "%REQ(CF-RAY)%"
+  pod:
+    # Both proxies in one zone means one zone loss takes the gateway down.
+    # DoNotSchedule: the autoscaler scales another zone's group up instead.
+    zoneSpread: DoNotSchedule

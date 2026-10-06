@@ -1,0 +1,18 @@
+# pod.zoneSpread is a whenUnsatisfiable value; anything else would reach the
+# EnvoyProxy and be refused there, on the cluster.
+classes:
+  internal:
+    mergeGateways: true
+    proxy:
+      pod:
+        zoneSpread: Required
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io

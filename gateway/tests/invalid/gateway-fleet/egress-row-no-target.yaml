@@ -1,0 +1,21 @@
+# An egress row names its namespace (or matchExpressions over namespace
+# labels); a row with neither would select nothing, or by a typo everything.
+classes:
+  internal:
+    mergeGateways: true
+exposures:
+  public:
+    class: internal
+    health:
+      hostname: gateway-health.example.com
+      certificate:
+        issuerRef:
+          name: example-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+    networkPolicy:
+      enabled: true
+      egressTo:
+        - podLabels:
+            app.kubernetes.io/name: example
+          port: 8080

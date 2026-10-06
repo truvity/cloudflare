@@ -1,7 +1,7 @@
 {{- range $name, $spec := .Values.exposures }}
 {{- $raw := $spec | default dict }}
-{{- $c := include "gateway.class.resolve" (dict "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
-{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
 {{- if and $e.enabled $c.enabled }}
 {{- $ownProxy := include "gateway.exposure.ownProxy" (dict "class" $c "exposure" $e) }}
 {{- $allowedRoutes := include "gateway.allowedRoutes.resolve" $e.health.allowedRoutes | fromYaml }}
@@ -64,7 +64,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- include "gateway.proxy.spec" (dict "proxy" $e.proxy "merge" false "renderMerge" false) | nindent 2 }}
+  {{- include "gateway.proxy.spec" (dict "proxy" $e.proxy "merge" false "renderMerge" false "selector" (include "gateway.podSelector" (dict "class" $c "exposure" $e) | fromYaml)) | nindent 2 }}
 {{- end }}
 {{- if and (eq $e.health.protocol "HTTPS") $e.health.certificate.enabled }}
 ---

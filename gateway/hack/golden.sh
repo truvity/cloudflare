@@ -28,8 +28,19 @@ for values in "$root"/tests/cases/*/*/values.yaml; do
     chart_dir="$root/tests/harness/$chart"
   fi
 
+  # A case may list preset files (one path per line, relative to the chart
+  # directory) in a `presets` file: they are passed before the case's values,
+  # as a consumer lists them in `valueFiles`.
+  preset_args=()
+  if [ -f "$case_dir/presets" ]; then
+    while IFS= read -r preset; do
+      [ -n "$preset" ] && preset_args+=(-f "$root/charts/$chart/$preset")
+    done < "$case_dir/presets"
+  fi
+
   rendered="$(helm template "$chart" "$chart_dir" \
       --namespace "$(cat "$case_dir/namespace" 2>/dev/null || echo default)" \
+      ${preset_args[@]+"${preset_args[@]}"} \
       -f "$values")"
 
   if [ "$mode" = update ]; then
