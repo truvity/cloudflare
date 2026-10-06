@@ -652,3 +652,15 @@ cluster it is served from. Call `WithProjects` once, before anything reads the
 groups; a catalog with `project_groups` is not validated until then.
 `NamespacesGrant` and `NamespaceGrant` write a ListenerSet's `allowedRoutes`
 by `kubernetes.io/metadata.name`, which nobody can relabel.
+
+`Config.DeriveGroups(catalog.DeriveInput{...})` derives one cluster's
+`listener_set` groups: the groups, the Gateways of the exposures it derives,
+and each group's route grant. A business group admits its own namespaces by
+name; a business wildcard admits by the coarse label the estate names in
+`BusinessGrantLabel` (per-install hosts land on a wildcard, in namespaces the
+catalog does not list); a platform group admits the one namespace the estate's
+`PlatformConsumers` map gives it; a private group naming one namespace admits
+it by name. The private exposure is not derived: its groups attach to the
+Gateway in `PrivateParent` and take `PrivateCertificate`. The result's
+`ListenerSetsFor` points each project at the ListenerSet that serves its
+primary hostname.
