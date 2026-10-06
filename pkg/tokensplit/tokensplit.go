@@ -40,28 +40,43 @@ import (
 	"github.com/truvity/cloudflare/v2/pkg/account"
 )
 
+// The Cloudflare permission-group names the children are granted, each
+// resolved by NAME against the account's own list at apply time
+// (account.NewChildToken), never a hard-coded id. The API's names say
+// "Write" and "Read" where the dashboard says "Edit".
 const (
-	// The Cloudflare permission-group names the children are granted, each
-	// resolved by NAME against the account's own list at apply time
-	// (account.NewChildToken), never a hard-coded id. The API's names say
-	// "Write" and "Read" where the dashboard says "Edit".
-	PermCloudflareTunnelWrite   = "Cloudflare Tunnel Write"
-	PermDNSWrite                = "DNS Write"
+	// PermCloudflareTunnelWrite is account-scope tunnel write.
+	PermCloudflareTunnelWrite = "Cloudflare Tunnel Write"
+	// PermDNSWrite is zone-scope DNS record write.
+	PermDNSWrite = "DNS Write"
+	// PermSSLAndCertificatesWrite is the zone-scope grade (not the
+	// account-scope one of the same family).
 	PermSSLAndCertificatesWrite = "SSL and Certificates Write"
-	PermZoneSettingsWrite       = "Zone Settings Write"
-	PermCacheSettingsWrite      = "Cache Settings Write"
+	// PermZoneSettingsWrite is zone-scope settings write.
+	PermZoneSettingsWrite = "Zone Settings Write"
+	// PermCacheSettingsWrite is the narrowest grant the rulesets API accepts
+	// for a zone's cache-settings phase.
+	PermCacheSettingsWrite = "Cache Settings Write"
 	// PermWorkersR2StorageWrite creates and administers R2 buckets.
 	PermWorkersR2StorageWrite = "Workers R2 Storage Write"
-	// PermWorkersR2StorageBucketItemWrite is the bucket-scope grade:
-	// object read, write and list on one named bucket.
+	// PermWorkersR2StorageBucketItemWrite is the bucket-scope grade: object
+	// read, write and list on one named bucket.
 	PermWorkersR2StorageBucketItemWrite = "Workers R2 Storage Bucket Item Write"
+)
 
-	// Child names, the keys of the minted set and of the secrets written.
-	ChildEdge     = "edge"
-	ChildStatus   = "status"
-	ChildR2Admin  = "r2-admin"
+// Child names, the keys of the minted set and of the secrets written.
+const (
+	// ChildEdge is the tunnel, DNS and zone-settings child.
+	ChildEdge = "edge"
+	// ChildStatus is the tunnel-write and DNS-only child.
+	ChildStatus = "status"
+	// ChildR2Admin is the bucket-admin child.
+	ChildR2Admin = "r2-admin"
+	// ChildR2Parent prefixes the per-bucket parent children.
 	ChildR2Parent = "r2-parent-"
+)
 
+const (
 	// rootProviderName names the provider and the child set. It never
 	// changes: a resource's Pulumi name comes from the child keys alone.
 	rootProviderName = "root"
