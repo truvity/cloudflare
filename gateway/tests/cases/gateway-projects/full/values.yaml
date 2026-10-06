@@ -1,0 +1,97 @@
+# gateway-groups' full case and gateway-policies' deny-allow case, one release.
+groups:
+  commonAnnotations:
+    example.com/sync-wave: '70'
+  defaults:
+    namespace: envoy-gateway-system
+    parent:
+      name: public
+    certificate:
+      issuerRef:
+        name: example-ca
+        kind: ClusterIssuer
+        group: cert-manager.io
+      duration: 720h
+      renewBefore: 240h
+  groups:
+    argocd:
+      domains:
+      - argocd.example.com
+      - host: argocd.old.example.com
+        listenerName: legacy
+        secretName: argocd-legacy-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant-argocd: 'true'
+    shared:
+      domains:
+      - '*.dev.example.com'
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              example.com/tenant: 'true'
+    store:
+      parent:
+        name: private
+      domains:
+      - store.internal.example
+      certificate:
+        issuerRef:
+          name: example-private-ca
+          kind: ClusterIssuer
+          group: cert-manager.io
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.example.com/route-grant-store: 'true'
+      backendTLS:
+        enabled: true
+        targetRefs:
+        - group: ''
+          kind: Service
+          name: store
+          sectionName: https
+        validation:
+          hostname: store.example-store.svc
+          caCertificateRefs:
+          - group: ''
+            kind: ConfigMap
+            name: example-trust-bundle
+      networkPolicy:
+        enabled: true
+        namespaces:
+        - example-store
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: store
+        from:
+          namespace: envoy-gateway-system
+          podLabels:
+            app.kubernetes.io/name: envoy
+            gateway.envoyproxy.io/owning-gateway-name: private
+        ports:
+        - port: 8200
+          protocol: TCP
+policies:
+  tlsBaseline:
+    enabled: false
+  defaults:
+    namespace: example-shop
+  securityPolicies:
+    shop-default-deny:
+      type: deny
+      targetRefs:
+      - kind: ListenerSet
+        name: shop
+        sectionName: https
+    public-docs:
+      type: allow
+      targetRefs:
+      - name: example-docs

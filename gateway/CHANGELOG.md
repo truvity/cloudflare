@@ -5,6 +5,10 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **Feature:** new chart `gateway-projects`: the edge of every project on one Kubernetes cluster in one release. `groups` takes the values of `gateway-groups` (one ListenerSet per project, its listeners and Certificates) and `policies` those of `gateway-policies` (default-deny, allow, sign-in and bearer-token policies); each section renders exactly what its own chart renders for the same values (the templates are carried over by `hack/sync-gateway-projects.sh`, which CI checks, and a test compares the objects). Removing a project's entries removes its objects. `gateway-policies`' TLS floor is on by default there as in its own chart; a project release usually sets `policies.tlsBaseline.enabled: false`. The existing charts are unchanged.
+
 ## v1.10.0
 
 - **A Go library: `github.com/truvity/gateway/catalog`.** The edge catalog

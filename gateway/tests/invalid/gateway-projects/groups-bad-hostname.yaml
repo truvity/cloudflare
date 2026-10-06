@@ -1,0 +1,11 @@
+groups:
+  defaults:
+    parent:
+      name: public
+    certificate:
+      issuerRef:
+        name: ca
+  groups:
+    argocd:
+      domains:
+      - not a hostname

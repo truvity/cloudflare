@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "gateway-projects values",
+  "description": "The values of gateway-groups under `groups` and of gateway-policies under `policies`. Each section is validated by its own chart's rules at render time; every rule has a fixture under tests/invalid/.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object"
+    },
+    "groups": {
+      "type": "object"
+    },
+    "policies": {
+      "type": "object"
+    }
+  }
+}

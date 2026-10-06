@@ -1,0 +1,8 @@
+groups:
+  defaults:
+    parent:
+      name: public
+  groups:
+    argocd:
+      domains:
+      - a.example.com

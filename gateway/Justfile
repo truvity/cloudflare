@@ -1,7 +1,7 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-charts := "gateway-fleet gateway-groups gateway-policies"
+charts := "gateway-fleet gateway-groups gateway-policies gateway-projects"
 
 # Library charts: they render nothing by themselves, so every check that
 # needs a render goes through tests/harness/<chart>, the consumer chart
@@ -18,6 +18,7 @@ libraries := "gateway-routes"
 lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    hack/sync-gateway-projects.sh check
     for chart in {{ charts }}; do
       helm lint "charts/$chart"
       # An unknown top-level key must fail the render. Not `! helm

@@ -1,0 +1,16 @@
+{{- /* gateway-groups and gateway-policies, one release. The templates are
+those charts' own, carried here as named templates
+(hack/sync-gateway-projects.sh); each section's values are laid over that
+chart's defaults. */ -}}
+{{- $groups := mergeOverwrite (fromYaml (.Files.Get "files/gateway-groups-defaults.yaml")) (deepCopy (.Values.groups | default dict)) }}
+{{- $policies := mergeOverwrite (fromYaml (.Files.Get "files/gateway-policies-defaults.yaml")) (deepCopy (.Values.policies | default dict)) }}
+{{- $g := dict "Values" $groups "Capabilities" $.Capabilities "Release" $.Release "Chart" $.Chart }}
+{{- $p := dict "Values" $policies "Capabilities" $.Capabilities "Release" $.Release "Chart" $.Chart }}
+{{- range $f := list "backendtlspolicy" "certificate" "httproute" "listenerset" "networkpolicy" }}
+---
+{{ include (printf "gateway-projects.groups.%s" $f) $g }}
+{{- end }}
+{{- range $f := list "backend-tls-policies" "security-policies" "tls-baseline" "tls-policies" "validation" }}
+---
+{{ include (printf "gateway-projects.policies.%s" $f) $p }}
+{{- end }}
