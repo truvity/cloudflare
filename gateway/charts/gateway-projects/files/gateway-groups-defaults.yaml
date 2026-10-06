@@ -39,9 +39,12 @@ defaults:
     labels: {}
     duration: ""
     renewBefore: ""
-    privateKey: {}
+    privateKey:
+      rotationPolicy: Always   # a renewed leaf has a new key
     usages: []
-    issuerRef: {}              # name required; the issuer is the estate's
+    issuerRef:                 # name required; the issuer is the estate's
+      kind: ClusterIssuer
+      group: cert-manager.io
 
   # Which namespaces' routes may attach to this group's listeners. A
   # selector naming a label the platform writes is how a grant is expressed:

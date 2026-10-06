@@ -5,6 +5,11 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.14.0
+
+- **Default change: certificates in `gateway-fleet` and `gateway-groups`.** An exposure's health certificate and a group's certificates now default `privateKey.rotationPolicy: Always` and `issuerRef.kind: ClusterIssuer`, `issuerRef.group: cert-manager.io`. Before, a certificate that named only `issuerRef.name` got cert-manager's own kind (`Issuer`) and no stated rotation; it now gets a `ClusterIssuer` reference and `rotationPolicy: Always`. A consumer that set the three explicitly renders the same objects as before; a consumer that set only the name, with a namespaced `Issuer`, must now set `issuerRef.kind: Issuer`. `gateway-projects` carries the same defaults. The issuer's name stays required and is the estate's.
+- **Library:** `GroupCertificate.WriteChartValues` writes the certificate as the charts take it, without the defaults; `WriteOverride` and `PrivateEntry.WriteValues` no longer state them either. `WriteValues` still states everything, for a consumer that is not one of the charts.
+
 ## v1.13.0
 
 - **Feature: `catalog.ClientProxy`.** The gateway's half of a console's sign-in row, with its rules: the route and the named rule it binds to, the posture (`authenticated` by default, `groups` with an `allow` list), `ForwardsBearer` (true unless the row says otherwise), and the cookie defences (`csrf` off, shadow or enforce, additional origins only with a check on, `same_site`). `Validate` refuses each contradiction with a message naming the row; the group names of `allow` are the estate's vocabulary and are checked by a callback the caller passes. `IsRouteRuleName` is Gateway API's own rule-name pattern. Constants: `PostureAuthenticated`, `PostureGroups`, `CSRFOff`, `CSRFShadow`, `CSRFEnforce`. The charts are unchanged.

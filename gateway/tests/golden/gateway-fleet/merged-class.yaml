@@ -35,6 +35,8 @@ spec:
   secretName: private-health-tls
   dnsNames:
     - "gateway-health.internal.example"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -51,6 +53,8 @@ spec:
   secretName: public-health-tls
   dnsNames:
     - "gateway-health.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer

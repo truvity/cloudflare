@@ -39,9 +39,12 @@ certificate:
   labels: {}
   duration: ""
   renewBefore: ""
-  privateKey: {}
+  privateKey:
+    rotationPolicy: Always
   usages: []
-  issuerRef: {}
+  issuerRef:
+    kind: ClusterIssuer
+    group: cert-manager.io
 allowedRoutes:
   namespaces:
     from: Same

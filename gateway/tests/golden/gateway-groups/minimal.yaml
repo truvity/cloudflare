@@ -9,6 +9,8 @@ spec:
   secretName: url-shortener-example-com-tls
   dnsNames:
     - "url-shortener.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer

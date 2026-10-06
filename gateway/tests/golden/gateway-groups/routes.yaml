@@ -11,6 +11,8 @@ spec:
   secretName: console-example-com-tls
   dnsNames:
     - "console.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -29,6 +31,8 @@ spec:
   secretName: portal-example-com-tls
   dnsNames:
     - "portal.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -47,6 +51,8 @@ spec:
   secretName: telemetry-internal-example-tls
   dnsNames:
     - "telemetry.internal.example"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -65,6 +71,8 @@ spec:
   secretName: hooks-example-com-tls
   dnsNames:
     - "hooks.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
