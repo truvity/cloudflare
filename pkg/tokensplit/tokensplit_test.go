@@ -179,7 +179,7 @@ type recordingWriter struct {
 	puts map[string][]string
 }
 
-func (w *recordingWriter) Put(_ *pulumi.Context, namespace, key string, properties map[string]pulumi.StringInput) error {
+func (w *recordingWriter) Put(_ *pulumi.Context, namespace, key string, properties map[string]pulumi.StringInput, _ ...pulumi.ResourceOption) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

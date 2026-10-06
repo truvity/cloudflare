@@ -73,7 +73,7 @@ type (
 	// Writer stores one child's values where the consumers read them.
 	Writer interface {
 		// Put writes the properties as one secret at key in namespace.
-		Put(ctx *pulumi.Context, namespace, key string, properties map[string]pulumi.StringInput) error
+		Put(ctx *pulumi.Context, namespace, key string, properties map[string]pulumi.StringInput, opts ...pulumi.ResourceOption) error
 	}
 
 	// Zone is one Cloudflare zone the account may own.
