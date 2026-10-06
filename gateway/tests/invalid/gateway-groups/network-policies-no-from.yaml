@@ -1,0 +1,6 @@
+defaults: {parent: {name: public}, certificate: {issuerRef: {name: ca}}}
+groups:
+  g:
+    domains: [a.example.com]
+    networkPolicies:
+      - {name: np, namespace: ns, ports: [{port: 80}]}

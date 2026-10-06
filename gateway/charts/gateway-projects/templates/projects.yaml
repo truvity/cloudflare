@@ -6,11 +6,11 @@ chart's defaults. */ -}}
 {{- $policies := mergeOverwrite (fromYaml (.Files.Get "files/gateway-policies-defaults.yaml")) (deepCopy (.Values.policies | default dict)) }}
 {{- $g := dict "Values" $groups "Capabilities" $.Capabilities "Release" $.Release "Chart" $.Chart }}
 {{- $p := dict "Values" $policies "Capabilities" $.Capabilities "Release" $.Release "Chart" $.Chart }}
-{{- range $f := list "backendtlspolicy" "certificate" "httproute" "listenerset" "networkpolicy" }}
+{{- range $f := list "backendtlspolicy" "certificate" "httproute" "listenerset" "networkpolicy" "referencegrant" }}
 ---
 {{ include (printf "gateway-projects.groups.%s" $f) $g }}
 {{- end }}
-{{- range $f := list "backend-tls-policies" "security-policies" "tls-baseline" "tls-policies" "validation" }}
+{{- range $f := list "backend-tls-policies" "backend-traffic-policies" "security-policies" "tls-baseline" "tls-policies" "validation" }}
 ---
 {{ include (printf "gateway-projects.policies.%s" $f) $p }}
 {{- end }}

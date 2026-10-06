@@ -12,6 +12,7 @@ tests/invalid/gateway-policies/ that must fail.
 
 {{- $objects := dict -}}
 {{- $targets := dict -}}
+{{- $trafficTargets := dict -}}
 
 {{- /* ---- tlsBaseline ------------------------------------------------ */ -}}
 {{- $b := .Values.tlsBaseline -}}
@@ -181,5 +182,45 @@ tests/invalid/gateway-policies/ that must fail.
 {{- end }}
 {{- end }}
 {{- include "policies.claim" (dict "registry" $objects "kind" "BackendTLSPolicy" "namespace" $p.namespace "name" $p.name "by" $by) }}
+{{- end }}
+{{- end }}
+
+{{- /* ---- backendTrafficPolicies ------------------------------------- */ -}}
+{{- range $key, $spec := .Values.backendTrafficPolicies }}
+{{- $p := include "policies.backendTraffic.resolve" (dict "key" $key "spec" $spec) | fromYaml }}
+{{- if $p.enabled }}
+{{- $by := printf "backendTrafficPolicies.%s" $key }}
+{{- if not $p.namespace }}
+{{- fail (printf "%s.namespace is required — a BackendTrafficPolicy attaches only to targets in its own namespace" $by) }}
+{{- end }}
+{{- if eq (len $p.targetRefs) 0 }}
+{{- fail (printf "%s.targetRefs is empty — a policy that targets nothing changes nothing" $by) }}
+{{- end }}
+{{- $set := false }}
+{{- range $b := splitList " " (include "policies.backendTraffic.blocks" .) }}
+{{- if get $p $b }}{{- $set = true }}{{- end }}
+{{- end }}
+{{- if and (not $set) (not $p.extraSpec) }}
+{{- fail (printf "%s sets no block (%s, or extraSpec) — a policy with nothing in it only hides the target from the next one" $by (include "policies.backendTraffic.blocks" . | replace " " ", ")) }}
+{{- end }}
+{{- range $ref := $p.targetRefs }}
+{{- if not $ref.name }}
+{{- fail (printf "%s.targetRefs has an entry with no name" $by) }}
+{{- end }}
+{{- if not (has $ref.kind (list "HTTPRoute" "GRPCRoute" "TCPRoute" "TLSRoute" "UDPRoute" "Gateway")) }}
+{{- fail (printf "%s.targetRefs kind %q must be a route kind (HTTPRoute, GRPCRoute, TCPRoute, TLSRoute, UDPRoute) or Gateway" $by $ref.kind) }}
+{{- end }}
+{{- with $ref.sectionName }}
+{{- if not (regexMatch "^[A-Za-z0-9]([-A-Za-z0-9_.]{0,251}[A-Za-z0-9])?$" .) }}
+{{- fail (printf "%s.targetRefs sectionName %q is not a section name — on a route it is a rule's own name, on a Gateway a listener's" $by .) }}
+{{- end }}
+{{- end }}
+{{- /* Two BackendTrafficPolicies on one target: the controller applies the
+       older and marks the newer Conflicted. Extend the one that is there. */}}
+{{- $target := $ref.name }}
+{{- with $ref.sectionName }}{{- $target = printf "%s#%s" $target . }}{{- end }}
+{{- include "policies.claim" (dict "registry" $trafficTargets "kind" (printf "%s target" $ref.kind) "namespace" $p.namespace "name" $target "by" $by) }}
+{{- end }}
+{{- include "policies.claim" (dict "registry" $objects "kind" "BackendTrafficPolicy" "namespace" $p.namespace "name" $p.name "by" $by) }}
 {{- end }}
 {{- end }}

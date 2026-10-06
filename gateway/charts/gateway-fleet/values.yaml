@@ -213,6 +213,98 @@ exposures: {}
 #      #    podLabels: {app.kubernetes.io/name: example-ui}   # none: the whole namespace
 #      #    port: 8080                      # the POD's port; none: every port
 #      #    protocol: TCP
+#
+#    # Further Services in front of this exposure's proxies, beside the one
+#    # Envoy Gateway makes: a pinned ClusterIP, or a load balancer of its own
+#    # class. Each selects exactly this exposure's pods. A Service's address
+#    # cannot move, so its name is an input, never derived.
+#    services: []
+#    #  - name: example-entry               # required
+#    #    type: ClusterIP                   # or LoadBalancer
+#    #    clusterIP: ""                     # pin an address
+#    #    annotations: {}                   # e.g. the cloud's load-balancer annotations
+#    #    labels: {}
+#    #    loadBalancerClass: ""
+#    #    loadBalancerSourceRanges: []
+#    #    externalTrafficPolicy: ""
+#    #    ports: []                         # default: the health listener's port, to
+#    #                                      # the proxy's container port (+10000 below 1024)
+#
+#    # Further egress policies on this exposure's proxies, each its own
+#    # object with the chart's pod selector and the caller's rules: an FQDN
+#    # rule in a network-policy implementation's own kind, or a pinned
+#    # address list beside it.
+#    egressPolicies: []
+#    #  - name: example-fqdn                # required
+#    #    apiVersion: networking.k8s.io/v1  # default; or the implementation's
+#    #    kind: NetworkPolicy               # default; or the implementation's
+#    #    annotations: {}
+#    #    labels: {}
+#    #    egress: []                        # required, verbatim
+
+# ---------------------------------------------------------------------------
+# TLS passthrough entries: a Gateway of a merged class whose one listener
+# forwards the still-encrypted stream, chosen by SNI, to a backend that
+# terminates TLS itself, and the TLSRoute that names that backend. The class
+# should set proxy.passthrough (graceful drain for long-lived streams).
+# ---------------------------------------------------------------------------
+passthroughs: {}
+#  vault:
+#    enabled: true
+#    class: internal                # required; an enabled, merged class
+#    namespace: vault               # required: where the backend Service is
+#    gatewayName: ""                # default: the map key
+#    annotations: {}
+#    labels: {}
+#    listenerName: tls
+#    hostname: vault.example.internal   # required; exact
+#    port: 443
+#    route:
+#      name: ""                     # default: gatewayName
+#      annotations: {}              # over commonAnnotations: a later sync wave
+#      labels: {}
+#      backend:
+#        name: vault                # required
+#        port: 8200                 # required
+#        weight: 1
+
+# ---------------------------------------------------------------------------
+# The Envoy Gateway controller's own NetworkPolicy. Upstream's chart renders
+# none. Off by default, so an existing render is unchanged.
+# ---------------------------------------------------------------------------
+controllerNetworkPolicy:
+  enabled: false
+  name: envoy-gateway
+  # Where upstream's chart installed the controller.
+  namespace: envoy-gateway-system
+  annotations: {}
+  # The controller's pod labels, as upstream's chart sets them.
+  podLabels:
+    control-plane: envoy-gateway
+  # xDS from the proxies (same namespace).
+  xds:
+    port: 18000
+    proxyPodLabels:
+      app.kubernetes.io/name: envoy
+  # The API server's calls to the validating webhook. Peers, verbatim
+  # (NetworkPolicyPeer). Empty: no rule.
+  webhook:
+    port: 9443
+    from: []
+  # The scraper is metrics.networkPolicy.from; this is the controller's port.
+  metrics:
+    port: 19001
+  # Egress to the API server: required when enabled.
+  apiServer:
+    port: 443
+    cidrs: []
+  # Egress to the cluster resolver, UDP and TCP 53: peers, verbatim; required
+  # when enabled.
+  dns:
+    to: []
+  # Further rules, verbatim, after the chart's.
+  ingress: []
+  egress: []
 
 # ---------------------------------------------------------------------------
 # Client traffic: request headers a client must not choose.

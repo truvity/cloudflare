@@ -1,0 +1,2 @@
+referenceGrants:
+  r: {namespace: ns, from: [{namespace: a}], to: [{kind: Service}]}

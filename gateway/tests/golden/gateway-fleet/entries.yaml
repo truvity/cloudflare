@@ -1,0 +1,301 @@
+---
+# Source: gateway-fleet/templates/controller-networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: envoy-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # xDS from the proxies.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: envoy
+      ports:
+        - port: 18000
+          protocol: TCP
+    # The API server's calls to the validating webhook.
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - port: 9443
+          protocol: TCP
+    # The metrics scraper (metrics.networkPolicy.from).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vmagent
+      ports:
+        - port: 19001
+          protocol: TCP
+  egress:
+    # The API server.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+        - ipBlock:
+            cidr: 10.96.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+    # Cluster DNS.
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.0/16
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# Source: gateway-fleet/templates/egress-policies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: envoy-fleet-issuer-pin
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy
+      gateway.envoyproxy.io/owning-gatewayclass: internal
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 192.0.2.10/32
+
+---
+# Source: gateway-fleet/templates/entry.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-private
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  type: ClusterIP
+  clusterIP: 10.96.0.20
+  selector:
+    app.kubernetes.io/name: envoy
+    gateway.envoyproxy.io/owning-gatewayclass: internal
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 10443
+
+---
+# Source: gateway-fleet/templates/entry.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-private-lb
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+    example.com/scheme: internal
+spec:
+  type: LoadBalancer
+  loadBalancerClass: example.com/internal-lb
+  loadBalancerSourceRanges:
+    - 10.0.0.0/8
+  selector:
+    app.kubernetes.io/name: envoy
+    gateway.envoyproxy.io/owning-gatewayclass: internal
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 10443
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: private-health-tls
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  secretName: private-health-tls
+  dnsNames:
+    - "gateway.internal.example"
+  privateKey:
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-fleet/templates/class.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: internal-config
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  mergeGateways: true
+  provider:
+    kubernetes:
+      envoyDeployment:
+        replicas: 2
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        name: gateway-internal
+        type: ClusterIP
+    type: Kubernetes
+  shutdown:
+    drainTimeout: 60s
+    healthCheckFailureDelay: 10s
+    minDrainDuration: 30s
+
+---
+# Source: gateway-fleet/templates/egress-policies.yaml
+apiVersion: example.com/v1alpha1
+kind: FQDNNetworkPolicy
+metadata:
+  name: envoy-fleet-issuer
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy
+      gateway.envoyproxy.io/owning-gatewayclass: internal
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - domainNames:
+        - issuer.example.com
+
+---
+# Source: gateway-fleet/templates/exposure.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: private
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  gatewayClassName: internal
+  allowedListeners:
+    namespaces:
+      from: Same
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "gateway.internal.example"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: private-health-tls
+      allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+
+---
+# Source: gateway-fleet/templates/passthrough.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: vault
+  namespace: vault
+  labels:
+    example.com/tls-baseline-exempt: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  gatewayClassName: internal
+  listeners:
+    - name: tls
+      protocol: TLS
+      port: 443
+      hostname: "vault.internal.example"
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: Same
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: TLSRoute
+
+---
+# Source: gateway-fleet/templates/class.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: internal
+  annotations:
+    argocd.argoproj.io/sync-wave: "65"
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: internal-config
+    namespace: envoy-gateway-system
+
+---
+# Source: gateway-fleet/templates/passthrough.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: vault
+  namespace: vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "66"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: vault
+      sectionName: tls
+  hostnames:
+    - "vault.internal.example"
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: vault-ui
+          port: 443
+          weight: 1

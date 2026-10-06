@@ -160,3 +160,65 @@ registries built across the whole release.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{- /* An exposure's further Services and egress policies: names are inputs,
+       so they are claimed like every other object of the release. */ -}}
+{{- range $name, $spec := .Values.exposures }}
+{{- $raw := $spec | default dict }}
+{{- $c := get $classes ($raw.class | default "") }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- if $e.enabled }}
+{{- range $i, $s := $e.services }}
+{{- $by := printf "exposures.%s.services[%d]" $name $i }}
+{{- if and (eq ($s.type | default "ClusterIP") "LoadBalancer") (not $s.loadBalancerClass) (not $s.annotations) }}
+{{- fail (printf "%s is a LoadBalancer with neither loadBalancerClass nor annotations — the cloud's default load balancer, public unless told otherwise, is never what an extra entry means" $by) }}
+{{- end }}
+{{- if and $s.clusterIP (ne ($s.type | default "ClusterIP") "ClusterIP") }}
+{{- fail (printf "%s.clusterIP needs type ClusterIP — a pinned address is the whole point of that Service" $by) }}
+{{- end }}
+{{- include "gateway.claim" (dict "registry" $services "kind" "Service" "namespace" $e.namespace "name" $s.name "by" $by) }}
+{{- end }}
+{{- range $i, $p := $e.egressPolicies }}
+{{- $by := printf "exposures.%s.egressPolicies[%d]" $name $i }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" ($p.kind | default "NetworkPolicy") "namespace" $e.namespace "name" $p.name "by" $by) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /* Passthrough entries. */ -}}
+{{- range $name, $spec := .Values.passthroughs }}
+{{- $p := include "gateway.passthrough.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- if $p.enabled }}
+{{- $by := printf "passthroughs.%s" $name }}
+{{- if not (hasKey $classes $p.class) }}
+{{- fail (printf "%s.class %q is not an enabled entry of classes" $by $p.class) }}
+{{- end }}
+{{- $c := get $classes $p.class }}
+{{- if not $c.mergeGateways }}
+{{- fail (printf "%s.class %s is not merged — a passthrough entry rides a merged class's fleet; on a split class it would get a proxy of its own nobody configured" $by $p.class) }}
+{{- end }}
+{{- if not $c.proxy.passthrough }}
+{{- fail (printf "%s: classes.%s.proxy.passthrough is false — a fleet carrying passthrough streams needs the graceful drain it sets, or every rollout cuts them" $by $p.class) }}
+{{- end }}
+{{- if not $p.namespace }}
+{{- fail (printf "%s.namespace is required — the Gateway and its route live beside the backend Service" $by) }}
+{{- end }}
+{{- if or (not $p.hostname) (hasPrefix "*" $p.hostname) }}
+{{- fail (printf "%s.hostname %q must be an exact name — SNI picks the backend, and a wildcard would hand it every name under it" $by $p.hostname) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" $p.hostname) }}
+{{- fail (printf "%s.hostname %q is not a DNS name" $by $p.hostname) }}
+{{- end }}
+{{- if or (not $p.route.backend.name) (le (int $p.route.backend.port) 0) }}
+{{- fail (printf "%s.route.backend needs name and port — the Service that terminates TLS" $by) }}
+{{- end }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "Gateway" "namespace" $p.namespace "name" $p.gatewayName "by" $by) }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "TLSRoute" "namespace" $p.namespace "name" $p.route.name "by" $by) }}
+{{- end }}
+{{- end }}
+
+{{- with .Values.controllerNetworkPolicy }}
+{{- if .enabled }}
+{{- include "gateway.claim" (dict "registry" $objects "kind" "NetworkPolicy" "namespace" .namespace "name" .name "by" "controllerNetworkPolicy") }}
+{{- end }}
+{{- end }}

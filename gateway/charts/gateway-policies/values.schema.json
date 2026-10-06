@@ -76,6 +76,32 @@
         ]
       }
     },
+    "backendTrafficPolicies": {
+      "type": "object",
+      "description": "One BackendTrafficPolicy per entry; the blocks are Envoy Gateway's, verbatim.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "name": { "type": "string" },
+          "namespace": { "type": "string" },
+          "annotations": { "$ref": "#/definitions/stringMap" },
+          "labels": { "$ref": "#/definitions/stringMap" },
+          "targetRefs": { "type": "array", "items": { "$ref": "#/definitions/policyTargetRef" } },
+          "timeout": { "type": "object" },
+          "requestBuffer": { "type": "object" },
+          "rateLimit": { "type": "object" },
+          "retry": { "type": "object" },
+          "circuitBreaker": { "type": "object" },
+          "loadBalancer": { "type": "object" },
+          "healthCheck": { "type": "object" },
+          "tcpKeepalive": { "type": "object" },
+          "compression": { "type": "array" },
+          "extraSpec": { "type": "object" }
+        }
+      }
+    },
     "backendTLSPolicies": {
       "type": "object",
       "additionalProperties": {

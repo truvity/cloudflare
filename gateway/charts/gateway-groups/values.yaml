@@ -106,6 +106,18 @@ groups: {}
 #        podLabels: {}         # the gateway's pod labels
 #      ports: []               # [{port: 8080, protocol: TCP}]
 #
+#    # Further ingress policies, each named: a group whose backends are
+#    # several workloads, or a backend that admits peers besides the
+#    # gateway. `from` defaults to networkPolicy.from above.
+#    networkPolicies:
+#      - name: console-api-ingress-from-gateway   # required: the object's name
+#        namespace: example-console               # required
+#        annotations: {}
+#        podSelector: {matchLabels: {app.kubernetes.io/component: api}}
+#        from: {}              # over networkPolicy.from: {namespace, podLabels}
+#        ports: [{port: 8080, protocol: TCP}]     # required
+#        extraIngress: []      # NetworkPolicyIngressRule, verbatim, after the gateway's
+#
 #    # The HTTPRoutes the platform owns on this group's ListenerSet, for a
 #    # route the workload's own chart must not place. A project's route
 #    # stays in the project's chart (gateway-routes).
@@ -121,3 +133,18 @@ groups: {}
 #            backend: {name: console, port: 8080}   # group "", kind Service, weight 1 are written out
 #            filters: []        # a redirect has filters and no backend
 #            extra: {}          # merged over the rule: timeouts, retry
+
+# Grants that let a route refer to a backend in another namespace
+# (Gateway API ReferenceGrant), each in the backend's namespace. Off unless
+# an entry exists.
+referenceGrants: {}
+#  console-telemetry:
+#    enabled: true
+#    name: ""                  # default: the map key
+#    namespace: telemetry      # required: the backend's namespace
+#    annotations: {}
+#    labels: {}
+#    from:                     # required
+#      - namespace: example-console    # group/kind default to HTTPRoute's
+#    to:                       # required; every entry names its object
+#      - name: telemetry-receiver      # group "", kind Service by default

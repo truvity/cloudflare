@@ -1,0 +1,7 @@
+classes: {internal: {mergeGateways: true, proxy: {passthrough: true}}}
+exposures:
+  e:
+    class: internal
+    health: {hostname: h.example.com, certificate: {issuerRef: {name: ca}}}
+passthroughs:
+  v: {class: nope, namespace: v, hostname: v.example.com, route: {backend: {name: s, port: 443}}}

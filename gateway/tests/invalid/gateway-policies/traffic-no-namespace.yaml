@@ -1,0 +1,3 @@
+tlsBaseline: {enabled: false}
+backendTrafficPolicies:
+  a: {targetRefs: [{name: r}], timeout: {http: {requestTimeout: 1s}}}

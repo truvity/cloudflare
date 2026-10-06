@@ -4,7 +4,9 @@ The Envoy Gateway policies that protect what `gateway-fleet` and
 `gateway-groups` expose: a TLS floor on every Gateway of a namespace
 unless it opts out by label (on by default), stricter TLS per listener, an
 OIDC or JWT SecurityPolicy per protected route with an `authenticated` or
-`groups` posture and CSRF, and BackendTLSPolicy for private-chain backends.
+`groups` posture and CSRF, BackendTLSPolicy for private-chain backends,
+and a BackendTrafficPolicy per route, rule or Gateway that needs a timeout,
+a body limit or a local rate limit.
 Nothing authenticates until it is given an issuer.
 
 ```sh

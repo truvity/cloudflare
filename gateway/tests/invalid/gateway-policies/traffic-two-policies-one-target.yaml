@@ -1,0 +1,4 @@
+tlsBaseline: {enabled: false}
+backendTrafficPolicies:
+  a: {namespace: ns, targetRefs: [{name: r}], timeout: {http: {requestTimeout: 1s}}}
+  b: {namespace: ns, targetRefs: [{name: r}], retry: {numRetries: 1}}

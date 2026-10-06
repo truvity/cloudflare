@@ -310,6 +310,8 @@ networkPolicy:
     port: 18000
   egress: []
   egressTo: []
+services: []
+egressPolicies: []
 {{- end -}}
 
 {{/*
@@ -373,6 +375,38 @@ have one: a merged class collapses every Gateway onto the class proxy, and
 `spec.infrastructure` is not honoured there.
 Returns "true" or "".
 */}}
+{{/*
+Resolve one passthroughs entry.
+  {{- $p := include "gateway.passthrough.resolve" (dict "name" $n "spec" $s) | fromYaml }}
+*/}}
+{{- define "gateway.passthrough.defaults" -}}
+enabled: true
+class: ""
+namespace: ""
+gatewayName: ""
+annotations: {}
+labels: {}
+listenerName: tls
+hostname: ""
+port: 443
+route:
+  name: ""
+  annotations: {}
+  labels: {}
+  backend:
+    name: ""
+    port: 0
+    weight: 1
+{{- end -}}
+
+{{- define "gateway.passthrough.resolve" -}}
+{{- $p := mergeOverwrite (include "gateway.passthrough.defaults" . | fromYaml) (deepCopy (.spec | default dict)) -}}
+{{- $_ := set $p "name" .name -}}
+{{- if not $p.gatewayName }}{{- $_ := set $p "gatewayName" .name }}{{- end -}}
+{{- if not $p.route.name }}{{- $_ := set $p.route "name" $p.gatewayName }}{{- end -}}
+{{- toYaml $p -}}
+{{- end -}}
+
 {{- define "gateway.exposure.ownProxy" -}}
 {{- if and (not .class.mergeGateways) .exposure.proxy.enabled -}}true{{- end -}}
 {{- end -}}

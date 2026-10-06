@@ -1,0 +1,90 @@
+# What a merged fleet carries besides its Gateways: a pinned ClusterIP and an
+# internal load balancer in front of the private exposure's proxies, egress
+# policies beside the exposure's own (an FQDN rule in an implementation's
+# kind, and the addresses pinned next to it), a TLS passthrough entry, and
+# the controller's own NetworkPolicy.
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "65"
+
+classes:
+  internal:
+    mergeGateways: true
+    proxy:
+      passthrough: true
+
+metrics:
+  networkPolicy:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: monitoring
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: vmagent
+
+exposures:
+  private:
+    class: internal
+    health:
+      hostname: gateway.internal.example
+      certificate:
+        issuerRef:
+          name: example-ca
+    services:
+      - name: gateway-private
+        clusterIP: 10.96.0.20
+      - name: gateway-private-lb
+        type: LoadBalancer
+        loadBalancerClass: example.com/internal-lb
+        loadBalancerSourceRanges:
+          - 10.0.0.0/8
+        annotations:
+          example.com/scheme: internal
+    egressPolicies:
+      - name: envoy-fleet-issuer
+        apiVersion: example.com/v1alpha1
+        kind: FQDNNetworkPolicy
+        egress:
+          - to:
+              - domainNames:
+                  - issuer.example.com
+            ports:
+              - port: 443
+                protocol: TCP
+      - name: envoy-fleet-issuer-pin
+        egress:
+          - to:
+              - ipBlock:
+                  cidr: 192.0.2.10/32
+            ports:
+              - port: 443
+                protocol: TCP
+
+passthroughs:
+  vault:
+    class: internal
+    namespace: vault
+    labels:
+      example.com/tls-baseline-exempt: "true"
+    hostname: vault.internal.example
+    route:
+      annotations:
+        argocd.argoproj.io/sync-wave: "66"
+      backend:
+        name: vault-ui
+        port: 443
+
+controllerNetworkPolicy:
+  enabled: true
+  webhook:
+    from:
+      - ipBlock:
+          cidr: 10.0.0.0/16
+  apiServer:
+    cidrs:
+      - 10.0.0.0/16
+      - 10.96.0.0/16
+  dns:
+    to:
+      - ipBlock:
+          cidr: 10.96.0.0/16
