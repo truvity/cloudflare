@@ -398,3 +398,10 @@ func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput,
 
 	return comp, nil
 }
+
+// Covers reports whether a request matching `candidate` would already have
+// matched the ingress rule `pattern`, with cloudflared's matching: an exact
+// hostname matches itself, a leading `*` matches one or more labels (it
+// SPANS DOTS), and a wildcard candidate is covered when everything it could
+// match is. Both arguments should be lower case.
+func Covers(pattern, candidate string) bool { return hostnameCovers(pattern, candidate) }
