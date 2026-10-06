@@ -52,11 +52,8 @@ func TestPrivateEntryValues(t *testing.T) {
     privateKey:
       algorithm: ECDSA
       size: 384
-      rotationPolicy: Always
     issuerRef:
       name: private-ca
-      kind: ClusterIssuer
-      group: cert-manager.io
   health:
     name: private-entry
     path: /healthz
@@ -124,5 +121,23 @@ func TestGroupCertificateValues(t *testing.T) {
 
 	if !strings.Contains(sb.String(), "duration: \"1h\"\nrenewBefore: \"10m\"\nprivateKey:\n  algorithm: ECDSA\n  size: 384\n  rotationPolicy: Always\n") {
 		t.Fatalf("\n%s", sb.String())
+	}
+}
+
+func TestGroupCertificateChartValues(t *testing.T) {
+	var sb strings.Builder
+
+	c := catalog.GroupCertificate{Issuer: "ca", Duration: "1h", RenewBefore: "10m", KeyAlgorithm: "ECDSA", KeySize: 384}
+	c.WriteChartValues(&sb, "")
+
+	if sb.String() != "duration: \"1h\"\nrenewBefore: \"10m\"\nprivateKey:\n  algorithm: ECDSA\n  size: 384\nissuerRef:\n  name: ca\n" {
+		t.Fatalf("the charts default rotation, kind and group:\n%s", sb.String())
+	}
+
+	sb.Reset()
+	c.WriteOverride(&sb, "")
+
+	if strings.Contains(sb.String(), "rotationPolicy") || strings.Contains(sb.String(), "kind:") {
+		t.Fatalf("an override states no default:\n%s", sb.String())
 	}
 }

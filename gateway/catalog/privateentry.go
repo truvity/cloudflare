@@ -158,11 +158,8 @@ func (e *PrivateEntry) WriteValues(sb *strings.Builder, r PrivateEntryRender) {
 	sb.WriteString("    privateKey:\n")
 	fmt.Fprintf(sb, "      algorithm: %s\n", e.KeyAlgorithm)
 	fmt.Fprintf(sb, "      size: %d\n", e.KeySize)
-	fmt.Fprintf(sb, "      rotationPolicy: %s\n", rotationPolicyAlways)
 	sb.WriteString("    issuerRef:\n")
 	fmt.Fprintf(sb, "      name: %s\n", e.Names.Issuer)
-	fmt.Fprintf(sb, "      kind: %s\n", clusterIssuerKind)
-	fmt.Fprintf(sb, "      group: %s\n", issuerGroup)
 	sb.WriteString("  health:\n")
 	fmt.Fprintf(sb, "    name: %s\n", e.Names.Gateway)
 	fmt.Fprintf(sb, "    path: %s\n", e.Names.HealthPath)
@@ -226,18 +223,39 @@ func (c GroupCertificate) WriteValues(sb *strings.Builder, indent string) {
 	fmt.Fprintf(sb, "%s  group: %s\n", indent, issuerGroup)
 }
 
+// WriteChartValues writes the certificate as the gateway-fleet and
+// gateway-groups charts take it: what the policy states, and nothing the
+// charts default (key rotation `Always`, issuer kind `ClusterIssuer`, issuer
+// group `cert-manager.io`). WriteValues states them too, for a consumer that
+// is not one of the charts.
+func (c GroupCertificate) WriteChartValues(sb *strings.Builder, indent string) {
+	if c.Duration != "" {
+		fmt.Fprintf(sb, "%sduration: %q\n", indent, c.Duration)
+	}
+
+	if c.RenewBefore != "" {
+		fmt.Fprintf(sb, "%srenewBefore: %q\n", indent, c.RenewBefore)
+	}
+
+	if c.KeySize != 0 {
+		fmt.Fprintf(sb, "%sprivateKey:\n", indent)
+		fmt.Fprintf(sb, "%s  algorithm: %s\n", indent, c.KeyAlgorithm)
+		fmt.Fprintf(sb, "%s  size: %d\n", indent, c.KeySize)
+	}
+
+	fmt.Fprintf(sb, "%sissuerRef:\n", indent)
+	fmt.Fprintf(sb, "%s  name: %s\n", indent, c.Issuer)
+}
+
 // WriteOverride writes the certificate as a group's own `certificate`
 // override: unlike the default policy, every field is stated, quoted as the
-// chart's values are.
+// chart's values are, except what the chart defaults.
 func (c GroupCertificate) WriteOverride(sb *strings.Builder, indent string) {
 	fmt.Fprintf(sb, "%sduration: %q\n", indent, c.Duration)
 	fmt.Fprintf(sb, "%srenewBefore: %q\n", indent, c.RenewBefore)
 	fmt.Fprintf(sb, "%sprivateKey:\n", indent)
 	fmt.Fprintf(sb, "%s  algorithm: %s\n", indent, c.KeyAlgorithm)
 	fmt.Fprintf(sb, "%s  size: %d\n", indent, c.KeySize)
-	fmt.Fprintf(sb, "%s  rotationPolicy: %s\n", indent, rotationPolicyAlways)
 	fmt.Fprintf(sb, "%sissuerRef:\n", indent)
 	fmt.Fprintf(sb, "%s  name: %s\n", indent, c.Issuer)
-	fmt.Fprintf(sb, "%s  kind: %s\n", indent, clusterIssuerKind)
-	fmt.Fprintf(sb, "%s  group: %s\n", indent, issuerGroup)
 }

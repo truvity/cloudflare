@@ -9,6 +9,8 @@ spec:
   secretName: private-health-tls
   dnsNames:
     - "private-health.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -25,6 +27,8 @@ spec:
   secretName: public-health-tls
   dnsNames:
     - "gateway-health.example.com"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer

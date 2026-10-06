@@ -131,9 +131,12 @@ exposures: {}
 #        labels: {}
 #        duration: ""
 #        renewBefore: ""
-#        privateKey: {}
+#        privateKey:
+#          rotationPolicy: Always   # a renewed leaf has a new key
 #        usages: []
-#        issuerRef: {}              # name required when enabled
+#        issuerRef:                 # name required when enabled
+#          kind: ClusterIssuer
+#          group: cert-manager.io
 #      allowedRoutes:
 #        namespaces:
 #          from: Same

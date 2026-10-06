@@ -63,6 +63,8 @@ spec:
     - "argocd.example.com"
   duration: 720h
   renewBefore: 240h
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -83,6 +85,8 @@ spec:
     - "argocd.old.example.com"
   duration: 720h
   renewBefore: 240h
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -103,6 +107,8 @@ spec:
     - "*.dev.example.com"
   duration: 720h
   renewBefore: 240h
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
@@ -123,6 +129,8 @@ spec:
     - "store.internal.example"
   duration: 720h
   renewBefore: 240h
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
