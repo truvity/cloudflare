@@ -50,7 +50,7 @@ type (
 		Exposure string
 		// Parent is the Gateway the ListenerSet attaches to, by name. It is
 		// the exposure's name for every exposure whose Gateway is derived
-		// from the catalog, and DeriveInput.PrivateParent for the private
+		// from the catalog, and the DeriveInput.PrivateEntry Gateway for the private
 		// exposure, whose Gateway the caller owns.
 		Parent        string
 		Domains       []Domain
