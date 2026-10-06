@@ -5,6 +5,11 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **Feature: `catalog.DeriveGroups`.** The ListenerSet half of the catalog is derived by the library instead of by every estate: which groups a cluster serves from their own ListenerSet, the exposure Gateways they attach to, each ListenerSet's route grant (a business group admits its own namespaces by name, a business wildcard admits by the coarse label the estate supplies, a platform group admits its one namespace, a private group admits its one namespace by name) and the certificate and parent of a private group. `GroupsValue.ListenerSetsFor` points each project at the ListenerSet serving its primary hostname and refuses a project whose hosts would split across groups. `Project` gains `ParentRefsSince`. The estate's facts (platform group consumers, the coarse label, the private entry's Gateway and certificate, the reserved exposure) are inputs of `DeriveInput`.
+- **Feature: hostname checks.** `catalog.IsDNSLabel`, `IsDNSName`, `IsDNSClaim` and `IsNameUnderDomain`; `WithProjects` refuses a project endpoint that is not a lowercase DNS name.
+
 ## v1.10.1
 
 - **Feature:** new chart `gateway-projects`: the edge of every project on one Kubernetes cluster in one release. `groups` takes the values of `gateway-groups` (one ListenerSet per project, its listeners and Certificates) and `policies` those of `gateway-policies` (default-deny, allow, sign-in and bearer-token policies); each section renders exactly what its own chart renders for the same values (the templates are carried over by `hack/sync-gateway-projects.sh`, which CI checks, and a test compares the objects). Removing a project's entries removes its objects. `gateway-policies`' TLS floor is on by default there as in its own chart; a project release usually sets `policies.tlsBaseline.enabled: false`. The existing charts are unchanged.

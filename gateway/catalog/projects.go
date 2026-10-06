@@ -8,6 +8,11 @@ import "fmt"
 type Project struct {
 	Name      string
 	Endpoints []Endpoint
+	// ParentRefsSince is the first release of the project's chart that
+	// takes its routes' parents from a list the platform writes. Empty
+	// means no release does, so the project's routes cannot move onto a
+	// ListenerSet.
+	ParentRefsSince string
 }
 
 // Endpoint is one exact hostname of a project, in the order the project
@@ -90,6 +95,15 @@ func (p *ProjectGroups) validate(exposure string, e Exposure) error {
 // error, not a merge: the generation never silently replaces a claim. The
 // way out is the override's Group name.
 func (c *Config) WithProjects(projects []Project) error {
+	for _, project := range projects {
+		for _, endpoint := range project.Endpoints {
+			if !IsDNSClaim(endpoint.Hostname) {
+				return fmt.Errorf("cfg/gateways: project %s: endpoint hostname %q is not a lowercase DNS name a record can be written for",
+					project.Name, endpoint.Hostname)
+			}
+		}
+	}
+
 	for _, exposureName := range sortedKeys(c.Exposures) {
 		exposure := c.Exposures[exposureName]
 		if exposure.ProjectGroups == nil {
