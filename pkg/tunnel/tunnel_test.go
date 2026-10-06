@@ -310,3 +310,34 @@ func TestSiblingWildcardsDoNotShadowEachOther(t *testing.T) {
 
 	require.NoError(t, a.Validate())
 }
+
+func TestOrderHosts(t *testing.T) {
+	got := OrderHosts([]string{
+		"*.env.example.com",
+		"app.env.example.com",
+		"*.example.com",
+		"other.example.com",
+		"*.team.env.example.com",
+		"example.com",
+		"*.a.example.com",
+	})
+
+	want := []string{
+		"example.com",
+		"app.env.example.com",
+		"other.example.com",
+		"*.team.env.example.com",
+		"*.a.example.com",
+		"*.env.example.com",
+		"*.example.com",
+	}
+	assert.Equal(t, want, got)
+
+	// The derived order never trips the shadow check.
+	a := Args{Name: "t", Ingress: nil}
+	for _, h := range got {
+		a.Ingress = append(a.Ingress, Ingress{Hostname: h, Service: "https://origin:443"})
+	}
+
+	require.NoError(t, a.validateIngressOrder())
+}

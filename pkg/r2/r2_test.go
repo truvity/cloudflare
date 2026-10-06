@@ -540,3 +540,7 @@ func stringsRepeat(s string, n int) string {
 
 	return string(out)
 }
+
+func TestPermissions(t *testing.T) {
+	assert.Equal(t, []string{"object-read-write", "object-read-only"}, Permissions())
+}

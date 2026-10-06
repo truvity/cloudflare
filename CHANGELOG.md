@@ -5,6 +5,10 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v2.13.0
+
+- **`pkg/tunnel`: `OrderHosts`.** Puts a tunnel's hostnames in the ingress order cloudflared needs: every exact host first, then wildcards deeper-first, each part in DNS canonical order. The result never trips `Args.Validate`'s shadow check. **`pkg/r2`: `Permissions`** lists the levels `TokenConfig.Permission` accepts. Additive.
+
 ## v2.12.0
 
 - **`pkg/edge`: the edge stack factory.** One `edge.Args` (accounts with their already-resolved tokens, zones in `pkg/zone`'s own shape, tunnels, the in-cluster origin) deploys a provider per account, each zone's settings and one tunnel per cluster and account, and exports `tunnelIds`. `Args.Sink` receives each tunnel's secret token, so where it lives stays the caller's decision. `AccountOptions`, `ZoneOptions` and `TunnelOptions` add resource options, typically aliases, so an estate adopting the factory over resources it already has gets an empty first preview. Moved out of an estate's deploy glue; no resource name changes.
