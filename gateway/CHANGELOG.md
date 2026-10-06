@@ -5,7 +5,7 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
-## Unreleased
+## v1.11.0
 
 - **Feature: `catalog.DeriveGroups`.** The ListenerSet half of the catalog is derived by the library instead of by every estate: which groups a cluster serves from their own ListenerSet, the exposure Gateways they attach to, each ListenerSet's route grant (a business group admits its own namespaces by name, a business wildcard admits by the coarse label the estate supplies, a platform group admits its one namespace, a private group admits its one namespace by name) and the certificate and parent of a private group. `GroupsValue.ListenerSetsFor` points each project at the ListenerSet serving its primary hostname and refuses a project whose hosts would split across groups. `Project` gains `ParentRefsSince`. The estate's facts (platform group consumers, the coarse label, the private entry's Gateway and certificate, the reserved exposure) are inputs of `DeriveInput`.
 - **Feature: hostname checks.** `catalog.IsDNSLabel`, `IsDNSName`, `IsDNSClaim` and `IsNameUnderDomain`; `WithProjects` refuses a project endpoint that is not a lowercase DNS name.
