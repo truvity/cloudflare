@@ -1,0 +1,36 @@
+{{- /* Further egress policies on an exposure's proxies, each its own object:
+       a destination a network-policy implementation can only express in its
+       own kind (an FQDN rule), or a pinned address list beside it. The
+       selector is the chart's, so it follows the class's merge mode like the
+       exposure's own policy; the rules are the caller's, verbatim. */}}
+{{- range $name, $spec := .Values.exposures }}
+{{- $raw := $spec | default dict }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- if and $e.enabled $c.enabled }}
+{{- range $p := $e.egressPolicies }}
+---
+apiVersion: {{ $p.apiVersion | default "networking.k8s.io/v1" }}
+kind: {{ $p.kind | default "NetworkPolicy" }}
+metadata:
+  name: {{ $p.name }}
+  namespace: {{ $e.namespace }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $p.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $p.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "gateway.podSelector" (dict "class" $c "exposure" $e) | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    {{- toYaml $p.egress | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

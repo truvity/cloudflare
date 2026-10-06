@@ -1,3 +1,4 @@
+{{- $claimed := dict }}
 {{- range $name, $spec := .Values.groups }}
 {{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
 {{- if and $g.enabled $g.networkPolicy.enabled }}
@@ -15,6 +16,7 @@
 {{- fail (printf "groups.%s.networkPolicy.from.namespace is required — the namespace the gateway's pods run in" $name) }}
 {{- end }}
 {{- range $ns := $np.namespaces }}
+{{- include "groups.claim" (dict "registry" $claimed "kind" "NetworkPolicy" "namespace" $ns "name" $np.name "by" (printf "groups.%s.networkPolicy" $name)) }}
 ---
 {{- /* The other half of the grant: the namespace label lets the route
        attach, this lets the packet arrive. Both are the platform's to
@@ -47,6 +49,68 @@ spec:
               {{- toYaml $np.from.podLabels | nindent 14 }}
       ports:
         {{- toYaml $np.ports | nindent 8 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* A group's further ingress policies, each with its own name, namespace
+       and pod selector: a group whose backends are several workloads, each
+       admitted on its own port, or a backend that also admits peers other
+       than the gateway (extraIngress). The name is an input because it is the
+       identity of a live object. */}}
+{{- range $name, $spec := .Values.groups }}
+{{- $g := include "groups.resolve" (dict "name" $name "spec" $spec "root" $) | fromYaml }}
+{{- if $g.enabled }}
+{{- range $i, $np := $g.networkPolicies }}
+{{- $where := printf "groups.%s.networkPolicies[%d]" $name $i }}
+{{- if not $np.name }}
+{{- fail (printf "%s.name is required — the NetworkPolicy's object name" $where) }}
+{{- end }}
+{{- if not $np.namespace }}
+{{- fail (printf "%s.namespace is required — the namespace of the workload the gateway must reach" $where) }}
+{{- end }}
+{{- if not $np.ports }}
+{{- fail (printf "%s.ports is empty — an allow with no port is an allow to everything the pod listens on" $where) }}
+{{- end }}
+{{- $from := mergeOverwrite (deepCopy $g.networkPolicy.from) ($np.from | default dict) }}
+{{- if not $from.podLabels }}
+{{- fail (printf "%s.from.podLabels is empty (and so is groups.%s.networkPolicy.from.podLabels) — name the gateway's pods, or this admits every pod of the namespace" $where $name) }}
+{{- end }}
+{{- if not $from.namespace }}
+{{- fail (printf "%s.from.namespace is required (or groups.%s.networkPolicy.from.namespace) — the namespace the gateway's pods run in" $where $name) }}
+{{- end }}
+{{- include "groups.claim" (dict "registry" $claimed "kind" "NetworkPolicy" "namespace" $np.namespace "name" $np.name "by" $where) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $np.name }}
+  namespace: {{ $np.namespace }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $np.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    {{- if $np.podSelector }}
+    {{- toYaml $np.podSelector | nindent 4 }}
+    {{- else }}
+    {}
+    {{- end }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $from.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $from.podLabels | nindent 14 }}
+      ports:
+        {{- toYaml $np.ports | nindent 8 }}
+    {{- with $np.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

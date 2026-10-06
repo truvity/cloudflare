@@ -1,0 +1,3 @@
+classes: {split: {mergeGateways: false, proxy: {enabled: true, passthrough: true}}}
+passthroughs:
+  v: {class: split, namespace: v, hostname: v.example.com, route: {backend: {name: s, port: 443}}}

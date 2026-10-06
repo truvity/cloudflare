@@ -14,6 +14,44 @@
     "groups": {
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/group" }
+    },
+    "referenceGrants": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "name": { "type": "string" },
+          "namespace": { "type": "string" },
+          "annotations": { "$ref": "#/definitions/stringMap" },
+          "labels": { "$ref": "#/definitions/stringMap" },
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "group": { "type": "string" },
+                "kind": { "type": "string" },
+                "namespace": { "type": "string" }
+              }
+            }
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "group": { "type": "string" },
+                "kind": { "type": "string" },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {
@@ -167,6 +205,30 @@
               }
             },
             "ports": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        "networkPolicies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "namespace", "ports"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "namespace": { "type": "string", "minLength": 1 },
+              "annotations": { "$ref": "#/definitions/stringMap" },
+              "podSelector": { "type": "object" },
+              "from": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "namespace": { "type": "string" },
+                  "podLabels": { "$ref": "#/definitions/stringMap" }
+                }
+              },
+              "ports": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+              "extraIngress": { "type": "array", "items": { "type": "object" } }
+            }
           }
         },
         "routes": {

@@ -75,6 +75,7 @@ networkPolicy:
     namespace: ""
     podLabels: {}
   ports: []
+networkPolicies: []
 routes: []
 {{- end -}}
 

@@ -1,0 +1,7 @@
+defaults: {parent: {name: public}, certificate: {issuerRef: {name: ca}}}
+groups:
+  g:
+    domains: [a.example.com]
+    networkPolicy: {from: {namespace: gw, podLabels: {a: b}}}
+    networkPolicies:
+      - {name: np, namespace: ns, ports: []}

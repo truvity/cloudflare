@@ -1,0 +1,55 @@
+{{- /* A backend in another namespace needs a grant IN the backend's
+       namespace before a route may name it. Narrow on both sides: the
+       route kinds and namespaces that may refer, and the objects (by name)
+       they may refer to. The platform's to give, like a listener. */}}
+{{- $claimed := dict }}
+{{- range $key, $spec := .Values.referenceGrants }}
+{{- $r := $spec | default dict }}
+{{- if (hasKey $r "enabled" | ternary $r.enabled true) }}
+{{- $where := printf "referenceGrants.%s" $key }}
+{{- $name := $r.name | default $key }}
+{{- if not $r.namespace }}
+{{- fail (printf "%s.namespace is required — a grant lives in the namespace of what it grants" $where) }}
+{{- end }}
+{{- if not $r.from }}
+{{- fail (printf "%s.from is empty — name the namespaces whose routes may refer" $where) }}
+{{- end }}
+{{- if not $r.to }}
+{{- fail (printf "%s.to is empty — a grant to everything in the namespace is never what is meant; name the objects" $where) }}
+{{- end }}
+{{- $from := list }}
+{{- range $f := $r.from }}
+{{- if not $f.namespace }}
+{{- fail (printf "%s.from has an entry with no namespace" $where) }}
+{{- end }}
+{{- $from = append $from (dict "group" (hasKey $f "group" | ternary $f.group "gateway.networking.k8s.io") "kind" ($f.kind | default "HTTPRoute") "namespace" $f.namespace) }}
+{{- end }}
+{{- $to := list }}
+{{- range $t := $r.to }}
+{{- if not $t.name }}
+{{- fail (printf "%s.to has an entry with no name — name the object, or the grant covers every one of its kind" $where) }}
+{{- end }}
+{{- $to = append $to (dict "group" (hasKey $t "group" | ternary $t.group "") "kind" ($t.kind | default "Service") "name" $t.name) }}
+{{- end }}
+{{- include "groups.claim" (dict "registry" $claimed "kind" "ReferenceGrant" "namespace" $r.namespace "name" $name "by" $where) }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: {{ $name }}
+  namespace: {{ $r.namespace }}
+  {{- with include "groups.annotations" (dict "root" $ "extra" $r.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $r.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  from:
+    {{- toYaml $from | nindent 4 }}
+  to:
+    {{- toYaml $to | nindent 4 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,3 @@
+tlsBaseline: {enabled: false}
+backendTrafficPolicies:
+  a: {namespace: ns, timeout: {http: {requestTimeout: 1s}}}

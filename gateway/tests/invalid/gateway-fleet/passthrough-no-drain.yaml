@@ -1,0 +1,3 @@
+classes: {internal: {mergeGateways: true}}
+passthroughs:
+  v: {class: internal, namespace: v, hostname: v.example.com, route: {backend: {name: s, port: 443}}}

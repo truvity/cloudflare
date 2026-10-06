@@ -1,0 +1,7 @@
+classes: {internal: {mergeGateways: true, proxy: {passthrough: true}}}
+exposures:
+  e:
+    class: internal
+    health: {hostname: h.example.com, certificate: {issuerRef: {name: ca}}}
+    egressPolicies: [{name: envoy-e, egress: [{to: [{ipBlock: {cidr: 1.2.3.4/32}}]}]}]
+    networkPolicy: {enabled: true}

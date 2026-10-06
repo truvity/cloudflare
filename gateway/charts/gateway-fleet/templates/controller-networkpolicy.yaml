@@ -1,0 +1,82 @@
+{{- /* The Envoy Gateway controller's own NetworkPolicy. The controller is
+       installed by upstream's chart, which renders none; what it must be
+       reached by and reach is structural to the plane this chart owns: xDS
+       from the proxies, the API server's calls to its validating webhook,
+       the metrics scraper, and on the way out the API server and DNS. Where
+       the API server and the resolver live is the caller's (peers and
+       CIDRs), never the chart's. */}}
+{{- $np := .Values.controllerNetworkPolicy }}
+{{- if $np.enabled }}
+{{- if not $np.apiServer.cidrs }}
+{{- fail "controllerNetworkPolicy.apiServer.cidrs is empty — the controller watches every Gateway through the API server; without it the plane stops" }}
+{{- end }}
+{{- if not $np.dns.to }}
+{{- fail "controllerNetworkPolicy.dns.to is empty — name the cluster resolver's peers, or every lookup the controller makes times out" }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $np.name }}
+  namespace: {{ $np.namespace }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $np.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $np.podLabels | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # xDS from the proxies.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $np.xds.proxyPodLabels | nindent 14 }}
+      ports:
+        - port: {{ $np.xds.port }}
+          protocol: TCP
+    {{- with $np.webhook.from }}
+    # The API server's calls to the validating webhook.
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: {{ $np.webhook.port }}
+          protocol: TCP
+    {{- end }}
+    {{- with $.Values.metrics.networkPolicy.from }}
+    # The metrics scraper (metrics.networkPolicy.from).
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: {{ $np.metrics.port }}
+          protocol: TCP
+    {{- end }}
+    {{- with $np.ingress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress:
+    # The API server.
+    - to:
+        {{- range $cidr := $np.apiServer.cidrs }}
+        - ipBlock:
+            cidr: {{ $cidr }}
+        {{- end }}
+      ports:
+        - port: {{ $np.apiServer.port }}
+          protocol: TCP
+    # Cluster DNS.
+    - to:
+        {{- toYaml $np.dns.to | nindent 8 }}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- with $np.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,61 @@
+---
+# Source: gateway-policies/templates/backend-traffic-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: console-streaming
+  namespace: console
+  annotations:
+    argocd.argoproj.io/sync-wave: "70"
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: console
+  timeout:
+    http:
+      requestTimeout: 0s
+      streamIdleTimeout: 5m
+
+---
+# Source: gateway-policies/templates/backend-traffic-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: ingest
+  namespace: telemetry
+  annotations:
+    argocd.argoproj.io/sync-wave: "66"
+spec:
+  rateLimit:
+    local:
+      rules:
+      - limit:
+          requests: 300
+          unit: Minute
+    type: Local
+  requestBuffer:
+    limit: 4Mi
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: ingest
+    sectionName: ingest
+
+---
+# Source: gateway-policies/templates/backend-traffic-policies.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: reports-slow
+  namespace: reports
+  annotations:
+    argocd.argoproj.io/sync-wave: "70"
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: reports
+  timeout:
+    http:
+      requestTimeout: 60s

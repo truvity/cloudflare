@@ -1,0 +1,60 @@
+# A group whose backend is two workloads, each admitted on its own port by a
+# named policy, one of which also admits a peer that is not the gateway; and
+# a grant that lets a route in one namespace name a Service in another.
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "66"
+
+defaults:
+  parent:
+    name: public
+  certificate:
+    issuerRef:
+      name: example-ca
+
+groups:
+  console:
+    domains:
+      - console.example.com
+    networkPolicy:
+      from:
+        namespace: gateway-system
+        podLabels:
+          app.kubernetes.io/name: envoy
+    networkPolicies:
+      - name: console-api-ingress-from-gateway
+        namespace: console
+        annotations:
+          argocd.argoproj.io/sync-wave: "70"
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/component: api
+        ports:
+          - port: 8080
+            protocol: TCP
+        extraIngress:
+          - from:
+              - ipBlock:
+                  cidr: 100.64.0.0/10
+            ports:
+              - port: 8080
+                protocol: TCP
+      - name: console-hooks-ingress-from-gateway
+        namespace: console
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/component: hooks
+        from:
+          podLabels:
+            app.kubernetes.io/name: envoy
+            app.kubernetes.io/component: proxy
+        ports:
+          - port: 9090
+            protocol: TCP
+
+referenceGrants:
+  console-telemetry:
+    namespace: telemetry
+    from:
+      - namespace: console
+    to:
+      - name: telemetry-receiver

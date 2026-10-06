@@ -289,6 +289,43 @@ subjectAltNames: []
 {{- toYaml $p -}}
 {{- end -}}
 
+{{/* ------------------------------------------------------------------ */}}
+{{/* backendTrafficPolicies                                               */}}
+{{/* ------------------------------------------------------------------ */}}
+{{/* The spec blocks this chart passes through, in the order a reader looks
+     for them. Anything else goes in extraSpec. */}}
+{{- define "policies.backendTraffic.blocks" -}}
+timeout requestBuffer rateLimit retry circuitBreaker loadBalancer healthCheck tcpKeepalive compression
+{{- end -}}
+
+{{- define "policies.backendTraffic.defaults" -}}
+enabled: true
+name: ""
+namespace: ""
+annotations: {}
+labels: {}
+targetRefs: []
+extraSpec: {}
+{{- end -}}
+
+{{- define "policies.backendTraffic.resolve" -}}
+{{- $p := include "policies.merge" (dict "base" (include "policies.backendTraffic.defaults" . | fromYaml) "over" .spec) | fromYaml -}}
+{{- if not $p.name }}{{- $_ := set $p "name" .key }}{{- end -}}
+{{- $_ := set $p "targetRefs" (include "policies.targetRefs" (dict "refs" $p.targetRefs "kind" "HTTPRoute" "group" "gateway.networking.k8s.io") | fromYamlArray) -}}
+{{- toYaml $p -}}
+{{- end -}}
+
+{{/* The BackendTrafficPolicy spec for one resolved entry. */}}
+{{- define "policies.backendTraffic.spec" -}}
+{{- $p := . -}}
+{{- $spec := dict "targetRefs" $p.targetRefs -}}
+{{- range $b := splitList " " (include "policies.backendTraffic.blocks" .) -}}
+{{- with get $p $b }}{{- $_ := set $spec $b . }}{{- end -}}
+{{- end -}}
+{{- $spec = include "policies.merge" (dict "base" $spec "over" $p.extraSpec) | fromYaml -}}
+{{- toYaml $spec -}}
+{{- end -}}
+
 {{/*
 Claim one object identity in a registry, failing when two entries collide.
 A dict is a reference, so the registry accumulates across one render.

@@ -5,6 +5,14 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.17.0
+
+- **Feature: `gateway-policies` `backendTrafficPolicies.<name>`**, one BackendTrafficPolicy per entry: `timeout`, `requestBuffer`, `rateLimit`, `retry`, `circuitBreaker`, `loadBalancer`, `healthCheck`, `tcpKeepalive` and `compression` are Envoy Gateway's own blocks, passed through verbatim, plus `extraSpec`. A target (route, rule by `sectionName`, or Gateway) claimed by two entries is refused, as is an entry with no block, no namespace or no target.
+- **Feature: `gateway-groups` `groups.<name>.networkPolicies`**, a group's further ingress policies, each with its own name, namespace, pod selector and ports, `from` defaulting to the group's `networkPolicy.from`, and `extraIngress` rules for peers besides the gateway. **`referenceGrants.<name>`**: a Gateway API ReferenceGrant in a backend's namespace, every `to` entry naming its object.
+- **Feature: `gateway-fleet`.** `exposures.<name>.services`: further Services in front of an exposure's proxies (a pinned ClusterIP, or a load balancer of its own class), selecting exactly that exposure's pods, the port defaulting to the health listener's and the proxy's container port. `exposures.<name>.egressPolicies`: further egress-only policies on the exposure's proxies, in `networking.k8s.io` or a network-policy implementation's own kind, with the chart's pod selector and the caller's rules. `passthroughs.<name>`: a TLS passthrough Gateway of a merged class with `proxy.passthrough`, and its TLSRoute to the backend that terminates TLS. `controllerNetworkPolicy`: the Envoy Gateway controller's own NetworkPolicy (xDS from the proxies, the webhook, the metrics scraper from `metrics.networkPolicy.from`; egress to the API server CIDRs and DNS peers the caller gives).
+- `gateway-projects` carries the new `gateway-groups` and `gateway-policies` templates.
+- Nothing renders differently for a consumer that sets none of these: every existing render is byte-identical to v1.16.0.
+
 ## v1.16.0
 
 - **Feature: `gateway-fleet` takes what the proxies of an install share once.** `proxyDefaults` (the shape of a `proxy` block) is merged under every class and exposure proxy, so a setting every proxy wants is written once. `proxy.pod.zoneSpread` (`DoNotSchedule` or `ScheduleAnyway`) renders a one-per-zone spread constraint whose selector is the proxy's own pods, so a consumer no longer writes the class name into it. `proxy.passthrough: true` marks a fleet that carries TLS passthrough entries and fills the graceful-drain defaults it needs (readiness fails 10s before the drain, no exit before 30s, connections closed after 60s) wherever `shutdown` leaves them empty.

@@ -1,0 +1,132 @@
+---
+# Source: gateway-groups/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: console-api-ingress-from-gateway
+  namespace: console
+  annotations:
+    argocd.argoproj.io/sync-wave: "70"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: envoy
+      ports:
+        - port: 8080
+          protocol: TCP
+    - from:
+      - ipBlock:
+          cidr: 100.64.0.0/10
+      ports:
+      - port: 8080
+        protocol: TCP
+
+---
+# Source: gateway-groups/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: console-hooks-ingress-from-gateway
+  namespace: console
+  annotations:
+    argocd.argoproj.io/sync-wave: "66"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: hooks
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: proxy
+              app.kubernetes.io/name: envoy
+      ports:
+        - port: 9090
+          protocol: TCP
+
+---
+# Source: gateway-groups/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: console-example-com-tls
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "66"
+spec:
+  secretName: console-example-com-tls
+  dnsNames:
+    - "console.example.com"
+  privateKey:
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: example-ca
+
+---
+# Source: gateway-groups/templates/listenerset.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: console
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "66"
+spec:
+  parentRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public
+    namespace: envoy-gateway-system
+  listeners:
+    - allowedRoutes:
+        kinds:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+        namespaces:
+          from: Same
+      hostname: console.example.com
+      name: console-example-com
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+        - group: ""
+          kind: Secret
+          name: console-example-com-tls
+        mode: Terminate
+
+---
+# Source: gateway-groups/templates/referencegrant.yaml
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: console-telemetry
+  namespace: telemetry
+  annotations:
+    argocd.argoproj.io/sync-wave: "66"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: console
+  to:
+    - group: ""
+      kind: Service
+      name: telemetry-receiver

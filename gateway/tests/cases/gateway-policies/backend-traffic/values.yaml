@@ -1,0 +1,40 @@
+# How the gateway talks to backends: a streaming UI with no per-request
+# timeout, a slow page with a longer one, and a machine door with a body
+# limit and a local rate limit on its one rule, synced before the route.
+tlsBaseline:
+  enabled: false
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "70"
+
+backendTrafficPolicies:
+  console-streaming:
+    namespace: console
+    targetRefs:
+      - name: console
+    timeout:
+      http:
+        requestTimeout: 0s
+        streamIdleTimeout: 5m
+  reports-slow:
+    namespace: reports
+    targetRefs:
+      - name: reports
+    timeout:
+      http:
+        requestTimeout: 60s
+  ingest:
+    namespace: telemetry
+    annotations:
+      argocd.argoproj.io/sync-wave: "66"
+    targetRefs:
+      - name: ingest
+        sectionName: ingest
+    requestBuffer:
+      limit: 4Mi
+    rateLimit:
+      type: Local
+      local:
+        rules:
+          - limit:
+              requests: 300
+              unit: Minute

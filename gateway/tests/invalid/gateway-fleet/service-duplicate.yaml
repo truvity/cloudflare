@@ -1,0 +1,6 @@
+classes: {internal: {mergeGateways: true, proxy: {passthrough: true}}}
+exposures:
+  e:
+    class: internal
+    health: {hostname: h.example.com, certificate: {issuerRef: {name: ca}}}
+    services: [{name: internal-proxy-svc}, {name: internal-proxy-svc}]

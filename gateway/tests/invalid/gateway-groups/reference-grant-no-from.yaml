@@ -1,0 +1,2 @@
+referenceGrants:
+  r: {namespace: ns, to: [{name: s}]}

@@ -1,0 +1,60 @@
+{{- /* Further ways into an exposure's proxies, beside the Service Envoy
+       Gateway makes for them: a pinned ClusterIP a private network can route
+       to, or a load balancer of a class the fleet's own Service does not
+       carry. Each selects exactly the pods the exposure is served by, and
+       maps each port to the port the proxy listens on. A second Service
+       rather than a change to the first, because spec.clusterIP and a load
+       balancer cannot move under live clients. */}}
+{{- range $name, $spec := .Values.exposures }}
+{{- $raw := $spec | default dict }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $raw.class "spec" (get $.Values.classes ($raw.class | default "")) ) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- if and $e.enabled $c.enabled }}
+{{- $proxy := $c.proxy }}
+{{- if include "gateway.exposure.ownProxy" (dict "class" $c "exposure" $e) }}{{- $proxy = $e.proxy }}{{- end }}
+{{- range $s := $e.services }}
+{{- $ports := $s.ports }}
+{{- if not $ports }}
+{{- /* The exposure's own listener port, to the port Envoy Gateway gives it
+       in the pod: the same, or +10000 below 1024 unless the proxy uses the
+       listener port as its container port. */}}
+{{- $p := int $e.health.port }}
+{{- $target := (and (lt $p 1024) (not $proxy.useListenerPortAsContainerPort)) | ternary (add $p 10000) $p }}
+{{- $ports = list (dict "name" (lower $e.health.protocol) "port" $p "protocol" "TCP" "targetPort" (int $target)) }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $s.name }}
+  namespace: {{ $e.namespace }}
+  {{- with include "gateway.annotations" (dict "root" $ "extra" $s.annotations) | fromYaml }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $s.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $s.type | default "ClusterIP" }}
+  {{- with $s.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- with $s.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- with $s.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $s.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "gateway.podSelector" (dict "class" $c "exposure" $e) | nindent 4 }}
+  ports:
+    {{- toYaml $ports | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

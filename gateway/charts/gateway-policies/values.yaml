@@ -12,6 +12,9 @@
 #                        and CSRF on cookie-authenticated routes.
 #   backendTLSPolicies.<n> a BackendTLSPolicy: the gateway verifies a
 #                        backend's certificate against a CA you name.
+#   backendTrafficPolicies.<n> a BackendTrafficPolicy: how the gateway
+#                        talks to the backend of a route or rule (timeouts,
+#                        a request body limit, a local rate limit, retries).
 #
 # Nothing here names an issuer, a client, a hostname or a CA: every such
 # thing is an input. With an empty values file this chart renders exactly
@@ -325,3 +328,35 @@ backendTLSPolicies: {}
 #        name: example-trust-bundle
 #    wellKnownCACertificates: ""    # "System": the proxy's own trust store
 #    subjectAltNames: []            # [{type: Hostname, hostname}|{type: URI, uri}]
+
+# ---------------------------------------------------------------------------
+# How the gateway talks to a backend: one BackendTrafficPolicy per entry.
+# Off unless an entry exists. The blocks are Envoy Gateway's own
+# (BackendTrafficPolicy.spec), passed through verbatim; at least one must be
+# set. ONE policy per target: a second on the same route, rule or Gateway is
+# refused, because the controller would keep the older and ignore the newer.
+# ---------------------------------------------------------------------------
+backendTrafficPolicies: {}
+#  console-slow:
+#    enabled: true
+#    name: ""                       # default: the map key
+#    namespace: ""                  # required: the target's namespace
+#    annotations: {}                # over commonAnnotations: a sync wave of its own
+#    labels: {}
+#    targetRefs:                    # required; kind HTTPRoute (default),
+#      - name: console              # GRPCRoute, TCPRoute, TLSRoute, UDPRoute
+#        sectionName: app           # or Gateway. sectionName: one rule
+#                                   # (by its name) or one listener.
+#    timeout:                       # e.g. a slow page or a streaming UI
+#      http:
+#        requestTimeout: 60s
+#    requestBuffer:                 # a body limit: 413 before the backend reads it
+#      limit: 1Mi
+#    rateLimit: {}                  # e.g. {type: Local, local: {rules: [...]}}
+#    retry: {}
+#    circuitBreaker: {}
+#    loadBalancer: {}
+#    healthCheck: {}
+#    tcpKeepalive: {}
+#    compression: []
+#    extraSpec: {}                  # deep-merged over the generated spec, last
