@@ -670,3 +670,9 @@ object names the estate owns, its private zone, the pinned address and the
 private trust domain's leaf policy; `WriteValues` writes the `privateEntry`
 block (the health listener, the TLS floor and, when `LoadBalancer` is set,
 the internal load balancer's annotations).
+
+`catalog.ClientProxy` is the gateway's half of a console's sign-in row
+(`attach_route_name`, `attach_route_rule`, `posture`, `allow`, `forward_bearer`,
+`csrf`, `csrf_additional_origins`, `same_site`): an estate embeds it inline in
+its own row, and `Validate(where, checkAllow)` applies the rules. `ForwardsBearer`
+and `PostureOrDefault` carry the defaults, so no estate restates them.
