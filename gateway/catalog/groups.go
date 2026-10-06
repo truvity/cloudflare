@@ -105,6 +105,16 @@ type (
 		// it: per-install hosts land on a wildcard, in namespaces the
 		// catalog does not list.
 		BusinessGrantLabel string
+		// WildcardByName makes a business wildcard admit by name instead of
+		// by BusinessGrantLabel: its own route namespaces plus
+		// WildcardNamespaces. For an estate that grants by name only and
+		// writes no coarse label; BusinessGrantLabel is then not read for a
+		// wildcard.
+		WildcardByName bool
+		// WildcardNamespaces are the namespaces per-install hosts land in
+		// (CI and employee installs), which no group lists. Read only with
+		// WildcardByName.
+		WildcardNamespaces []string
 		// ListenerSetNamespace is the namespace of every ListenerSet and
 		// of the exposure Gateways.
 		ListenerSetNamespace string
@@ -146,7 +156,9 @@ func BusinessRouteGrant(label string) AllowedRoutes {
 //   - A BUSINESS group (every route namespace is a project) admits exactly
 //     its own namespaces by name, see NamespacesGrant. A business wildcard
 //     is the exception: per-install hosts land on it, in namespaces the
-//     catalog does not list, so it admits by DeriveInput.BusinessGrantLabel.
+//     catalog does not list, so it admits by DeriveInput.BusinessGrantLabel
+//     -- or, with DeriveInput.WildcardByName, by name over its own
+//     namespaces and DeriveInput.WildcardNamespaces.
 //   - A PLATFORM group (no route namespace is a project) admits its one
 //     namespace by name.
 //   - A PRIVATE group naming one namespace admits that one by name, even
@@ -374,7 +386,19 @@ func routeGrant(in DeriveInput, projects map[string]Project, arrival string, gro
 	// its own listener, so the name-grant property holds where it matters:
 	// every exact-host business listener still admits its own namespace by
 	// name.
+	//
+	// AN ESTATE THAT GRANTS BY NAME ONLY (WildcardByName) writes no coarse
+	// label, so selecting it would admit nobody and 404 every per-install
+	// host. Its wildcard admits the per-install namespaces it names, plus
+	// the group's own, by the immutable name label.
 	if hasWildcardDomain(group.Domains) {
+		if in.WildcardByName {
+			names := slices.Concat(business, in.WildcardNamespaces)
+			slices.Sort(names)
+
+			return NamespacesGrant(slices.Compact(names), kinds), nil
+		}
+
 		return BusinessRouteGrant(in.BusinessGrantLabel), nil
 	}
 

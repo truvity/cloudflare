@@ -5,6 +5,10 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.15.0
+
+- **Feature: a business wildcard can admit by name.** `DeriveInput.WildcardByName` with `DeriveInput.WildcardNamespaces` makes a business wildcard group admit its own route namespaces plus the named per-install namespaces (CI and employee installs) by `kubernetes.io/metadata.name`, instead of by `BusinessGrantLabel`. For an estate that grants by name only and no longer writes the coarse label: selecting a label nobody writes admits no route, and every per-install host on the wildcard answers 404. Unset, nothing changes. The charts are unchanged.
+
 ## v1.14.0
 
 - **Default change: certificates in `gateway-fleet` and `gateway-groups`.** An exposure's health certificate and a group's certificates now default `privateKey.rotationPolicy: Always` and `issuerRef.kind: ClusterIssuer`, `issuerRef.group: cert-manager.io`. Before, a certificate that named only `issuerRef.name` got cert-manager's own kind (`Issuer`) and no stated rotation; it now gets a `ClusterIssuer` reference and `rotationPolicy: Always`. A consumer that set the three explicitly renders the same objects as before; a consumer that set only the name, with a namespaced `Issuer`, must now set `issuerRef.kind: Issuer`. `gateway-projects` carries the same defaults. The issuer's name stays required and is the estate's.
