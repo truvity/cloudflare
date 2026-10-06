@@ -5,6 +5,12 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.12.0
+
+- **Feature: `catalog.PrivateEntry`.** The shared private entry of a cluster (one Gateway with a pinned ClusterIP in front, a health listener, a TLS floor and, where a cross-cluster group needs it, an internal load balancer) is derived by the library: `NewPrivateEntry`, `PrivateEntry.GroupCertificate` (the certificate policy its private groups take, so the entry and the groups beside it can never be issued apart), and `PrivateEntry.WriteValues` (the `privateEntry` block, with the load balancer annotations and the optional tighter health check). The object names are inputs: each is the identity of a live object.
+- **Feature: `GroupCertificate.WriteValues` and `WriteOverride`**, the certificate shape the charts take, in one place.
+- **Breaking, library only:** `DeriveInput.PrivateParent` and `PrivateCertificate` are replaced by `DeriveInput.PrivateEntry`. v1.11.0 shipped hours before this; nothing but one estate reads it. The charts are unchanged.
+
 ## v1.11.0
 
 - **Feature: `catalog.DeriveGroups`.** The ListenerSet half of the catalog is derived by the library instead of by every estate: which groups a cluster serves from their own ListenerSet, the exposure Gateways they attach to, each ListenerSet's route grant (a business group admits its own namespaces by name, a business wildcard admits by the coarse label the estate supplies, a platform group admits its one namespace, a private group admits its one namespace by name) and the certificate and parent of a private group. `GroupsValue.ListenerSetsFor` points each project at the ListenerSet serving its primary hostname and refuses a project whose hosts would split across groups. `Project` gains `ParentRefsSince`. The estate's facts (platform group consumers, the coarse label, the private entry's Gateway and certificate, the reserved exposure) are inputs of `DeriveInput`.

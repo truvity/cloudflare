@@ -661,6 +661,12 @@ name; a business wildcard admits by the coarse label the estate names in
 catalog does not list); a platform group admits the one namespace the estate's
 `PlatformConsumers` map gives it; a private group naming one namespace admits
 it by name. The private exposure is not derived: its groups attach to the
-Gateway in `PrivateParent` and take `PrivateCertificate`. The result's
+Gateway of `PrivateEntry` and take its certificate policy. The result's
 `ListenerSetsFor` points each project at the ListenerSet that serves its
 primary hostname.
+
+`catalog.NewPrivateEntry` derives a cluster's shared private entry from the
+object names the estate owns, its private zone, the pinned address and the
+private trust domain's leaf policy; `WriteValues` writes the `privateEntry`
+block (the health listener, the TLS floor and, when `LoadBalancer` is set,
+the internal load balancer's annotations).

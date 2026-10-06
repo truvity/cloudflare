@@ -51,8 +51,7 @@ func groupsInput() catalog.DeriveInput {
 		BusinessGrantLabel:   groupsLabel,
 		ListenerSetNamespace: "gw-system",
 		ReservedExposure:     "internal",
-		PrivateParent:        "private-entry",
-		PrivateCertificate:   &catalog.GroupCertificate{Issuer: "private-ca", Duration: "720h", RenewBefore: "240h", KeyAlgorithm: "ECDSA", KeySize: 384},
+		PrivateEntry:         testEntry(false),
 	}
 }
 
@@ -181,7 +180,7 @@ func TestDeriveGroupsRefusals(t *testing.T) {
 		"business and platform in one group":      {one(catalog.ArrivalCloudflareTunnel, "shop", "shop", "tools-system"), nil, "cannot share a group"},
 		"a project whose chart ignores parentRefs": {one(catalog.ArrivalCloudflareTunnel, "shop", "shop"), noParentRefs,
 			"project shop has no exposure_parent_refs_since"},
-		"a private group with no entry": {one(catalog.ArrivalPrivateClusterIP, "shop", "shop"), func(in *catalog.DeriveInput) { in.PrivateCertificate = nil },
+		"a private group with no entry": {one(catalog.ArrivalPrivateClusterIP, "shop", "shop"), func(in *catalog.DeriveInput) { in.PrivateEntry = nil },
 			"no private entry"},
 		"the reserved exposure": {&catalog.Config{Version: catalog.Version, Exposures: map[string]catalog.Exposure{
 			"internal": {Class: "edge", Arrival: catalog.ArrivalCloudflareTunnel, Clusters: map[string]catalog.Cluster{"dev": {Groups: map[string]catalog.Group{

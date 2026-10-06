@@ -112,13 +112,11 @@ type (
 		// derivation refuses because a Gateway of that name is written
 		// elsewhere.
 		ReservedExposure string
-		// PrivateParent and PrivateCertificate are the private entry's
-		// Gateway and the certificate policy its leaves take. The private
-		// exposure is not derived: it is the caller's shared entry, and its
-		// groups attach to that Gateway. Both are empty on a cluster with
-		// no entry, which refuses a private group.
-		PrivateParent      string
-		PrivateCertificate *GroupCertificate
+		// PrivateEntry is the cluster's shared private entry. The private
+		// exposure is not derived: it is that entry, and its groups attach
+		// to its Gateway and take its certificate policy. Nil on a cluster
+		// with no entry, which refuses a private group.
+		PrivateEntry *PrivateEntry
 	}
 )
 
@@ -243,16 +241,15 @@ func (c *Config) deriveGroups(in DeriveInput) ([]ExposureValue, []GroupValue, er
 		// private name's is the private trust domain's, which every client
 		// on the private network does verify.
 		if exposure.Arrival == ArrivalPrivateClusterIP {
-			if in.PrivateCertificate == nil || in.PrivateParent == "" {
+			if in.PrivateEntry == nil {
 				return nil, nil, fmt.Errorf(
 					"cfg/gateways: exposures[%s] on %s has listener_set groups, and the cluster has no private entry for them to attach to",
 					exposureName, in.Cluster)
 			}
 
 			for i := range groups {
-				certificate := *in.PrivateCertificate
-				groups[i].Parent = in.PrivateParent
-				groups[i].Certificate = &certificate
+				groups[i].Parent = in.PrivateEntry.Names.Gateway
+				groups[i].Certificate = in.PrivateEntry.GroupCertificate()
 			}
 
 			outGroups = append(outGroups, groups...)
