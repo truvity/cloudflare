@@ -8,6 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/pulumi/pulumi-cloudflare/sdk/v6 v6.19.0
+	github.com/pulumi/pulumi-random/sdk/v4 v4.21.2
 	github.com/pulumi/pulumi/sdk/v3 v3.260.0
 	github.com/stretchr/testify v1.12.1
 	github.com/truvity/audit/sdk v0.6.1
