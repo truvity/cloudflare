@@ -141,6 +141,12 @@ const (
 	PermissionObjectReadOnly  = "object-read-only"
 )
 
+// Permissions lists the permission levels TokenConfig.Permission accepts, so
+// a caller validating its own input does not restate them.
+func Permissions() []string {
+	return []string{PermissionObjectReadWrite, PermissionObjectReadOnly}
+}
+
 // defaultPermissionGroup maps a Permission to Cloudflare's own name for the
 // permission group that grants it, scoped by the policy's Resources map to
 // the one bucket this component owns. See the package doc for the
@@ -337,7 +343,7 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.Token.Enabled {
-		if !oneOf(cfg.Token.Permission, []string{PermissionObjectReadWrite, PermissionObjectReadOnly}) {
+		if !oneOf(cfg.Token.Permission, Permissions()) {
 			return fmt.Errorf("r2 %q: token.permission %q must be one of %q, %q", cfg.Bucket, cfg.Token.Permission, PermissionObjectReadWrite, PermissionObjectReadOnly)
 		}
 
