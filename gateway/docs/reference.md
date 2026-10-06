@@ -658,7 +658,9 @@ by `kubernetes.io/metadata.name`, which nobody can relabel.
 and each group's route grant. A business group admits its own namespaces by
 name; a business wildcard admits by the coarse label the estate names in
 `BusinessGrantLabel` (per-install hosts land on a wildcard, in namespaces the
-catalog does not list); a platform group admits the one namespace the estate's
+catalog does not list), or, with `WildcardByName`, by name over its own
+namespaces and the estate's `WildcardNamespaces` (for an estate that writes no
+coarse label); a platform group admits the one namespace the estate's
 `PlatformConsumers` map gives it; a private group naming one namespace admits
 it by name. The private exposure is not derived: its groups attach to the
 Gateway of `PrivateEntry` and take its certificate policy. The result's

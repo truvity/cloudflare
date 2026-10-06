@@ -140,6 +140,31 @@ func TestDeriveGroups(t *testing.T) {
 	}
 }
 
+func TestDeriveGroupsWildcardByName(t *testing.T) {
+	in := groupsInput()
+	in.WildcardByName = true
+	in.WildcardNamespaces = []string{"ci-shop", "emp-alice", "shop"}
+
+	got, err := groupsCatalog().DeriveGroups(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The wildcard admits its own namespaces and the per-install ones, by
+	// the name label, once each; the coarse label is not selected.
+	shared := group(t, got, "shared").AllowedRoutes.AllowedNamespaces.Selector
+	if len(shared.MatchLabels) != 0 || len(shared.MatchExpressions) != 1 ||
+		shared.MatchExpressions[0].Key != catalog.NamespaceNameLabel || shared.MatchExpressions[0].Operator != "In" ||
+		strings.Join(shared.MatchExpressions[0].Values, ",") != "api,ci-shop,emp-alice,shop" {
+		t.Fatalf("shared: %+v", shared)
+	}
+
+	// Exact-host groups are unchanged.
+	if group(t, got, "shop").AllowedRoutes.AllowedNamespaces.Selector.MatchLabels[catalog.NamespaceNameLabel] != "shop" {
+		t.Fatal("shop changed")
+	}
+}
+
 func TestDeriveGroupsNothingWithoutTheFlag(t *testing.T) {
 	c := groupsCatalog()
 
