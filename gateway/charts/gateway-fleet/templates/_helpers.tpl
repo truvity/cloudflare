@@ -35,11 +35,13 @@ filterOrder: []
 replicas: 2
 podDisruptionBudget:
   minAvailable: 1
+passthrough: false
 pod:
   tolerations: []
   nodeSelector: {}
   affinity: {}
   topologySpreadConstraints: []
+  zoneSpread: ""
 service:
   name: ""
   type: ClusterIP
@@ -100,13 +102,30 @@ route_name: "%ROUTE_NAME%"
 {{- end -}}
 
 {{/*
-Resolve one proxy block. `defaultName` and `defaultServiceName` supply the
-deterministic names a consumer can alias onto.
-  {{- $p := include "gateway.proxy.resolve" (dict "spec" $x.proxy "defaultName" "a" "defaultServiceName" "b") | fromYaml }}
+Resolve one proxy block: the chart's defaults, then the values' `proxyDefaults`
+(the settings every proxy of the install shares), then the block itself.
+`defaultName` and `defaultServiceName` supply the deterministic names a
+consumer can alias onto.
+  {{- $p := include "gateway.proxy.resolve" (dict "root" $ "spec" $x.proxy "defaultName" "a" "defaultServiceName" "b") | fromYaml }}
+
+`passthrough` marks a fleet that carries TLS passthrough entries. A passthrough
+connection is raw TCP to Envoy: it cannot be told to go away, only closed, so a
+rolling proxy has to keep accepting until the load balancer has stopped sending
+it new flows, and then give open connections a bounded time to finish. The
+shutdown fields it leaves empty default to: failing readiness 10s before the
+drain starts (the endpoint removal reaches the load balancer and kube-proxy),
+never exiting earlier than 30s (a load balancer's deregistration delay is
+usually 30s, and an idle proxy exiting sooner refuses the flows still routed to
+it), and closing a client's keep-alive connection after 60s at the latest.
 */}}
 {{- define "gateway.proxy.resolve" -}}
 {{- $d := include "gateway.proxy.defaults" . | fromYaml -}}
-{{- $p := mergeOverwrite $d (.spec | default dict) -}}
+{{- $p := mergeOverwrite $d (deepCopy (.root.Values.proxyDefaults | default dict)) (.spec | default dict) -}}
+{{- if $p.passthrough -}}
+{{- if not $p.shutdown.healthCheckFailureDelay }}{{- $_ := set $p.shutdown "healthCheckFailureDelay" "10s" }}{{- end -}}
+{{- if not $p.shutdown.minDrainDuration }}{{- $_ := set $p.shutdown "minDrainDuration" "30s" }}{{- end -}}
+{{- if not $p.shutdown.drainTimeout }}{{- $_ := set $p.shutdown "drainTimeout" "60s" }}{{- end -}}
+{{- end -}}
 {{- if not $p.name }}{{- $_ := set $p "name" .defaultName }}{{- end -}}
 {{- if not $p.service.name }}{{- $_ := set $p.service "name" .defaultServiceName }}{{- end -}}
 {{- toYaml $p -}}
@@ -116,7 +135,13 @@ deterministic names a consumer can alias onto.
 Build EnvoyProxy .spec from a resolved proxy block. `merge` is the class's
 mergeGateways flag and is rendered only on a class-level proxy: a merged
 class has exactly one proxy, so the flag has no meaning per exposure.
-  {{- include "gateway.proxy.spec" (dict "proxy" $p "merge" true "renderMerge" true) }}
+  {{- include "gateway.proxy.spec" (dict "proxy" $p "merge" true "renderMerge" true "selector" $labels) }}
+
+`selector` is the label set that selects this proxy's pods, for the zone
+spread constraint (`pod.zoneSpread`): one pod of the fleet per zone, as far as
+the autoscaler can provide, with `DoNotSchedule` making it a hard rule (the
+autoscaler then adds a zone's node group instead of stacking both proxies in
+one zone) and `ScheduleAnyway` a soft one.
 */}}
 {{- define "gateway.proxy.spec" -}}
 {{- $p := .proxy -}}
@@ -139,7 +164,15 @@ class has exactly one proxy, so the flag has no meaning per exposure.
 {{- with $p.pod.tolerations }}{{- $_ := set $pod "tolerations" . }}{{- end -}}
 {{- with $p.pod.nodeSelector }}{{- $_ := set $pod "nodeSelector" . }}{{- end -}}
 {{- with $p.pod.affinity }}{{- $_ := set $pod "affinity" . }}{{- end -}}
-{{- with $p.pod.topologySpreadConstraints }}{{- $_ := set $pod "topologySpreadConstraints" . }}{{- end -}}
+{{- $spread := $p.pod.topologySpreadConstraints | default list -}}
+{{- if $p.pod.zoneSpread -}}
+{{- $spread = append $spread (dict
+      "maxSkew" 1
+      "topologyKey" "topology.kubernetes.io/zone"
+      "whenUnsatisfiable" $p.pod.zoneSpread
+      "labelSelector" (dict "matchLabels" .selector)) -}}
+{{- end -}}
+{{- with $spread }}{{- $_ := set $pod "topologySpreadConstraints" . }}{{- end -}}
 {{- $deploy := dict "replicas" $p.replicas -}}
 {{- with $pod }}{{- $_ := set $deploy "pod" . }}{{- end -}}
 {{- $k8s := dict "envoyService" $svc "envoyDeployment" $deploy -}}
@@ -194,6 +227,7 @@ proxy: {}
 {{- $rawProxy := (.spec | default dict).proxy | default dict -}}
 {{- if not (hasKey $rawProxy "enabled") }}{{- $_ := set $c.proxy "enabled" $c.mergeGateways }}{{- end -}}
 {{- $_ := set $c "proxy" (include "gateway.proxy.resolve" (dict
+      "root" .root
       "spec" $c.proxy
       "defaultName" (printf "%s-config" .name)
       "defaultServiceName" (printf "gateway-%s" .name)) | fromYaml) -}}
@@ -275,11 +309,41 @@ networkPolicy:
       control-plane: envoy-gateway
     port: 18000
   egress: []
+  egressTo: []
+{{- end -}}
+
+{{/*
+One `egressTo` row as a NetworkPolicy egress rule. A fleet's egress is an
+allow-list, and publishing a backend needs BOTH halves of its path: the route
+and the backend's own ingress policy are not enough, because nothing in the
+Gateway API opens the proxy's way out to the pod. Every such rule has the same
+shape, so a row names only what differs:
+
+  namespace             the backend's namespace by name; "*" is every namespace
+  namespaceExpressions  matchExpressions over namespace labels, instead of a
+                        namespace name
+  podLabels             the backend pods' labels; none selects the whole
+                        namespace
+  port, protocol        the POD's port (a NetworkPolicy never names the
+                        Service's); none allows every port
+*/}}
+{{- define "gateway.egress.row" -}}
+{{- $ns := dict -}}
+{{- if .namespaceExpressions -}}
+{{- $_ := set $ns "matchExpressions" .namespaceExpressions -}}
+{{- else if ne (.namespace | default "") "*" -}}
+{{- $_ := set $ns "matchLabels" (dict "kubernetes.io/metadata.name" .namespace) -}}
+{{- end -}}
+{{- $peer := dict "namespaceSelector" $ns -}}
+{{- with .podLabels }}{{- $_ := set $peer "podSelector" (dict "matchLabels" .) }}{{- end -}}
+{{- $rule := dict "to" (list $peer) -}}
+{{- if .port }}{{- $_ := set $rule "ports" (list (dict "port" .port "protocol" (.protocol | default "TCP"))) }}{{- end -}}
+{{- toYaml $rule -}}
 {{- end -}}
 
 {{/*
 Resolve one exposure against its class.
-  {{- $e := include "gateway.exposure.resolve" (dict "name" $n "spec" $s "class" $c) | fromYaml }}
+  {{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $n "spec" $s "class" $c) | fromYaml }}
 */}}
 {{- define "gateway.exposure.resolve" -}}
 {{- $d := include "gateway.exposure.defaults" . | fromYaml -}}
@@ -296,6 +360,7 @@ Resolve one exposure against its class.
 {{- if not $e.clientTrafficPolicy.name }}{{- $_ := set $e.clientTrafficPolicy "name" (printf "%s-tls" $e.gatewayName) }}{{- end -}}
 {{- if not $e.networkPolicy.name }}{{- $_ := set $e.networkPolicy "name" (printf "envoy-%s" $e.name) }}{{- end -}}
 {{- $_ := set $e "proxy" (include "gateway.proxy.resolve" (dict
+      "root" .root
       "spec" $e.proxy
       "defaultName" (printf "%s-proxy" $e.name)
       "defaultServiceName" (printf "gateway-%s" $e.name)) | fromYaml) -}}

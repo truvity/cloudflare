@@ -5,6 +5,13 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.16.0
+
+- **Feature: `gateway-fleet` takes what the proxies of an install share once.** `proxyDefaults` (the shape of a `proxy` block) is merged under every class and exposure proxy, so a setting every proxy wants is written once. `proxy.pod.zoneSpread` (`DoNotSchedule` or `ScheduleAnyway`) renders a one-per-zone spread constraint whose selector is the proxy's own pods, so a consumer no longer writes the class name into it. `proxy.passthrough: true` marks a fleet that carries TLS passthrough entries and fills the graceful-drain defaults it needs (readiness fails 10s before the drain, no exit before 30s, connections closed after 60s) wherever `shutdown` leaves them empty.
+- **Feature: `presets/fleet.yaml`**, a values file for `helm.valueFiles` that sets `proxyDefaults` for an ext_authz-gated, browser-facing fleet: ext_authz before jwt_authn, the access-log fields that attribute a request to the client that sent it (origin, referer without its query, sec-fetch-site and -mode, cf-ray), and `zoneSpread: DoNotSchedule`.
+- **Feature: `exposures.<name>.networkPolicy.egressTo`**, the fleet's egress allow-list as rows: a `namespace` (or `namespaceExpressions`), optional `podLabels`, and the POD's `port`. The rows render before any raw `egress` rules, after the xDS rule. A fleet's egress is default-deny and nothing in the Gateway API opens a proxy's way out, so a published backend needs its row as well as its route.
+- Nothing renders differently for a consumer that sets none of these: every existing render is byte-identical to v1.15.0.
+
 ## v1.15.0
 
 - **Feature: a business wildcard can admit by name.** `DeriveInput.WildcardByName` with `DeriveInput.WildcardNamespaces` makes a business wildcard group admit its own route namespaces plus the named per-install namespaces (CI and employee installs) by `kubernetes.io/metadata.name`, instead of by `BusinessGrantLabel`. For an estate that grants by name only and no longer writes the coarse label: selecting a label nobody writes admits no route, and every per-install host on the wildcard answers 404. Unset, nothing changes. The charts are unchanged.

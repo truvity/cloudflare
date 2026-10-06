@@ -17,13 +17,13 @@ prometheus-operator CRD defaults it to `replace`, a converter may not.
 {{- if $pm.proxy.enabled }}
 {{- $namespaces := dict }}
 {{- range $name, $spec := .Values.classes }}
-{{- $c := include "gateway.class.resolve" (dict "name" $name "spec" $spec) | fromYaml }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $name "spec" $spec) | fromYaml }}
 {{- if and $c.enabled $c.proxy.enabled }}{{- $_ := set $namespaces $c.namespace true }}{{- end }}
 {{- end }}
 {{- range $name, $spec := .Values.exposures }}
 {{- $raw := $spec | default dict }}
-{{- $c := include "gateway.class.resolve" (dict "name" $raw.class "spec" (get $.Values.classes ($raw.class | default ""))) | fromYaml }}
-{{- $e := include "gateway.exposure.resolve" (dict "name" $name "spec" $raw "class" $c) | fromYaml }}
+{{- $c := include "gateway.class.resolve" (dict "root" $ "name" $raw.class "spec" (get $.Values.classes ($raw.class | default ""))) | fromYaml }}
+{{- $e := include "gateway.exposure.resolve" (dict "root" $ "name" $name "spec" $raw "class" $c) | fromYaml }}
 {{- if and $e.enabled $c.enabled (include "gateway.exposure.ownProxy" (dict "class" $c "exposure" $e)) }}{{- $_ := set $namespaces $e.namespace true }}{{- end }}
 {{- end }}
 {{- range $ns := keys $namespaces | sortAlpha }}

@@ -24,6 +24,7 @@
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/exposure" }
     },
+    "proxyDefaults": { "$ref": "#/definitions/proxy" },
     "clientTraffic": {
       "type": "object",
       "additionalProperties": false,
@@ -198,7 +199,8 @@
             "tolerations": { "type": "array", "items": { "type": "object" } },
             "nodeSelector": { "$ref": "#/definitions/stringMap" },
             "affinity": { "type": "object" },
-            "topologySpreadConstraints": { "type": "array", "items": { "type": "object" } }
+            "topologySpreadConstraints": { "type": "array", "items": { "type": "object" } },
+            "zoneSpread": { "type": "string", "enum": ["", "DoNotSchedule", "ScheduleAnyway"] }
           }
         },
         "service": {
@@ -224,6 +226,7 @@
           }
         },
         "useListenerPortAsContainerPort": { "type": "boolean" },
+        "passthrough": { "type": "boolean" },
         "shutdown": {
           "type": "object",
           "additionalProperties": false,
@@ -381,6 +384,21 @@
             "annotations": { "$ref": "#/definitions/stringMap" },
             "ingress": { "type": "array", "items": { "type": "object" } },
             "egress": { "type": "array", "items": { "type": "object" } },
+            "egressTo": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "namespace": { "type": "string", "minLength": 1 },
+                  "namespaceExpressions": { "type": "array", "items": { "type": "object" } },
+                  "podLabels": { "$ref": "#/definitions/stringMap" },
+                  "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                  "protocol": { "type": "string", "enum": ["TCP", "UDP", "SCTP"] }
+                },
+                "oneOf": [{ "required": ["namespace"] }, { "required": ["namespaceExpressions"] }]
+              }
+            },
             "xds": {
               "type": "object",
               "additionalProperties": false,
