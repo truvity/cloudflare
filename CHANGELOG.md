@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+## v2.15.0
+
 - **`pkg/tokensplit`: `Inputs.WithoutR2Admin`.** An account that owns no R2 buckets gets no `r2-admin` child (no token, no written key); its `r2-parent-<bucket>` children still follow `Buckets`. Unset, `Deploy` mints exactly what it did. Additive.
 
 ## v2.14.0
