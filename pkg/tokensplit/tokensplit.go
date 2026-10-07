@@ -135,6 +135,10 @@ type (
 		// gets Zone WAF Write on. Empty, or a zone the edge child cannot
 		// reach, grants none.
 		WAFZone string
+		// WithoutR2Admin mints no r2-admin child: an account that owns no
+		// R2 buckets has no stack to administer them, so nothing should
+		// hold that power. Its r2-parent children follow Buckets as before.
+		WithoutR2Admin bool
 
 		// Writer, Namespace and KeyPrefix say where the children go: each
 		// child is written at Namespace, KeyPrefix+"/"+child. The root's
@@ -171,11 +175,17 @@ func Deploy(ctx *pulumi.Context, logger *slog.Logger, in Inputs) error {
 			Rotation: in.Rotation.Status,
 			Policies: StatusPolicies(zoneIDs),
 		},
-		ChildR2Admin: {
+	}
+
+	accountChildren := []string{ChildEdge, ChildStatus}
+
+	if !in.WithoutR2Admin {
+		cfgs[ChildR2Admin] = account.ChildTokenConfig{
 			Name:     tokenNamePrefix + ChildR2Admin,
 			Rotation: in.Rotation.R2Admin,
 			Policies: account.R2AdminPolicies(),
-		},
+		}
+		accountChildren = append(accountChildren, ChildR2Admin)
 	}
 
 	for _, b := range in.Buckets {
@@ -191,7 +201,7 @@ func Deploy(ctx *pulumi.Context, logger *slog.Logger, in Inputs) error {
 		return fmt.Errorf("mint children: %w", err)
 	}
 
-	for _, name := range []string{ChildEdge, ChildStatus, ChildR2Admin} {
+	for _, name := range accountChildren {
 		if err := in.put(ctx, name, map[string]pulumi.StringInput{
 			"api-token":  children[name].Value,
 			"account-id": pulumi.String(in.AccountID),

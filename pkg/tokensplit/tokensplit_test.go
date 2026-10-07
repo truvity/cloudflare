@@ -103,6 +103,20 @@ func TestDeployR2ParentOnePerBucketAndPassesJurisdiction(t *testing.T) {
 	}, w.keys())
 }
 
+func TestDeployWithoutR2AdminMintsNoBucketAdmin(t *testing.T) {
+	w := &recordingWriter{}
+	in := inputs(w)
+	in.WithoutR2Admin = true
+
+	m, _ := deploy(t, in)
+
+	assert.Equal(t, []string{"edge", "status"}, m.names(tokenType))
+	assert.Equal(t, map[string][]string{
+		"cloudflare/edge":   {"account-id", "api-token"},
+		"cloudflare/status": {"account-id", "api-token"},
+	}, w.keys())
+}
+
 func TestDeployRefusesAnAccountWithNoZones(t *testing.T) {
 	in := inputs(&recordingWriter{})
 	in.Zones = zones()[1:]

@@ -5,6 +5,10 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`pkg/tokensplit`: `Inputs.WithoutR2Admin`.** An account that owns no R2 buckets gets no `r2-admin` child (no token, no written key); its `r2-parent-<bucket>` children still follow `Buckets`. Unset, `Deploy` mints exactly what it did. Additive.
+
 ## v2.14.0
 
 - **`pkg/edge`: `Derive`, `ValidateRouting` and the tunnel naming rules.** `Derive` takes the exposures that arrive by a Cloudflare tunnel (their accounts and their groups of hosts), the zones with their accounts and each account's legacy-names flag, and returns one `Tunnel` per cluster and account with its hosts in ingress order (`tunnel.OrderHosts`), plus the cache hosts of each zone that declares a cache policy (every exact name of a business project's group; wildcards and mixed groups are left out). It refuses a host outside every zone, a host in a zone of an account its exposure does not list, an exposure with no accounts and a tunnel whose names span two zones. `ValidateRouting` refuses a hostname declared twice across tunnels and a rule shadowed by an earlier one. `TunnelName`, `ReleaseName`, `SecretName` and `ZoneOf` are the naming and zone-lookup rules; `ReleaseBase` is the release stem. **`pkg/tunnel`: `Covers`** is cloudflared's rule-matching test. Additive.
