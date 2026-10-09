@@ -283,7 +283,7 @@ func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 
 | Preset | Grants |
 | --- | --- |
-| `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write` and `Cache Settings Write` on each zone in `zoneIDs` — a stack that manages zones (`pkg/zone`) and runs a tunnel (`pkg/tunnel`) |
+| `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write`, `Cache Settings Write` and `Config Settings Write` (the dashboard's "Config Rules: Edit") on each zone in `zoneIDs` — a stack that manages zones (`pkg/zone`) and runs a tunnel (`pkg/tunnel`) |
 | `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` | Everything `EdgePolicies(zoneIDs...)` grants, plus one policy per zone in `wafZoneIDs` granting only `Zone WAF Write` there — what `pkg/zone`'s `Args.TrustedClients` needs. Opt-in: an empty `wafZoneIDs` returns `EdgePolicies` unchanged. `wafZoneIDs` is independent of `zoneIDs`; list a zone in both when the token also manages it |
 | `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`pkg/r2`, called with `Config.Token.Enabled: false`) |
 | `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `pkg/r2`'s deprecated `Config.Token` (see [pkg/r2](#pkgr2)) |

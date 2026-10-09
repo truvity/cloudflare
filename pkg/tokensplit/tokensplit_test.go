@@ -49,7 +49,7 @@ func TestDeployEdgeAndStatusScopeToTheAccountsOwnZones(t *testing.T) {
 	require.Len(t, edge, 3)
 	assertPolicy(t, edge[0], []string{PermCloudflareTunnelWrite}, "com.cloudflare.api.account."+testAccountID)
 	assertPolicy(t, edge[1],
-		[]string{PermDNSWrite, PermSSLAndCertificatesWrite, PermZoneSettingsWrite, PermCacheSettingsWrite},
+		[]string{PermDNSWrite, PermSSLAndCertificatesWrite, PermZoneSettingsWrite, PermCacheSettingsWrite, PermConfigSettingsWrite},
 		"com.cloudflare.api.account.zone."+testZoneID)
 	// Exactly one added permission, Zone WAF Write, on exactly the named zone.
 	assertPolicy(t, edge[2], []string{"Zone WAF Write"}, "com.cloudflare.api.account.zone."+testZoneID)
@@ -129,6 +129,7 @@ func TestDeployRefusesAnAccountWithNoZones(t *testing.T) {
 func TestNoPermissionNamesAccountAPITokens(t *testing.T) {
 	for _, perm := range []string{
 		PermCloudflareTunnelWrite, PermDNSWrite, PermSSLAndCertificatesWrite, PermZoneSettingsWrite, PermCacheSettingsWrite,
+		PermConfigSettingsWrite,
 		PermWorkersR2StorageWrite, PermWorkersR2StorageBucketItemWrite,
 	} {
 		assert.NotContains(t, perm, "Account API Tokens")

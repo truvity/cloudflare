@@ -177,7 +177,7 @@ func TestEdgePoliciesShape(t *testing.T) {
 	assert.Equal(t, WholeAccountScope{}, policies[0].Scope)
 
 	for _, p := range policies[1:] {
-		assert.Equal(t, []string{"DNS Write", "SSL and Certificates Write", "Zone Settings Write", "Cache Settings Write"}, p.PermissionGroups)
+		assert.Equal(t, []string{"DNS Write", "SSL and Certificates Write", "Zone Settings Write", "Cache Settings Write", "Config Settings Write"}, p.PermissionGroups)
 	}
 	assert.Equal(t, ZoneScope{ZoneID: "0123456789abcdef0123456789abcdef"}, policies[1].Scope)
 	assert.Equal(t, ZoneScope{ZoneID: "fedcba9876543210fedcba9876543210"}, policies[2].Scope)
