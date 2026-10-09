@@ -269,7 +269,7 @@ Repositories a reader must know about, and the boundary with each:
   private service.
 - **r2broker ↔ access-roster**: `cmd/r2broker`'s `serve` mode verifies a
   bearer OIDC token against any configured issuer (mechanism only — see
-  `internal/verify`'s package doc); `accessctl r2` (in access-roster)
+  `internal/verify`'s package doc); `sluisctl r2` (in sluis)
   execs against it over HTTP as one such caller (see
   [cmd/r2broker's package doc](cmd/r2broker/doc.go)). It does not hold an
   access-roster API token: only a bearer token to verify.
