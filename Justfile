@@ -27,7 +27,10 @@ lint:
       echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
     done
     golangci-lint config verify
-    golangci-lint run ./...
+    # GOTOOLCHAIN=local: go.mod's `toolchain` (go1.27.2, the stdlib security
+    # fixes) leads devbox's go, and golangci-lint must typecheck with the go it
+    # was built with. Drop with the toolchain lead.
+    GOTOOLCHAIN=local golangci-lint run ./...
 
 # Golden renders: render every test case and compare with tests/golden.
 test:
