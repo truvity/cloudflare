@@ -5,6 +5,10 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## v1.17.1
+
+- Dependency updates.
+
 ## v1.17.0
 
 - **Feature: `gateway-policies` `backendTrafficPolicies.<name>`**, one BackendTrafficPolicy per entry: `timeout`, `requestBuffer`, `rateLimit`, `retry`, `circuitBreaker`, `loadBalancer`, `healthCheck`, `tcpKeepalive` and `compression` are Envoy Gateway's own blocks, passed through verbatim, plus `extraSpec`. A target (route, rule by `sectionName`, or Gateway) claimed by two entries is refused, as is an entry with no block, no namespace or no target.
