@@ -84,10 +84,16 @@ func NewChildTokenSet(
 
 // EdgePolicies is the policy set for a "manage zones and run a tunnel"
 // child: account-wide Cloudflare Tunnel management, plus DNS, SSL and
-// Certificates, Zone Settings and Cache Settings on each zone in zoneIDs
-// — the exact grant an estate's own edge stack (pkg/zone plus pkg/tunnel,
-// scoped by account.Use()) needs to run as, and nothing more. See
-// docs/layout.md#recommended-layout for where this fits.
+// Certificates, Zone Settings, Cache Settings and Config Settings on each
+// zone in zoneIDs — the exact grant an estate's own edge stack (pkg/zone
+// plus pkg/tunnel, scoped by account.Use()) needs to run as, and nothing
+// more. See docs/layout.md#recommended-layout for where this fits.
+//
+// "Config Settings Write" is the dashboard's "Config Rules: Edit": the
+// zone's http_config_settings phase, where Configuration Rules live (a
+// per-hostname SSL mode, say). Without it the token cannot even read that
+// phase's entrypoint ruleset (403), so an edge stack could neither declare
+// nor adopt one.
 //
 // The permission-group names here are Cloudflare's own API names, which
 // use "Write"/"Read" — confirmed live against the account's own
@@ -106,7 +112,7 @@ func EdgePolicies(zoneIDs ...string) []ChildTokenPolicy {
 
 	for _, zoneID := range zoneIDs {
 		policies = append(policies, ChildTokenPolicy{
-			PermissionGroups: []string{"DNS Write", "SSL and Certificates Write", "Zone Settings Write", "Cache Settings Write"},
+			PermissionGroups: []string{"DNS Write", "SSL and Certificates Write", "Zone Settings Write", "Cache Settings Write", "Config Settings Write"},
 			Scope:            ZoneScope{ZoneID: zoneID},
 		})
 	}

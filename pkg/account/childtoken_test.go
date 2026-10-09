@@ -52,6 +52,7 @@ func newChildTokenMocks() *childTokenMocks {
 			"Cloudflare Tunnel Write":    {"group-tunnel-write-id"},
 			"SSL and Certificates Write": {"group-ssl-write-id"},
 			"Cache Settings Write":       {"group-cache-settings-write-id"},
+			"Config Settings Write":      {"group-config-settings-write-id"},
 			"Workers R2 Storage Write":   {"group-r2-admin-write-id"},
 		},
 	}

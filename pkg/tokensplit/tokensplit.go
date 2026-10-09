@@ -6,8 +6,8 @@
 // stack that mints the credential scoped to it: a bug in one cannot widen
 // what the other reaches. The root mints, per account,
 //
-//   - "edge": whole-account tunnel write, plus DNS, SSL, zone settings and
-//     cache settings write on the account's zones (and Zone WAF Write on
+//   - "edge": whole-account tunnel write, plus DNS, SSL, zone settings,
+//     cache settings and config settings write on the account's zones (and Zone WAF Write on
 //     one named zone, when asked), for the stack that owns tunnels, DNS
 //     and zone settings;
 //   - "status": whole-account tunnel write plus DNS write on the zones,
@@ -57,6 +57,9 @@ const (
 	// PermCacheSettingsWrite is the narrowest grant the rulesets API accepts
 	// for a zone's cache-settings phase.
 	PermCacheSettingsWrite = "Cache Settings Write"
+	// PermConfigSettingsWrite is the zone's Configuration Rules (the
+	// http_config_settings phase); the dashboard calls it "Config Rules: Edit".
+	PermConfigSettingsWrite = "Config Settings Write"
 	// PermWorkersR2StorageWrite creates and administers R2 buckets.
 	PermWorkersR2StorageWrite = "Workers R2 Storage Write"
 	// PermWorkersR2StorageBucketItemWrite is the bucket-scope grade: object

@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+- **`pkg/account`: `EdgePolicies` (and so `EdgePoliciesWithWAF` and `pkg/tokensplit`'s `edge` child) grants `Config Settings Write` on each zone.** It is the dashboard's "Config Rules: Edit": the zone's `http_config_settings` phase, where Configuration Rules live (a per-hostname SSL mode). Without it an edge token cannot read that phase's entrypoint ruleset (403), so an edge stack can neither declare nor adopt a configuration rule. **Widens the edge grant**: an estate's next root apply updates each `edge` child token's policies in place (the token's value does not change). `pkg/tokensplit`: `PermConfigSettingsWrite`.
+
 ## v2.15.0
 
 - **`pkg/tokensplit`: `Inputs.WithoutR2Admin`.** An account that owns no R2 buckets gets no `r2-admin` child (no token, no written key); its `r2-parent-<bucket>` children still follow `Buckets`. Unset, `Deploy` mints exactly what it did. Additive.
