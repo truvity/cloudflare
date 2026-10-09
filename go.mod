@@ -2,7 +2,7 @@ module github.com/truvity/cloudflare/v2
 
 go 1.27.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
