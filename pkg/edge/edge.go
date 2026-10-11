@@ -24,9 +24,15 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	"github.com/truvity/cloudflare/v2/pkg/account"
+	"github.com/truvity/cloudflare/v2/pkg/edgespec"
 	"github.com/truvity/cloudflare/v2/pkg/tunnel"
 	"github.com/truvity/cloudflare/v2/pkg/zone"
 )
+
+// Tunnel is one tunnel: the hosts one cluster serves through one account's
+// zone. It is edgespec.Tunnel, so the type is shared with the Pulumi-free
+// Derive.
+type Tunnel = edgespec.Tunnel
 
 const (
 	// DefaultCAPoolPath is where the cloudflared chart mounts the origin CA
@@ -53,22 +59,6 @@ type (
 		Name    string
 		Account string
 		Args    zone.Args
-	}
-
-	// Tunnel is one tunnel: the hosts one cluster serves through one
-	// account's zone.
-	Tunnel struct {
-		// Name is the tunnel's name and the Pulumi name of every resource
-		// built for it.
-		Name    string
-		Cluster string
-		Account string
-		Zone    string
-		// Hosts arrive derived and in ingress order, all in Zone.
-		Hosts []string
-		// DNSDomain is the cluster's Kubernetes DNS domain, for the origin
-		// service address. Empty falls back to "cluster."+Cluster.
-		DNSDomain string
 	}
 
 	// Origin is the in-cluster service every ingress rule routes to.

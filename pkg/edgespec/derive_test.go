@@ -1,6 +1,7 @@
-package edge
+package edgespec
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -112,4 +113,54 @@ func TestZoneOf(t *testing.T) {
 	assert.Equal(t, "env.example.com", ZoneOf(zones, "*.env.example.com"))
 	assert.Equal(t, "example.com", ZoneOf(zones, "a.EXAMPLE.com"))
 	assert.Equal(t, "", ZoneOf(zones, "example.org"))
+}
+
+// TestNoNonStdlibImports guards this package's reason to exist: a caller
+// must be able to import edgespec alone, with no Pulumi or Cloudflare SDK
+// riding along. See pkg/cfnames' test of the same name.
+func TestNoNonStdlibImports(t *testing.T) {
+	const pkg = "github.com/truvity/cloudflare/v2/pkg/edgespec"
+
+	out, err := exec.Command("go", "list", "-deps", pkg).Output()
+	require.NoError(t, err, "go list -deps")
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" || line == pkg {
+			continue
+		}
+
+		root, _, _ := strings.Cut(line, "/")
+		assert.NotContains(t, root, ".", "pkg/edgespec must depend on the standard library only, found %q", line)
+	}
+}
+
+func TestOrderHosts(t *testing.T) {
+	got := OrderHosts([]string{
+		"*.env.example.com",
+		"app.env.example.com",
+		"*.example.com",
+		"other.example.com",
+		"*.team.env.example.com",
+		"example.com",
+		"*.a.example.com",
+	})
+
+	assert.Equal(t, []string{
+		"example.com",
+		"app.env.example.com",
+		"other.example.com",
+		"*.team.env.example.com",
+		"*.a.example.com",
+		"*.env.example.com",
+		"*.example.com",
+	}, got)
+}
+
+func TestCovers(t *testing.T) {
+	assert.True(t, Covers("a.example.com", "a.example.com"))
+	assert.True(t, Covers("*.example.com", "a.b.example.com"))
+	assert.True(t, Covers("*.example.com", "*.a.example.com"))
+	assert.True(t, Covers("*", "anything.example.com"))
+	assert.False(t, Covers("a.example.com", "b.example.com"))
+	assert.False(t, Covers("*.a.example.com", "*.example.com"))
 }

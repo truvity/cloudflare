@@ -75,3 +75,17 @@ func ValidBucketName(name string) bool {
 
 	return true
 }
+
+// Permission levels an R2 token config accepts. pkg/r2 re-exports them as
+// r2.PermissionObjectReadWrite and r2.PermissionObjectReadOnly.
+const (
+	R2PermissionObjectReadWrite = "object-read-write"
+	R2PermissionObjectReadOnly  = "object-read-only"
+)
+
+// R2Permissions lists the permission levels an R2 token config accepts, so
+// a caller validating its own input does not restate them. It returns a
+// fresh slice on every call.
+func R2Permissions() []string {
+	return []string{R2PermissionObjectReadWrite, R2PermissionObjectReadOnly}
+}
