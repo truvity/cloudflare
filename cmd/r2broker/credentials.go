@@ -47,7 +47,7 @@ func (s *stringList) Set(v string) error {
 //
 // Exactly one of --config (in-process, no central broker — design §2.6)
 // or --service-url (a client of a centrally-deployed broker, what
-// access-roster's `accessctl r2` execs against) selects the mode.
+// sluis's `sluisctl r2` execs against) selects the mode.
 func credentials(args []string) error {
 	flags := flag.NewFlagSet("credentials", flag.ContinueOnError)
 	configPath := flags.String("config", "", "mint in-process from this local config file (no central broker)")
@@ -189,7 +189,7 @@ func outcomeToResult(result broker.Result) (mint.Credential, decide.Decision, er
 }
 
 // mintViaService calls a running `r2broker serve`'s POST /v1/credentials,
-// per design §2.1 — the shape access-roster's `accessctl r2` execs
+// per design §2.1 — the shape sluis's `sluisctl r2` execs
 // against for the estate's own centrally-deployed broker.
 func mintViaService(serviceURL string, req broker.Request) (mint.Credential, decide.Decision, error) {
 	body, err := json.Marshal(credentialsRequestBody{Bucket: req.Bucket, Prefixes: req.Prefixes, Permission: req.Permission})
