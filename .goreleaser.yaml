@@ -20,8 +20,8 @@ builds:
     # linux for the image and for a Linux CI runner running `credentials`
     # directly; darwin and windows because `credentials` (unlike `serve`)
     # is what an AWS SDK's credential_process can run on somebody's own
-    # laptop, the same reasoning access-roster's accessctl build list
-    # gives for including Windows.
+    # laptop (the same reasoning sluisctl's build list gives for
+    # including Windows).
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags:

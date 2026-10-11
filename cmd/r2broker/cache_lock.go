@@ -17,10 +17,10 @@ import (
 // selects — an unnecessary Cloudflare API cost on the API-mode fallback,
 // and unnecessary local-signing work either way. The lock makes one
 // caller do the work while the others wait, and they then find the answer
-// already written. Copied from access-roster's own accessctl cache lock
-// (cmd/accessctl/cache_lock.go) by PATTERN, not by import: r2broker is a
+// already written. Copied from sluis's own sluisctl cache lock
+// (cmd/sluisctl/cache_lock.go) by PATTERN, not by import: r2broker is a
 // different binary in a different repository with no dependency on
-// access-roster (design §2.4).
+// sluis (design §2.4).
 //
 // The lock is its own file, not the cache file, so the atomic rename that
 // replaces the cache cannot pull the lock out from under a waiter.

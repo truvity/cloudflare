@@ -4,7 +4,7 @@
 //   - "serve" runs the long-running HTTP service: it verifies a bearer
 //     OIDC token, decides which configured grant it covers, and mints a
 //     temporary R2 credential for it. This is what a centrally-deployed
-//     installation runs, and what `accessctl r2` (in access-roster) execs
+//     installation runs, and what `sluisctl r2` (in sluis) execs
 //     against over HTTP.
 //   - "credentials" is a client of that service (--service-url) OR, for
 //     an installation with no central broker at all, mints in-process

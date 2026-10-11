@@ -11,8 +11,7 @@ import (
 
 // Exit codes. A script reading them should be able to tell "you typed
 // this wrong" from "the broker refused you" from "something downstream
-// broke" without parsing English — the same contract access-roster's
-// accessctl keeps.
+// broke" without parsing English — the same contract sluisctl keeps.
 const (
 	exitOK       = 0
 	exitUsage    = 2
@@ -21,7 +20,7 @@ const (
 )
 
 // stdout and stderr are io.Writer variables (not *os.File) so tests can
-// substitute a buffer — exactly like access-roster's own cmd/accessctl
+// substitute a buffer — exactly like sluis's own cmd/sluisctl
 // package-level stdout, generalized one step further since credentials'
 // own tests need to assert on exactly what reached stdout.
 var (
