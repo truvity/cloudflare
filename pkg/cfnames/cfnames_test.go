@@ -75,3 +75,11 @@ func TestValidBucketName(t *testing.T) {
 		assert.False(t, cfnames.ValidBucketName(name), "%q should be invalid", name)
 	}
 }
+
+func TestR2Permissions(t *testing.T) {
+	got := cfnames.R2Permissions()
+	assert.Equal(t, []string{"object-read-write", "object-read-only"}, got)
+
+	got[0] = "mutated"
+	assert.NotContains(t, cfnames.R2Permissions(), "mutated")
+}

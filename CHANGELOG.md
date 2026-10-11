@@ -5,6 +5,10 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+- **`pkg/edgespec` and `pkg/zonespec` (new), and `cfnames.R2Permissions`: the pure side of the edge without the SDKs.** `pkg/edgespec` holds `Derive`, `ValidateRouting`, the tunnel naming rules, `ZoneOf`, `OrderHosts` and `Covers` (with the `Tunnel` type); `pkg/zonespec` holds a zone's declaration (`Args`, `Cache`, `TrustedClients`, `RateLimits` and their blocks), its `Validate` and the filter expressions rendered from it; `pkg/cfnames` gains `R2Permissions`. Each imports the standard library only, so an estate's config layer that only derives and validates no longer links Pulumi, `pulumi-cloudflare` and the rest of the SDKs. `pkg/edge`, `pkg/zone`, `pkg/tunnel` and `pkg/r2` re-export them as aliases and thin wrappers: no behavior, name or resource change. A test fails if `pkg/edgespec` or `pkg/zonespec` ever gains a non-standard-library import. Additive.
+
 ## v2.16.0
 
 - **`pkg/account`: `EdgePolicies` (and so `EdgePoliciesWithWAF` and `pkg/tokensplit`'s `edge` child) grants `Config Settings Write` on each zone.** It is the dashboard's "Config Rules: Edit": the zone's `http_config_settings` phase, where Configuration Rules live (a per-hostname SSL mode). Without it an edge token cannot read that phase's entrypoint ruleset (403), so an edge stack can neither declare nor adopt a configuration rule. **Widens the edge grant**: an estate's next root apply updates each `edge` child token's policies in place (the token's value does not change). `pkg/tokensplit`: `PermConfigSettingsWrite`.

@@ -137,15 +137,13 @@ import (
 
 // Permission levels TokenConfig.Permission accepts.
 const (
-	PermissionObjectReadWrite = "object-read-write"
-	PermissionObjectReadOnly  = "object-read-only"
+	PermissionObjectReadWrite = cfnames.R2PermissionObjectReadWrite
+	PermissionObjectReadOnly  = cfnames.R2PermissionObjectReadOnly
 )
 
 // Permissions lists the permission levels TokenConfig.Permission accepts, so
 // a caller validating its own input does not restate them.
-func Permissions() []string {
-	return []string{PermissionObjectReadWrite, PermissionObjectReadOnly}
-}
+func Permissions() []string { return cfnames.R2Permissions() }
 
 // defaultPermissionGroup maps a Permission to Cloudflare's own name for the
 // permission group that grants it, scoped by the policy's Resources map to

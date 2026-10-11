@@ -1,12 +1,9 @@
-package zone
+package zonespec
 
 import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // The rate limiting ruleset. Same rule as the cache and trusted-clients
@@ -14,9 +11,6 @@ import (
 // declares RateLimits owns the whole http_ratelimit phase. Rules added
 // beside these in the dashboard are replaced, not merged.
 const (
-	rateLimitPhase       = "http_ratelimit"
-	rateLimitRulesetName = "default"
-
 	// Cloudflare tracks every rate limit counter per data center, and the
 	// API refuses a rule that does not name cf.colo.id explicitly. The
 	// library adds it; the author never writes it.
@@ -182,7 +176,9 @@ type (
 	}
 )
 
-func (r *RateLimits) managed() bool { return r != nil }
+// Managed reports whether the block declares a ruleset. Nil manages
+// nothing; a non-nil block with no rules is a policy (an empty ruleset).
+func (r *RateLimits) Managed() bool { return r != nil }
 
 func containsInt(values []int, v int) bool {
 	for _, x := range values {
@@ -403,10 +399,10 @@ func printableASCII(s string) bool {
 	return true
 }
 
-// expression renders the rule's match expression: the hand-written one as
+// MatchExpression renders the rule's match expression: the hand-written one as
 // given, or the endpoints ORed together. Each endpoint is its host, its
 // path and, where the plan has the field, its methods, ANDed.
-func (r *RateLimitRule) expression() string {
+func (r *RateLimitRule) MatchExpression() string {
 	if r.Expression != "" {
 		return r.Expression
 	}
@@ -439,9 +435,9 @@ func (r *RateLimitRule) expression() string {
 	return strings.Join(terms, " or ")
 }
 
-// characteristicList is cf.colo.id first, then the author's keys sorted,
+// CharacteristicList is cf.colo.id first, then the author's keys sorted,
 // or ip.src alone when none are named.
-func (r *RateLimitRule) characteristicList() []string {
+func (r *RateLimitRule) CharacteristicList() []string {
 	keys := []string{}
 
 	for _, c := range r.Characteristics {
@@ -457,33 +453,4 @@ func (r *RateLimitRule) characteristicList() []string {
 	sort.Strings(keys)
 
 	return append([]string{characteristicColo}, keys...)
-}
-
-// rateLimitRules is the phase's whole ruleset, in the order declared.
-func rateLimitRules(rules []RateLimitRule) cloudflare.RulesetRuleArray {
-	out := cloudflare.RulesetRuleArray{}
-
-	for i := range rules {
-		r := &rules[i]
-
-		limit := &cloudflare.RulesetRuleRatelimitArgs{
-			Characteristics:   pulumi.ToStringArray(r.characteristicList()),
-			Period:            pulumi.Int(r.Period),
-			RequestsPerPeriod: pulumi.Int(r.Requests),
-			MitigationTimeout: pulumi.Int(r.MitigationTimeout),
-		}
-		if r.CountingExpression != "" {
-			limit.CountingExpression = pulumi.String(r.CountingExpression)
-		}
-
-		out = append(out, cloudflare.RulesetRuleArgs{
-			Action:      pulumi.String(r.Action),
-			Description: pulumi.String(r.Name),
-			Enabled:     pulumi.Bool(true),
-			Expression:  pulumi.String(r.expression()),
-			Ratelimit:   limit,
-		})
-	}
-
-	return out
 }

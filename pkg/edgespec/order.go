@@ -1,4 +1,4 @@
-package tunnel
+package edgespec
 
 import (
 	"slices"
@@ -67,4 +67,29 @@ func canonicalCompare(a, b string) int {
 	}
 
 	return len(al) - len(bl)
+}
+
+// Covers reports whether a request matching `candidate` would already have
+// matched the ingress rule `pattern`, with cloudflared's matching: an exact
+// hostname matches itself, a leading `*` matches one or more labels (it
+// SPANS DOTS), and a wildcard candidate is covered when everything it could
+// match is. Both arguments should be lower case.
+//
+// A candidate that is itself a wildcard is covered when everything it
+// could match is also covered, which is what makes "*.a.example.com"
+// dead behind "*.example.com". A bare "*" is Cloudflare's catch-all:
+// nothing after it is ever reached.
+func Covers(pattern, candidate string) bool {
+	if pattern == candidate {
+		return true
+	}
+
+	suffix, isWildcard := strings.CutPrefix(pattern, "*.")
+	if !isWildcard {
+		return pattern == "*"
+	}
+
+	// "*.example.com" covers "a.example.com" and "a.b.example.com", and
+	// covers "*.a.example.com" for the same reason.
+	return strings.HasSuffix(strings.TrimPrefix(candidate, "*."), "."+suffix)
 }

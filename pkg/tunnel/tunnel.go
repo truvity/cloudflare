@@ -35,6 +35,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	"github.com/truvity/cloudflare/v2/pkg/account"
+	"github.com/truvity/cloudflare/v2/pkg/edgespec"
 )
 
 type (
@@ -225,22 +226,7 @@ func (a *Args) validateIngressOrder() error {
 // A candidate that is itself a wildcard is covered when everything it
 // could match is also covered, which is what makes "*.a.example.com"
 // dead behind "*.example.com".
-func hostnameCovers(pattern, candidate string) bool {
-	if pattern == candidate {
-		return true
-	}
-
-	suffix, isWildcard := strings.CutPrefix(pattern, "*.")
-	if !isWildcard {
-		// A bare "*" is Cloudflare's catch-all: nothing after it is
-		// ever reached.
-		return pattern == "*"
-	}
-
-	// "*.example.com" covers "a.example.com" and "a.b.example.com", and
-	// covers "*.a.example.com" for the same reason.
-	return strings.HasSuffix(strings.TrimPrefix(candidate, "*."), "."+suffix)
-}
+func hostnameCovers(pattern, candidate string) bool { return edgespec.Covers(pattern, candidate) }
 
 // Slug renders a hostname as a stable resource-name fragment
 // ("*.apps.example.com" → "star-apps-example-com").
@@ -404,4 +390,10 @@ func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput,
 // hostname matches itself, a leading `*` matches one or more labels (it
 // SPANS DOTS), and a wildcard candidate is covered when everything it could
 // match is. Both arguments should be lower case.
-func Covers(pattern, candidate string) bool { return hostnameCovers(pattern, candidate) }
+func Covers(pattern, candidate string) bool { return edgespec.Covers(pattern, candidate) }
+
+// OrderHosts puts a tunnel's hostnames in ingress order: every exact host
+// first, then wildcards deeper-first, each part in DNS canonical order. See
+// edgespec.OrderHosts, which holds the rule without this package's Pulumi
+// imports.
+func OrderHosts(hosts []string) []string { return edgespec.OrderHosts(hosts) }
