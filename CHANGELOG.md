@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+## v2.17.0
+
 - **`pkg/edgespec` and `pkg/zonespec` (new), and `cfnames.R2Permissions`: the pure side of the edge without the SDKs.** `pkg/edgespec` holds `Derive`, `ValidateRouting`, the tunnel naming rules, `ZoneOf`, `OrderHosts` and `Covers` (with the `Tunnel` type); `pkg/zonespec` holds a zone's declaration (`Args`, `Cache`, `TrustedClients`, `RateLimits` and their blocks), its `Validate` and the filter expressions rendered from it; `pkg/cfnames` gains `R2Permissions`. Each imports the standard library only, so an estate's config layer that only derives and validates no longer links Pulumi, `pulumi-cloudflare` and the rest of the SDKs. `pkg/edge`, `pkg/zone`, `pkg/tunnel` and `pkg/r2` re-export them as aliases and thin wrappers: no behavior, name or resource change. A test fails if `pkg/edgespec` or `pkg/zonespec` ever gains a non-standard-library import. Additive.
 
 ## v2.16.0
