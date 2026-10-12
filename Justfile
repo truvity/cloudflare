@@ -1,7 +1,7 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-charts := "cloudflared r2-broker"
+charts := "cloudflared"
 
 # Lint every chart and the Go module. The schema is part of the lint:
 # an unknown key must fail the render, not be silently ignored, and every
@@ -45,22 +45,6 @@ golden:
 leak-canary:
     hack/leak-canary.sh
 
-# The r2broker audit catalogue against the audit component's own
-# toolchain, at the version this module already depends on — mirrors
-# access-roster's own `audit-catalogue` recipe. `validate` holds
-# catalogue/r2broker.yaml to its own schema; `check-emitters` holds
-# internal/audit/events.go's two constructors to it, so an action emitted
-# and not declared, or declared and not emitted, fails the gate.
-audit-catalogue:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # The SDK packages and cmd/audit tool are released together at the same version.
-    # Derive the version from the SDK requirement in go.mod.
-    version=$(go list -m -f '{{{{.Version}}' github.com/truvity/audit/sdk)
-    audit="go run github.com/truvity/audit/cmd/audit@${version}"
-    $audit validate catalogue/r2broker.yaml
-    $audit check-emitters internal/audit --catalogue catalogue/r2broker.yaml
-
 # Compile check (library — nothing to run).
 build:
     go build ./...
@@ -86,4 +70,4 @@ package:
     done
 
 # Everything CI runs on a pull request.
-check: build lint test leak-canary audit-catalogue
+check: build lint test leak-canary

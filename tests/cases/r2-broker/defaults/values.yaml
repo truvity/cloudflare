@@ -1,3 +1,0 @@
-# Defaults only: proves an out-of-the-box install renders a broker that
-# verifies tokens and refuses every request (grants: []), not a load
-# error or a broken render.
