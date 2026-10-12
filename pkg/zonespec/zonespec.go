@@ -139,8 +139,136 @@ type (
 		// leaves the phase alone; non-nil owns it, replacing any rule
 		// created elsewhere.
 		RateLimits *RateLimits `json:"rateLimits,omitempty" yaml:"rateLimits,omitempty"`
+		// Records are DNS records the zone serves for something other than
+		// a tunnel (a load balancer, a CDN). Nil, or no entries, manages
+		// no record; records not listed here are never touched.
+		Records *Records `json:"records,omitempty" yaml:"records,omitempty"`
+	}
+
+	// Records is a set of DNS records the estate owns inside one zone.
+	// Only the listed records are managed: the zone's other records, made
+	// by hand, by an import or by a tunnel, stay as they are.
+	Records struct {
+		// Zone is the zone's domain ("example.com"). Required when
+		// Entries is not empty: every name must be the zone itself or a
+		// name inside it.
+		Zone string `json:"zone,omitempty" yaml:"zone,omitempty"`
+		// Entries are the records, in any order.
+		Entries []Record `json:"entries" yaml:"entries"`
+	}
+
+	// Record is one DNS record.
+	Record struct {
+		// Name is the record's lower-case hostname inside the zone; a
+		// leading "*." makes it a wildcard.
+		Name string `json:"name" yaml:"name"`
+		// Type is A, AAAA or CNAME: the types Cloudflare can proxy.
+		Type string `json:"type" yaml:"type"`
+		// Content is the IPv4 address (A), IPv6 address (AAAA) or
+		// lower-case target hostname without a trailing dot (CNAME).
+		Content string `json:"content" yaml:"content"`
+		// Proxied serves the name through Cloudflare's edge (orange
+		// cloud); false answers DNS only.
+		Proxied bool `json:"proxied,omitempty" yaml:"proxied,omitempty"`
+		// TTL in seconds for a DNS-only record, 60 to 86400; 0 is
+		// Cloudflare's automatic TTL. A proxied record is always
+		// automatic, so it must leave TTL at 0.
+		TTL int `json:"ttl,omitempty" yaml:"ttl,omitempty"`
+		// Comment is shown beside the record in the dashboard.
+		Comment string `json:"comment,omitempty" yaml:"comment,omitempty"`
 	}
 )
+
+// Record types Records accepts, and the DNS-only TTL range.
+var validRecordTypes = []string{"A", "AAAA", "CNAME"}
+
+const (
+	minRecordTTL = 60
+	maxRecordTTL = 86400
+)
+
+// Managed reports whether r declares any record.
+func (r *Records) Managed() bool {
+	return r != nil && len(r.Entries) > 0
+}
+
+// validate reports the first problem with a records block: a name outside
+// the zone, content that does not fit its type, or two records Cloudflare
+// would refuse to hold together (a CNAME shares its name with nothing).
+func (r *Records) validate(zoneID string) error {
+	if !r.Managed() {
+		return nil
+	}
+
+	if r.Zone == "" || r.Zone != strings.ToLower(r.Zone) {
+		return fmt.Errorf("zone %q: records.zone must be the zone's lower-case domain", zoneID)
+	}
+
+	seen := map[string]struct{}{}
+	cname := map[string]bool{}
+	named := map[string]bool{}
+
+	for i := range r.Entries {
+		e := &r.Entries[i]
+		where := fmt.Sprintf("zone %q: records.entries[%d] %s %s", zoneID, i, e.Name, e.Type)
+
+		bare := strings.TrimPrefix(e.Name, "*.")
+		if e.Name != strings.ToLower(e.Name) || bare == "" || strings.ContainsAny(bare, `*/:"\ `) ||
+			strings.HasSuffix(e.Name, ".") || (bare != r.Zone && !strings.HasSuffix(bare, "."+r.Zone)) {
+			return fmt.Errorf("%s: name must be a lower-case hostname inside %s (a leading \"*.\" for a wildcard)", where, r.Zone)
+		}
+
+		if !oneOf(e.Type, validRecordTypes) {
+			return fmt.Errorf("%s: type must be one of %v", where, validRecordTypes)
+		}
+
+		if err := validateRecordContent(e.Type, e.Content); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
+		}
+
+		if e.Proxied && e.TTL != 0 {
+			return fmt.Errorf("%s: a proxied record's TTL is automatic; leave ttl at 0", where)
+		}
+
+		if e.TTL != 0 && (e.TTL < minRecordTTL || e.TTL > maxRecordTTL) {
+			return fmt.Errorf("%s: ttl %d must be 0 (automatic) or %d to %d", where, e.TTL, minRecordTTL, maxRecordTTL)
+		}
+
+		key := e.Name + " " + e.Type + " " + e.Content
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("%s: %s is listed twice", where, e.Content)
+		}
+
+		seen[key] = struct{}{}
+
+		if cname[e.Name] || (e.Type == "CNAME" && named[e.Name]) {
+			return fmt.Errorf("%s: a CNAME cannot share its name with another record", where)
+		}
+
+		named[e.Name] = true
+		cname[e.Name] = cname[e.Name] || e.Type == "CNAME"
+	}
+
+	return nil
+}
+
+// validateRecordContent holds a record's content to its type.
+func validateRecordContent(typ, content string) error {
+	switch typ {
+	case "A", "AAAA":
+		addr, err := netip.ParseAddr(content)
+		if err != nil || addr.Is4() != (typ == "A") || addr.Zone() != "" {
+			return fmt.Errorf("content %q is not an IPv%s address", content, map[bool]string{true: "4", false: "6"}[typ == "A"])
+		}
+	case "CNAME":
+		if content == "" || content != strings.ToLower(content) || strings.HasSuffix(content, ".") ||
+			strings.ContainsAny(content, `*/:"\ `) || !strings.Contains(content, ".") {
+			return fmt.Errorf("content %q must be a lower-case hostname without a trailing dot", content)
+		}
+	}
+
+	return nil
+}
 
 func oneOf(value string, allowed []string) bool {
 	for _, a := range allowed {
@@ -191,7 +319,12 @@ func (a *Args) Validate() error {
 		}
 	}
 
-	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.Managed() && !a.RateLimits.Managed() {
+	if err := a.Records.validate(a.ZoneID); err != nil {
+		return err
+	}
+
+	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.Managed() &&
+		!a.RateLimits.Managed() && !a.Records.Managed() {
 		return fmt.Errorf("zone %q: nothing to apply — omit the zone instead of declaring one that manages no setting", a.ZoneID)
 	}
 

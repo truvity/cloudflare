@@ -92,6 +92,10 @@ exception.
 | `trustedClients` with only one of `hosts` and `ranges` | a skip rule that matches nothing |
 | a `trustedClients.hosts` entry that is upper-case, a wildcard, outside `zone`, or listed twice | a rule that is applied, reported healthy and matches nothing, or exempts a host the zone does not own |
 | a `trustedClients.ranges` entry that is not a CIDR, has host bits, or is shorter than /8 (IPv4) / /16 (IPv6) | a range that is not what was meant, or that trusts a large part of the internet |
+| a `records.entries` name that is upper-case, has a trailing dot, a wildcard past its first label, or lies outside `records.zone` | a record Cloudflare files under another name, or one in a zone the estate does not mean |
+| a record type other than `A`, `AAAA`, `CNAME`, or content that does not fit it (an IPv6 in an `A`, a URL or trailing dot in a `CNAME`) | a value the API refuses during the apply, or a target that never resolves |
+| a proxied record with a `ttl`, or a DNS-only `ttl` outside 60-86400 | a plan that never converges: Cloudflare stores a proxied record's TTL as automatic |
+| the same record twice, or a `CNAME` sharing its name with any other record | two resources fighting over one record, or a pair DNS forbids |
 | a `rateLimits.plan` other than `free`, `pro`, `business` | limits guessed from no plan at all |
 | more `rateLimits.rules` than the plan allows (Pro: 2) | an apply Cloudflare rejects after the earlier resources are changed |
 | a rule with neither `endpoints` nor `expression`, or both | a rule that matches everything, or two answers to one question |
@@ -99,7 +103,7 @@ exception.
 | a challenge action with a non-zero `mitigationTimeout`, or a block with none | the API's own throttling rule, found during the apply |
 | an endpoint host that is upper-case, wildcarded or has a quote, or a path with a quote, backslash, query string or non-ASCII | a rule that matches nothing, or something nobody meant, through an unescaped character |
 | a repeated rule name or endpoint | two policies for one thing |
-| a zone with none of `ssl`, `minTlsVersion`, `totalTls`, `cache`, `trustedClients` (non-empty), `rateLimits` | a declared zone that manages nothing: it reads as managed and is not. Omit the zone instead |
+| a zone with none of `ssl`, `minTlsVersion`, `totalTls`, `cache`, `trustedClients` (non-empty), `rateLimits`, `records` (non-empty) | a declared zone that manages nothing: it reads as managed and is not. Omit the zone instead |
 | a `cache.hosts` entry that is empty | a filter expression matching the empty name, which is no host |
 | a `cache.hosts` entry with an upper-case letter | a rule that is applied, reported healthy and matches nothing: Cloudflare compares a lower-cased host |
 | a `cache.hosts` entry containing `/`, `:`, `"`, `\` or a space | a URL or a quoted fragment pasted where a hostname goes, which would either match nothing or end the expression early |
