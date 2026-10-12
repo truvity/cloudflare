@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+- **`pkg/zone` and `pkg/zonespec`: `Records`, a zone's own DNS records.** `Args.Records{Zone, Entries}` declares A, AAAA and CNAME records (name, content, proxied, TTL, comment) for names served by something other than a tunnel, such as a load balancer or a CDN; each becomes a `cloudflare.DnsRecord` named `record-<name>-<host-slug>-<type>[-<content-slug>]` (`zone.RecordName`). Only the listed records are managed: a zone's hand-made or imported records stay as they are. Validation refuses names outside the zone, content that does not fit its type, a proxied record with a TTL, duplicates and a CNAME sharing its name. Additive.
+
 ## v2.17.1
 
 - Dependency updates.

@@ -347,6 +347,7 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 | `Cache` | `cache` | see below | the zone's cache rules: which hostnames may be cached at all |
 | `TrustedClients` | `trustedClients` | see below | one rule that skips the security features for known client ranges on named hosts |
 | `RateLimits` | `rateLimits` | see below | the zone's whole `http_ratelimit` ruleset: rate limiting rules, validated against the zone plan's limits |
+| `Records` | `records` | see below | the listed DNS records, and only those: records made by hand, by an import or by a tunnel are never touched |
 
 `TotalTLS`:
 
@@ -389,6 +390,27 @@ these in the dashboard are replaced, not merged. If the zone already has
 cache rules when this is first applied, adopt them with `pulumi import`
 onto the child name below, or delete them first — Cloudflare will
 otherwise refuse a second entry point ruleset for the phase.
+
+`Records`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `Zone` | `zone` | the zone's lower-case domain (`example.com`); required when entries are set |
+| `Entries` | `entries` | the records, any order |
+| `Entries[].Name` | `name` | lower-case hostname, the zone itself or a name inside it; a leading `*.` makes a wildcard at any depth (`*.api.example.com`) |
+| `Entries[].Type` | `type` | `A`, `AAAA` or `CNAME`: the types Cloudflare can proxy |
+| `Entries[].Content` | `content` | IPv4 (`A`), IPv6 (`AAAA`), or a lower-case target hostname without a trailing dot (`CNAME`) |
+| `Entries[].Proxied` | `proxied` | serve the name through Cloudflare's edge (orange cloud); false answers DNS only |
+| `Entries[].TTL` | `ttl` | DNS-only TTL, 60 to 86400 seconds; 0 is automatic. A proxied record must leave it at 0 |
+| `Entries[].Comment` | `comment` | shown beside the record in the dashboard |
+
+One `cloudflare.DnsRecord` per entry, named `record-<name>-<host-slug>-cname`
+for a CNAME and `record-<name>-<host-slug>-<type>-<content-slug>` for an A or
+AAAA (`zone.RecordName`). A record that already exists with the same name and
+type (an import, a hand edit) is not adopted: delete it, or import it onto
+that name, before the first apply. A proxied name more than one label below
+the zone needs `totalTls` (or an advanced certificate) for the edge to serve
+it.
 
 `TrustedClients`:
 

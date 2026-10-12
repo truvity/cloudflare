@@ -33,6 +33,7 @@ package zone
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -110,6 +111,11 @@ type (
 	// TrustedClients exempts client address ranges on named hosts. See
 	// zonespec.TrustedClients.
 	TrustedClients = zonespec.TrustedClients
+	// Records are DNS records the estate owns in the zone. See
+	// zonespec.Records.
+	Records = zonespec.Records
+	// Record is one of them. See zonespec.Record.
+	Record = zonespec.Record
 	// Args is one zone's settings. See zonespec.Args.
 	Args = zonespec.Args
 	// RateLimits is the zone's whole http_ratelimit ruleset. See
@@ -187,7 +193,8 @@ func cacheRules(hosts []string) cloudflare.RulesetRuleArray {
 
 // New applies one zone's settings. Children are named "setting-<name>-ssl",
 // "setting-<name>-min-tls-version", "setting-<name>-browser-cache-ttl",
-// "total-tls-<name>", "cache-rules-<name>", "firewall-custom-<name>" and "ratelimit-<name>", a documented contract:
+// "total-tls-<name>", "cache-rules-<name>", "firewall-custom-<name>", "ratelimit-<name>"
+// and one "record-<name>-..." per record (RecordName), a documented contract:
 // consumers alias existing resources onto these names.
 func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOption) (*Zone, error) {
 	if err := args.Validate(); err != nil {
@@ -299,6 +306,29 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 		}
 	}
 
+	if args.Records.Managed() {
+		for i := range args.Records.Entries {
+			r := &args.Records.Entries[i]
+
+			rArgs := &cloudflare.DnsRecordArgs{
+				ZoneId:  zoneID,
+				Name:    pulumi.String(r.Name),
+				Type:    pulumi.String(r.Type),
+				Content: pulumi.String(r.Content),
+				Proxied: pulumi.Bool(r.Proxied),
+				// 1 = automatic, the only TTL a proxied record takes.
+				Ttl: pulumi.Float64(recordTTL(r)),
+			}
+			if r.Comment != "" {
+				rArgs.Comment = pulumi.String(r.Comment)
+			}
+
+			if _, err := cloudflare.NewDnsRecord(ctx, RecordName(name, r), rArgs, child...); err != nil {
+				return nil, fmt.Errorf("zone %q: record %s %s: %w", name, r.Name, r.Type, err)
+			}
+		}
+	}
+
 	comp.ZoneID = zoneID.ToStringOutput()
 
 	if err := ctx.RegisterResourceOutputs(comp, pulumi.Map{
@@ -337,4 +367,34 @@ func rateLimitRules(rules []RateLimitRule) cloudflare.RulesetRuleArray {
 	}
 
 	return out
+}
+
+// RecordName is the child name of one record: "record-<name>-<host-slug>-cname"
+// for a CNAME (one per name), and "record-<name>-<host-slug>-<type>-<content-slug>"
+// for an A or AAAA (several may share a name). A documented contract, like
+// the other child names.
+func RecordName(name string, r *Record) string {
+	out := "record-" + name + "-" + recordSlug(r.Name) + "-" + strings.ToLower(r.Type)
+	if r.Type != "CNAME" {
+		out += "-" + recordSlug(r.Content)
+	}
+
+	return out
+}
+
+// recordSlug renders a hostname or address as a resource-name fragment
+// ("*.apps.example.com" -> "star-apps-example-com", "2001:db8::1" ->
+// "2001-db8--1").
+func recordSlug(s string) string {
+	return strings.NewReplacer("*", "star", ".", "-", ":", "-").Replace(s)
+}
+
+// recordTTL is the TTL Cloudflare is given: 1 (automatic) for a proxied
+// record or an unset one, else the declared seconds.
+func recordTTL(r *Record) float64 {
+	if r.Proxied || r.TTL == 0 {
+		return 1
+	}
+
+	return float64(r.TTL)
 }
