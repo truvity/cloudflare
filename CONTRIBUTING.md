@@ -20,7 +20,6 @@ cannot be edited after the push.
 - `build` compiles the module
 - `lint` lints the charts, proves every refusal fixture fails, and runs golangci-lint and govulncheck
 - `test` runs the Go tests and the golden renders
-- `audit-catalogue` checks the broker's audit catalogue against what the code emits
 - `leak-canary`
 
 A change to a chart or to a rendered output regenerates the golden renders with `just golden`; review that diff in the pull request. Every render-time refusal has a fixture under `tests/invalid/` that must fail to render.

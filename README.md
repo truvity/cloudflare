@@ -2,7 +2,7 @@
 
 Cloudflare for Kubernetes estates, as reusable mechanism: accounts, zone
 settings, tunnels and R2 buckets as Pulumi Go components; the in-cluster
-end of a tunnel and an R2 temporary-credentials broker as Helm charts.
+end of a tunnel as a Helm chart.
 
 | Artifact | What | Status |
 | --- | --- | --- |
@@ -14,10 +14,8 @@ end of a tunnel and an R2 temporary-credentials broker as Helm charts.
 | `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | shipped |
 | `pkg/cfnames` | Pure Cloudflare naming and validity rules — the R2 jurisdiction list and the R2 bucket-name syntax check — with no SDK import of any kind, not even this module's own `pkg/account` or `pkg/r2` | shipped |
 | `charts/cloudflared` | `cloudflared` as a plain Deployment: token from a Secret, optional origin CA from a Secret, one install per account | shipped |
-| `cmd/r2broker` | The R2 temporary-credentials broker: `r2broker serve` (the HTTP service) and `r2broker credentials` (a client of it, or an in-process standalone mode) — one binary, group-only OIDC in, scoped temporary R2 credentials out, its own audit catalogue for every mint and refusal | shipped |
-| `charts/r2-broker` | The broker's Deployment, Service and ServiceAccount; `grants: []` renders a broker that verifies tokens and refuses every request, not a load error | shipped |
 
-The charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
+The chart publishes to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
 The Go module is `github.com/truvity/cloudflare/v2`; **use v2.0.1 or
 later**, because v2.0.0 cannot be fetched as a module (see
 [docs/adoption.md](docs/adoption.md#the-go-module-moves-to-v2)).
@@ -32,12 +30,13 @@ stored, the origin CA and the network policy around the daemon are the
 estate's. Nothing here installs a secret manager, a certificate issuer or
 a gateway: the tunnel routes to an origin the estate already runs.
 
-The same team, if it also uses R2, is who `pkg/r2` and `cmd/r2broker`
-are for: an estate that wants a build tool (or any other group-scoped
-caller) to hold a short-lived, bucket-scoped R2 credential instead of a
-long-lived one. Deploying `charts/r2-broker` is optional — `cmd/r2broker
-credentials --config` mints the same credential in-process, for an
-installation with no central broker at all.
+The same team, if it also uses R2, is who `pkg/r2` is for: the bucket,
+its lifecycle and a bucket-scoped token. Short-lived R2 credentials for a
+build tool or a workload come from the estate's token service, not from
+this repository: v2.5.0 to v2.18.0 shipped an R2 credentials broker
+(`cmd/r2broker`, `charts/r2-broker`), removed in v2.19.0. The Cloudflare
+module of [sluis](https://github.com/truvity/sluis) mints the same kind
+of credential by cloning a disabled prototype token.
 
 ## The model
 
@@ -250,12 +249,6 @@ Who uses this repository, and through which surface:
 | truvity/gitops | Go `pkg/account`, `pkg/tunnel`, `pkg/zone` (v2); chart `cloudflared` |
 | A second, non-AWS estate | Go `pkg/tunnel`; chart `cloudflared` |
 
-`cmd/r2broker` and `charts/r2-broker` also live in this repository, but
-they have no consumer of their own listed here: their callers are
-covered in Neighbours below, since the relationship is "who issues the
-tokens r2broker verifies" and "where r2broker's audit records go", not
-"who imports this repository's Go packages or charts".
-
 ## Neighbours
 
 Repositories a reader must know about, and the boundary with each:
@@ -267,17 +260,6 @@ Repositories a reader must know about, and the boundary with each:
   tailscale routes whole CIDRs for private access. gateway's private
   exposure and tailscale's Service-CIDR route are the two ways to reach a
   private service.
-- **r2broker ↔ access-roster**: `cmd/r2broker`'s `serve` mode verifies a
-  bearer OIDC token against any configured issuer (mechanism only — see
-  `internal/verify`'s package doc); `sluisctl r2` (in sluis)
-  execs against it over HTTP as one such caller (see
-  [cmd/r2broker's package doc](cmd/r2broker/doc.go)). It does not hold an
-  access-roster API token: only a bearer token to verify.
-- **r2broker ↔ audit**: `internal/audit` is r2broker's own audit
-  installation — its own catalogue (`catalogue/r2broker.yaml`, source
-  `r2broker`), recorded through `github.com/truvity/audit`, independent
-  of whatever else on the platform emits `roster.*` actions (see
-  [internal/audit's package doc](internal/audit/audit.go)).
 
 ## Documentation
 
@@ -317,13 +299,13 @@ Used in production by its maintainers. Releases are listed on the
 
 ```sh
 devbox shell        # or direnv
-just check          # build + lint + test + leak canary + audit catalogue + govulncheck
+just check          # build + lint + test + leak canary + govulncheck
 just golden         # regenerate tests/golden after a template change — review the diff
 ```
 
-CI runs `build`, `lint`, `test`, `leak-canary` and `audit-catalogue`, each
-as its own job; `vuln` runs daily, never as a required check on a pull
-request (a new CVE must not turn CI red). Every
+CI runs `build`, `lint`, `test` and `leak-canary`, each as its own job;
+`vuln` runs daily, never as a required check on a pull request (a new
+CVE must not turn CI red). Every
 `tests/cases/<chart>/<case>/values.yaml` is rendered and compared
 byte-for-byte with `tests/golden/<chart>/<case>.yaml` (a case may pin its
 release name in a `release` file next to its values); a template change

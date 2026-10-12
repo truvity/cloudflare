@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+- **Breaking: the R2 credentials broker is removed.** `cmd/r2broker`, `charts/r2-broker`, the `r2broker` image and archives, the audit catalogue (`catalogue/r2broker.yaml`, `R2BrokerCatalogueFS` in the module root) and the broker's `internal/` packages are gone, and so are the `audit-catalogue` recipe and CI job. A release no longer publishes `ghcr.io/truvity/cloudflare/r2broker`, `oci://ghcr.io/truvity/charts/r2-broker` or `r2broker_*` archives; releases up to v2.18.0 keep theirs. Short-lived R2 credentials now come from the Cloudflare module of sluis (truvity/sluis, `sluisctl cloudflare r2 <preset>`), which clones a disabled prototype token into expiring ones. Before upgrading: uninstall any `r2-broker` release, and move every `r2broker credentials` or `sluisctl r2` caller to a sluis R2 preset. The Go packages (`pkg/account`, `pkg/zone`, `pkg/tunnel`, `pkg/edge`, `pkg/tokensplit`, `pkg/r2`, `pkg/cfnames`, `pkg/edgespec`, `pkg/zonespec`) and the `cloudflared` chart do not change.
+
 ## v2.18.0
 
 - **`pkg/zone` and `pkg/zonespec`: `Records`, a zone's own DNS records.** `Args.Records{Zone, Entries}` declares A, AAAA and CNAME records (name, content, proxied, TTL, comment) for names served by something other than a tunnel, such as a load balancer or a CDN; each becomes a `cloudflare.DnsRecord` named `record-<name>-<host-slug>-<type>[-<content-slug>]` (`zone.RecordName`). Only the listed records are managed: a zone's hand-made or imported records stay as they are. Validation refuses names outside the zone, content that does not fit its type, a proxied record with a TTL, duplicates and a CNAME sharing its name. Additive.

@@ -26,7 +26,7 @@ jobs:
       # job summary, and fails this job when a rule fails.
       policy-conformance: true
       policy-conformance-strict: true
-      recipes: '["build", "lint", "test", "leak-canary", "audit-catalogue"]'
+      recipes: '["build", "lint", "test", "leak-canary"]'
 
   # Stable name for branch protection: the matrix reports as
   # "recipes / lint" and so on, so a required context called "check"

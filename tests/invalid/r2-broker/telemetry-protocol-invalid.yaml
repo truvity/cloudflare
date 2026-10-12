@@ -1,4 +1,0 @@
-telemetry:
-  otlp:
-    endpoint: http://gateway.observability.svc:4318
-    protocol: grpc
