@@ -13,6 +13,8 @@ end of a tunnel as a Helm chart.
 | `pkg/tokensplit` | The root of a token split: mints the least-privilege children (`edge`, `status`, `r2-admin`, one `r2-parent-<bucket>` per bucket) from the one token that may mint tokens, hands them to a caller's `Writer`, and parses the root and child secrets with the refusals every reader needs | shipped |
 | `pkg/r2` | One R2 bucket, an opt-in expiry lifecycle, and an account-owned API token scoped to exactly that bucket — plus the S3-compatible credential pair Cloudflare derives from it | shipped |
 | `pkg/cfnames` | Pure Cloudflare naming and validity rules — the R2 jurisdiction list and the R2 bucket-name syntax check — with no SDK import of any kind, not even this module's own `pkg/account` or `pkg/r2` | shipped |
+| `pkg/presettoken` | The client of a sluis Cloudflare preset: `Token` execs `sluisctl` (pinned binary and version, cleaned environment, no credential cache, explicit issuer), checks the answer's lifetime and verifies a new API token against Cloudflare before use; behind an estate's break-glass switch it mints the same preset's rights from the account root instead. Every estate fact is a parameter | shipped |
+| `pkg/prototypes` | The other half of a sluis preset: one DISABLED, protected account token per preset, declared on the default provider so the root that creates them reaches only the environment, never the state | shipped |
 | `charts/cloudflared` | `cloudflared` as a plain Deployment: token from a Secret, optional origin CA from a Secret, one install per account | shipped |
 
 The chart publishes to `oci://ghcr.io/truvity/charts/<chart>` on every tag.
