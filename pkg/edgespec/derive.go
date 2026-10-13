@@ -67,15 +67,22 @@ func ZoneOf(zones []string, host string) string {
 
 type (
 	// Tunnel is one tunnel: the hosts one cluster serves through one
-	// account's zone.
+	// account's zones.
 	Tunnel struct {
 		// Name is the tunnel's name and the Pulumi name of every resource
 		// built for it.
 		Name    string
 		Cluster string
 		Account string
-		Zone    string
-		// Hosts arrive derived and in ingress order, all in Zone.
+		// Zone is the zone of the first host. When Zones is empty, every
+		// host lies in it.
+		Zone string
+		// Zones are the zones the hosts lie in, sorted, every one of the
+		// tunnel's account. Each host's DNS record goes in the zone that is
+		// its longest suffix (ZoneOf). Derive always fills it; a tunnel built
+		// by hand may leave it empty to mean Zones = {Zone}.
+		Zones []string
+		// Hosts arrive derived and in ingress order, each in one of Zones.
 		Hosts []string
 		// DNSDomain is the cluster's Kubernetes DNS domain, for the origin
 		// service address. Empty falls back to "cluster."+Cluster.
@@ -131,8 +138,11 @@ type (
 // groups the hosts into one tunnel per (cluster, account) in ingress order
 // (OrderHosts), and derives each cache zone's hosts. A host outside
 // every zone, or in a zone of an account its exposure does not list, is
-// refused here, where the exposure is still known. Callers pass exposures,
-// clusters and groups in a stable order so the first refusal is stable.
+// refused here, where the exposure is still known. A tunnel's hosts may lie
+// in several zones of its account (Tunnel.Zones); a zone of another account
+// never joins it, since the tunnel is keyed by the zone's account. Callers
+// pass exposures, clusters and groups in a stable order so the first refusal
+// is stable.
 func Derive(in DeriveInput) (Derived, error) {
 	zones := sortedKeys(in.Zones)
 
@@ -178,18 +188,11 @@ func Derive(in DeriveInput) (Derived, error) {
 	for k, list := range hosts {
 		ordered := OrderHosts(list)
 
+		// Each host's record goes in its own zone (pkg/tunnel DNS.Zones), so
+		// one tunnel may serve names in several zones of its account.
 		inZone := map[string]bool{}
 		for _, host := range ordered {
 			inZone[ZoneOf(zones, host)] = true
-		}
-
-		// pkg/tunnel creates a tunnel's CNAMEs in ONE zone. Two zones in one
-		// account on one cluster need the library to take a zone per name
-		// first; until then this is refused rather than half-served.
-		if len(inZone) > 1 {
-			return Derived{}, fmt.Errorf(
-				"the %s tunnel of account %q would carry names in zones %s; a tunnel's records live in one zone (pkg/tunnel DNS) until it takes one per name",
-				k.cluster, k.account, strings.Join(sortedKeys(inZone), ", "))
 		}
 
 		out.Tunnels = append(out.Tunnels, Tunnel{
@@ -197,6 +200,7 @@ func Derive(in DeriveInput) (Derived, error) {
 			Cluster: k.cluster,
 			Account: k.account,
 			Zone:    ZoneOf(zones, ordered[0]),
+			Zones:   sortedKeys(inZone),
 			Hosts:   ordered,
 		})
 	}
@@ -312,7 +316,9 @@ func ValidateRouting(tunnels []Tunnel) error {
 
 	seen := map[string]string{} // lowercased host to "tunnel cluster/account: hosts[i]"
 
-	for _, t := range sorted {
+	for ti := range sorted {
+		t := &sorted[ti]
+
 		for i, host := range t.Hosts {
 			key := strings.ToLower(host)
 			at := fmt.Sprintf("tunnel %s/%s: hosts[%d]", t.Cluster, t.Account, i)

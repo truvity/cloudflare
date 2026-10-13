@@ -568,12 +568,29 @@ wildcards before broader ones. See
 
 | Field | YAML key | Notes |
 | --- | --- | --- |
-| `ZoneID` | `zoneId` | required when `dns` is set; one zone per tunnel |
-| `Names` | `names` | required, non-empty; each becomes a proxied CNAME to `<tunnel-id>.cfargotunnel.com` with automatic TTL, verbatim (exact or wildcard) |
+| `ZoneID` | `zoneId` | the zone every record is created in, taken as given; set this or `Zones` |
+| `Names` | `names` | required, non-empty, each name once (case-insensitive); each becomes a proxied CNAME to `<tunnel-id>.cfargotunnel.com` with automatic TTL, verbatim (exact or wildcard) |
+| `Zones` | `zones` | for a tunnel whose names lie in several zones of its account: a list of `{ZoneID, Name}` (`zoneId`, `name`, both required, each zone once); set this or `ZoneID` |
 
-For a tunnel whose hostnames sit in several zones of its account, leave
-`DNS` nil and create the records per zone against `Tunnel.CNAMETarget`, as
-the README's worked example does.
+With `Zones`, each name's record is created in the zone whose `Name` is the
+longest suffix of it (a wildcard's `*.` is not a label of the zone, and a
+zone delegated under another wins over its parent); a name in none of them
+is refused. `DNS.ZoneIDOf(host)` returns the zone id a name's record goes
+in. The records keep their names (`cname-<name>-<slug>`, no zone in it),
+so a single-zone tunnel moved from `ZoneID` to a one-entry `Zones`
+registers exactly the same resources. Every zone must belong to the
+tunnel's account: the tunnel's provider writes the records. With `Zones`,
+`Certificates.Hosts` is required (packs are ordered in one zone).
+
+```go
+DNS: &tunnel.DNS{
+	Names: []string{"app.example.com", "api.example.net", "*.example.com"},
+	Zones: []tunnel.DNSZone{
+		{ZoneID: "<example.com zone id>", Name: "example.com"},
+		{ZoneID: "<example.net zone id>", Name: "example.net"},
+	},
+},
+```
 
 `Certificates` (opt-in Advanced Certificate packs; needs Advanced
 Certificate Manager):
@@ -582,7 +599,7 @@ Certificate Manager):
 | --- | --- | --- | --- |
 | `ZoneID` | `zoneId` | required | the zone the packs are ordered in |
 | `Zone` | `zone` | required | the zone apex; added to every pack's host list, and `*.<zone>` is skipped because Universal SSL covers it |
-| `Hosts` | `hosts` | `DNS.Names` | one pack per host |
+| `Hosts` | `hosts` | `DNS.Names` | one pack per host; required when `DNS.Zones` is set |
 | `ValidityDays` | `validityDays` | `90` | |
 | `CertificateAuthority` | `certificateAuthority` | `lets_encrypt` | |
 
