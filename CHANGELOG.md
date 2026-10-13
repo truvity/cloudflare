@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+## v2.20.0
+
 - **A tunnel may serve names in several zones of its account.** `pkg/tunnel`: `DNS.Zones` (`zones`, a list of `DNSZone{ZoneID, Name}`) is the alternative to `DNS.ZoneID`: each name's CNAME is created in the zone whose name is its longest suffix, and `DNS.ZoneIDOf` returns it. Validation refuses `zoneId` and `zones` together, a zone listed twice, a name in no listed zone, a name listed twice, and `certificates` with `zones` but no `certificates.hosts`. `pkg/edgespec` (and `pkg/edge`): `Derive` no longer refuses a tunnel whose names span zones; `Tunnel.Zones` lists every zone its hosts lie in (sorted; `Zone` stays the first host's). `pkg/edge`: `TunnelArgsInZones` maps a tunnel with its zone ids; `Deploy` uses it and refuses a tunnel zone that is undeclared or of another account, and a host in none of the tunnel's zones (empty `Tunnel.Zones` means `{Zone}`). Resource names do not change (`cname-<tunnel>-<slug>`, `ingress-<tunnel>`), and a single-zone tunnel registers exactly what it did: golden tests pin it byte for byte. A consumer that copies `edgespec.Tunnel` into `edge.Tunnel` field by field must copy `Zones` too. Additive.
 
 ## v2.19.0
