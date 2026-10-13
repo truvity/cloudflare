@@ -5,6 +5,10 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
+## Unreleased
+
+- **Change, library only: an empty `Project.ParentRefsSince` means the project's chart always takes its routes' parents.** Before, empty meant no release of the chart did: `DeriveGroups` refused a business group naming such a project and `ListenerSetsFor` refused to point it at a ListenerSet. Both now accept it, and the `ListenerSetRef` carries the empty value; an estate whose every chart takes the parent list no longer records a version per project. `ListenerSetsFor` still refuses a hostname whose project is not in the list it is given. The charts are unchanged.
+
 ## v1.17.2
 
 - Dependency updates.

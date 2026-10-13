@@ -80,7 +80,8 @@ type (
 		Name      string
 		Namespace string
 		// ParentRefsSince is the project's ParentRefsSince, which the
-		// caller holds the pinned chart to.
+		// caller holds the pinned chart to. Empty: every release takes
+		// the parent.
 		ParentRefsSince string
 	}
 
@@ -365,18 +366,6 @@ func routeGrant(in DeriveInput, projects map[string]Project, arrival string, gro
 		return NamespaceGrant(namespace, kinds), nil
 	}
 
-	for _, namespace := range business {
-		// The project's chart must take the parent the render gives it, or
-		// its routes stay on the old listener while the platform believes
-		// they moved -- a 404 once that listener goes.
-		if projects[namespace].ParentRefsSince == "" {
-			return AllowedRoutes{}, fmt.Errorf(
-				"project %s has no exposure_parent_refs_since: "+
-					"no released chart of it reads exposure.parentRefs, so its routes cannot move onto a ListenerSet",
-				namespace)
-		}
-	}
-
 	// A BUSINESS WILDCARD ADMITS BY THE COARSE LABEL. A business group that
 	// answers on a wildcard is where per-install hosts land, however many
 	// projects it lists: CI rings and employee installs. Those namespaces
@@ -468,28 +457,30 @@ func (g *GroupsValue) ListenerSetsFor(hosts []ProjectHost, projects []Project) (
 			continue
 		}
 
-		// Checked here as well as on the group's route namespaces: a
-		// project moves by its hostname, which a group can serve without
-		// naming the project's namespace.
-		var since string
-
-		for _, project := range projects {
-			if project.Name == host.Project {
-				since = project.ParentRefsSince
-			}
-		}
-
-		if since == "" {
+		// A project moves by its hostname, which a group can serve without
+		// naming the project's namespace; the project must still be one
+		// the caller knows, or nothing holds its chart to the parent.
+		project, known := findProject(projects, host.Project)
+		if !known {
 			return nil, fmt.Errorf(
-				"cfg/gateways: group %s serves %s, and project %s has no exposure_parent_refs_since, "+
-					"so its chart would keep its routes on the default parent",
+				"cfg/gateways: group %s serves %s, and %s is not among the projects",
 				group.Name, host.Hostname, host.Project)
 		}
 
-		out[host.Project] = ListenerSetRef{Name: group.Name, Namespace: g.Namespace, ParentRefsSince: since}
+		out[host.Project] = ListenerSetRef{Name: group.Name, Namespace: g.Namespace, ParentRefsSince: project.ParentRefsSince}
 	}
 
 	return out, nil
+}
+
+func findProject(projects []Project, name string) (Project, bool) {
+	for _, project := range projects {
+		if project.Name == name {
+			return project, true
+		}
+	}
+
+	return Project{}, false
 }
 
 func groupName(group *GroupValue) string {
