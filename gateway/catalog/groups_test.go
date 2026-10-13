@@ -177,6 +177,22 @@ func TestDeriveGroupsNothingWithoutTheFlag(t *testing.T) {
 	}
 }
 
+func TestDeriveGroupsWithoutParentRefsSince(t *testing.T) {
+	c := groupsCatalog()
+
+	in := groupsInput()
+	in.Projects = []catalog.Project{{Name: "shop"}, {Name: "api"}}
+
+	got, err := c.DeriveGroups(in)
+	if err != nil {
+		t.Fatalf("an empty ParentRefsSince means the chart always takes the parent: %v", err)
+	}
+
+	if group(t, got, "shop").AllowedRoutes.AllowedNamespaces.Selector.MatchLabels[catalog.NamespaceNameLabel] != "shop" {
+		t.Fatal("shop admits its own namespace by name")
+	}
+}
+
 func TestDeriveGroupsRefusals(t *testing.T) {
 	serve := catalog.ListenerSetServe
 
@@ -186,10 +202,6 @@ func TestDeriveGroupsRefusals(t *testing.T) {
 				name: {ListenerSet: serve, Domains: []catalog.Domain{{Host: name + ".dev.example.com"}}, RouteNamespaces: namespaces},
 			}}}},
 		}}
-	}
-
-	noParentRefs := func(in *catalog.DeriveInput) {
-		in.Projects = []catalog.Project{{Name: "shop"}}
 	}
 
 	for name, tc := range map[string]struct {
@@ -203,8 +215,6 @@ func TestDeriveGroupsRefusals(t *testing.T) {
 			`nothing moves a platform group named "tools"`},
 		"a platform group in the wrong namespace": {one(catalog.ArrivalCloudflareTunnel, "console", "elsewhere"), nil, "live in namespace console-system alone"},
 		"business and platform in one group":      {one(catalog.ArrivalCloudflareTunnel, "shop", "shop", "tools-system"), nil, "cannot share a group"},
-		"a project whose chart ignores parentRefs": {one(catalog.ArrivalCloudflareTunnel, "shop", "shop"), noParentRefs,
-			"project shop has no exposure_parent_refs_since"},
 		"a private group with no entry": {one(catalog.ArrivalPrivateClusterIP, "shop", "shop"), func(in *catalog.DeriveInput) { in.PrivateEntry = nil },
 			"no private entry"},
 		"the reserved exposure": {&catalog.Config{Version: catalog.Version, Exposures: map[string]catalog.Exposure{
@@ -279,10 +289,21 @@ func TestListenerSetsFor(t *testing.T) {
 		}
 	})
 
-	t.Run("a project whose chart ignores parentRefs", func(t *testing.T) {
-		_, err := got.ListenerSetsFor([]catalog.ProjectHost{{Project: "shop", Hostname: "shop.dev.example.com"}},
+	t.Run("an empty ParentRefsSince takes the parent always", func(t *testing.T) {
+		refs, err := got.ListenerSetsFor([]catalog.ProjectHost{{Project: "shop", Hostname: "shop.dev.example.com"}},
 			[]catalog.Project{{Name: "shop"}})
-		if err == nil || !strings.Contains(err.Error(), "no exposure_parent_refs_since") {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if refs["shop"] != (catalog.ListenerSetRef{Name: "shop", Namespace: "gw-system"}) {
+			t.Fatalf("refs: %+v", refs)
+		}
+	})
+
+	t.Run("a project nobody lists", func(t *testing.T) {
+		_, err := got.ListenerSetsFor([]catalog.ProjectHost{{Project: "shop", Hostname: "shop.dev.example.com"}}, nil)
+		if err == nil || !strings.Contains(err.Error(), "shop is not among the projects") {
 			t.Fatalf("got %v", err)
 		}
 	})

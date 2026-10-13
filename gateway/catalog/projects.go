@@ -9,9 +9,10 @@ type Project struct {
 	Name      string
 	Endpoints []Endpoint
 	// ParentRefsSince is the first release of the project's chart that
-	// takes its routes' parents from a list the platform writes. Empty
-	// means no release does, so the project's routes cannot move onto a
-	// ListenerSet.
+	// takes its routes' parents from a list the platform writes, for an
+	// estate whose charts gained that list over time and holds each pin
+	// at or past it. Empty means every release does: the project's routes
+	// always take the parent the render gives them.
 	ParentRefsSince string
 }
 
