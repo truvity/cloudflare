@@ -143,6 +143,17 @@ type (
 		// a tunnel (a load balancer, a CDN). Nil, or no entries, manages
 		// no record; records not listed here are never touched.
 		Records *Records `json:"records,omitempty" yaml:"records,omitempty"`
+		// AlwaysUseHTTPS is the zone setting always_use_https: true
+		// answers every plain-HTTP request with a redirect to HTTPS,
+		// false turns that off. Nil leaves the setting alone.
+		AlwaysUseHTTPS *bool `json:"alwaysUseHttps,omitempty" yaml:"alwaysUseHttps,omitempty"`
+		// HSTS is the zone setting security_header (Strict-Transport-
+		// Security). Nil leaves the setting alone.
+		HSTS *HSTS `json:"hsts,omitempty" yaml:"hsts,omitempty"`
+		// ManagedWAF deploys the Cloudflare Managed Ruleset on the listed
+		// hosts. Nil leaves the http_request_firewall_managed phase
+		// alone; non-nil owns it.
+		ManagedWAF *ManagedWAF `json:"managedWaf,omitempty" yaml:"managedWaf,omitempty"`
 	}
 
 	// Records is a set of DNS records the estate owns inside one zone.
@@ -323,8 +334,20 @@ func (a *Args) Validate() error {
 		return err
 	}
 
+	if a.HSTS != nil {
+		if err := a.HSTS.validate(a.ZoneID, a.AlwaysUseHTTPS); err != nil {
+			return err
+		}
+	}
+
+	if a.ManagedWAF != nil {
+		if err := a.ManagedWAF.validate(a.ZoneID); err != nil {
+			return err
+		}
+	}
+
 	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.Managed() &&
-		!a.RateLimits.Managed() && !a.Records.Managed() {
+		!a.RateLimits.Managed() && !a.Records.Managed() && a.AlwaysUseHTTPS == nil && a.HSTS == nil && !a.ManagedWAF.Managed() {
 		return fmt.Errorf("zone %q: nothing to apply — omit the zone instead of declaring one that manages no setting", a.ZoneID)
 	}
 

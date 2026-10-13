@@ -46,6 +46,8 @@ const (
 	settingSSL             = "ssl"
 	settingMinTLSVersion   = "min_tls_version"
 	settingBrowserCacheTTL = "browser_cache_ttl"
+	settingAlwaysUseHTTPS  = "always_use_https"
+	settingSecurityHeader  = "security_header"
 )
 
 // The cache ruleset. A zone has one ruleset per phase, so a zone that
@@ -85,6 +87,10 @@ const (
 
 	rateLimitPhase       = "http_ratelimit"
 	rateLimitRulesetName = "default"
+
+	managedPhase       = "http_request_firewall_managed"
+	managedRulesetName = "default"
+	actionExecute      = "execute"
 )
 
 // What a trusted client is exempted from, besides the rest of the custom
@@ -126,7 +132,17 @@ type (
 	// Endpoint is one host and path a rate limit protects. See
 	// zonespec.Endpoint.
 	Endpoint = zonespec.Endpoint
+	// HSTS is the zone's Strict-Transport-Security header. See
+	// zonespec.HSTS.
+	HSTS = zonespec.HSTS
+	// ManagedWAF deploys the Cloudflare Managed Ruleset on named hosts.
+	// See zonespec.ManagedWAF.
+	ManagedWAF = zonespec.ManagedWAF
 )
+
+// CloudflareManagedRulesetID is the ruleset ManagedWAF executes. See
+// zonespec.CloudflareManagedRulesetID.
+const CloudflareManagedRulesetID = zonespec.CloudflareManagedRulesetID
 
 // Plan names, as Cloudflare names the zone plans this library models.
 const (
@@ -193,9 +209,11 @@ func cacheRules(hosts []string) cloudflare.RulesetRuleArray {
 
 // New applies one zone's settings. Children are named "setting-<name>-ssl",
 // "setting-<name>-min-tls-version", "setting-<name>-browser-cache-ttl",
-// "total-tls-<name>", "cache-rules-<name>", "firewall-custom-<name>", "ratelimit-<name>"
-// and one "record-<name>-..." per record (RecordName), a documented contract:
-// consumers alias existing resources onto these names.
+// "setting-<name>-always-use-https", "setting-<name>-security-header",
+// "total-tls-<name>", "cache-rules-<name>", "firewall-custom-<name>",
+// "firewall-managed-<name>", "ratelimit-<name>" and one "record-<name>-..."
+// per record (RecordName), a documented contract: consumers alias existing
+// resources onto these names.
 func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOption) (*Zone, error) {
 	if err := args.Validate(); err != nil {
 		return nil, err
@@ -226,6 +244,31 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 			Value:     pulumi.String(args.MinTLSVersion),
 		}, child...); err != nil {
 			return nil, fmt.Errorf("zone %q: minTlsVersion: %w", name, err)
+		}
+	}
+
+	if args.AlwaysUseHTTPS != nil {
+		value := "off"
+		if *args.AlwaysUseHTTPS {
+			value = "on"
+		}
+
+		if _, err := cloudflare.NewZoneSetting(ctx, "setting-"+name+"-always-use-https", &cloudflare.ZoneSettingArgs{
+			ZoneId:    zoneID,
+			SettingId: pulumi.String(settingAlwaysUseHTTPS),
+			Value:     pulumi.String(value),
+		}, child...); err != nil {
+			return nil, fmt.Errorf("zone %q: alwaysUseHttps: %w", name, err)
+		}
+	}
+
+	if args.HSTS != nil {
+		if _, err := cloudflare.NewZoneSetting(ctx, "setting-"+name+"-security-header", &cloudflare.ZoneSettingArgs{
+			ZoneId:    zoneID,
+			SettingId: pulumi.String(settingSecurityHeader),
+			Value:     hstsValue(args.HSTS),
+		}, child...); err != nil {
+			return nil, fmt.Errorf("zone %q: hsts: %w", name, err)
 		}
 	}
 
@@ -294,6 +337,18 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 		}
 	}
 
+	if args.ManagedWAF.Managed() {
+		if _, err := cloudflare.NewRuleset(ctx, "firewall-managed-"+name, &cloudflare.RulesetArgs{
+			ZoneId: zoneID,
+			Kind:   pulumi.String(cacheRulesetKind),
+			Phase:  pulumi.String(managedPhase),
+			Name:   pulumi.String(managedRulesetName),
+			Rules:  managedWAFRules(args.ManagedWAF),
+		}, child...); err != nil {
+			return nil, fmt.Errorf("zone %q: managed waf: %w", name, err)
+		}
+	}
+
 	if args.RateLimits.Managed() {
 		if _, err := cloudflare.NewRuleset(ctx, "ratelimit-"+name, &cloudflare.RulesetArgs{
 			ZoneId: zoneID,
@@ -338,6 +393,44 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 	}
 
 	return comp, nil
+}
+
+// hstsValue is the security_header setting's value. The keys are the
+// Cloudflare API's own (snake_case): the value is a dynamic object the
+// provider passes through as written, and the camelCase spelling in the
+// provider's generated docs never converges (pulumi/pulumi-cloudflare#1579).
+func hstsValue(h *HSTS) pulumi.Map {
+	return pulumi.Map{
+		"strict_transport_security": pulumi.Map{
+			"enabled":            pulumi.Bool(h.Enabled),
+			"max_age":            pulumi.Int(h.MaxAge),
+			"include_subdomains": pulumi.Bool(h.IncludeSubdomains),
+			"nosniff":            pulumi.Bool(h.Nosniff),
+			"preload":            pulumi.Bool(h.Preload),
+		},
+	}
+}
+
+// managedWAFRules is the managed phase's whole ruleset: one rule that
+// executes the Cloudflare Managed Ruleset, with its default actions, on the
+// declared hosts.
+func managedWAFRules(m *ManagedWAF) cloudflare.RulesetRuleArray {
+	description := m.Description
+	if description == "" {
+		description = zonespec.DefaultManagedWAFDescription
+	}
+
+	return cloudflare.RulesetRuleArray{
+		cloudflare.RulesetRuleArgs{
+			Action:      pulumi.String(actionExecute),
+			Description: pulumi.String(description),
+			Enabled:     pulumi.Bool(true),
+			Expression:  pulumi.String(zonespec.ManagedWAFExpression(m)),
+			ActionParameters: &cloudflare.RulesetRuleActionParametersArgs{
+				Id: pulumi.String(CloudflareManagedRulesetID),
+			},
+		},
+	}
 }
 
 // rateLimitRules is the phase's whole ruleset, in the order declared.
