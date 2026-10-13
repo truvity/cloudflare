@@ -7,6 +7,8 @@ together at every version.
 
 ## Unreleased
 
+## v2.21.0
+
 - **`pkg/zone` and `pkg/zonespec`: Always Use HTTPS, HSTS and the Cloudflare Managed Ruleset.** `Args.AlwaysUseHTTPS` (`alwaysUseHttps`, a `*bool`) manages the zone setting `always_use_https` as `setting-<name>-always-use-https`. `Args.HSTS` (`hsts`: `enabled`, `maxAge`, `includeSubdomains`, `nosniff`, `preload`) manages `security_header` as `setting-<name>-security-header`, written with the API's snake_case keys (pulumi/pulumi-cloudflare#1579); validation refuses a `maxAge` outside 0 to 31536000 and `preload` without `enabled`, `includeSubdomains`, a one-year `maxAge` and `alwaysUseHttps: true`. `Args.ManagedWAF` (`managedWaf`: `zone`, `hosts`, `wholeZone`, `description`) owns the zone's `http_request_firewall_managed` entry point ruleset, `firewall-managed-<name>`: one execute rule for the Cloudflare Managed Ruleset (`zone.CloudflareManagedRulesetID`) with its default actions, on the sorted host list (`zonespec.ManagedWAFExpression`) or on the whole zone; an empty host list is refused unless `wholeZone` is set, and so are hosts outside `zone`, duplicates, and `hosts` with `wholeZone`. The ruleset needs `Zone WAF Write` (`account.EdgePoliciesWithWAF`). Unset fields manage nothing, so an existing zone plans exactly what it did. Additive.
 
 ## v2.20.0
