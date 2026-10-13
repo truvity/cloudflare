@@ -1,0 +1,61 @@
+{
+  "cloudflare:index/dnsRecord:DnsRecord/cname-cluster-a-console-apps-example-com": {
+    "content": "tunnel-id-123.cfargotunnel.com",
+    "name": "console.apps.example.com",
+    "proxied": true,
+    "ttl": 1,
+    "type": "CNAME",
+    "zoneId": "zone"
+  },
+  "cloudflare:index/dnsRecord:DnsRecord/cname-cluster-a-star-apps-example-com": {
+    "content": "tunnel-id-123.cfargotunnel.com",
+    "name": "*.apps.example.com",
+    "proxied": true,
+    "ttl": 1,
+    "type": "CNAME",
+    "zoneId": "zone"
+  },
+  "cloudflare:index/zeroTrustTunnelCloudflared:ZeroTrustTunnelCloudflared/tunnel-cluster-a": {
+    "accountId": "acct",
+    "configSrc": "cloudflare",
+    "name": "cluster-a",
+    "tunnelSecret": {
+      "Element": {
+        "V": "c2VjcmV0"
+      }
+    }
+  },
+  "cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-cluster-a": {
+    "accountId": "acct",
+    "config": {
+      "ingresses": [
+        {
+          "hostname": "console.apps.example.com",
+          "originRequest": {
+            "caPool": "/etc/cloudflared/certs/ca.pem"
+          },
+          "service": "https://gateway.svc:443"
+        },
+        {
+          "hostname": "*.apps.example.com",
+          "originRequest": {
+            "originServerName": "*.apps.example.com"
+          },
+          "service": "https://gateway.svc:443"
+        },
+        {
+          "service": "http_status:404"
+        }
+      ]
+    },
+    "tunnelId": "tunnel-id-123"
+  },
+  "pulumi:providers:cloudflare/provider-acct": {
+    "apiToken": {
+      "Element": {
+        "V": "token-acct"
+      }
+    }
+  },
+  "truvity:cloudflare:Tunnel/cluster-a": {}
+}

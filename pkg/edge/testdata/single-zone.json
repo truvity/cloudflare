@@ -1,0 +1,110 @@
+{
+  "cloudflare:index/dnsRecord:DnsRecord/cname-alpha-a-example-test": {
+    "content": "tunnel-alpha-id.cfargotunnel.com",
+    "name": "a.example.test",
+    "proxied": true,
+    "ttl": 1,
+    "type": "CNAME",
+    "zoneId": "z1"
+  },
+  "cloudflare:index/dnsRecord:DnsRecord/cname-alpha-partner-a-partner-test": {
+    "content": "tunnel-alpha-partner-id.cfargotunnel.com",
+    "name": "a.partner.test",
+    "proxied": true,
+    "ttl": 1,
+    "type": "CNAME",
+    "zoneId": "z2"
+  },
+  "cloudflare:index/zeroTrustTunnelCloudflared:ZeroTrustTunnelCloudflared/tunnel-alpha": {
+    "accountId": "a1",
+    "configSrc": "cloudflare",
+    "name": "alpha",
+    "tunnelSecret": {
+      "Element": {
+        "V": ""
+      }
+    }
+  },
+  "cloudflare:index/zeroTrustTunnelCloudflared:ZeroTrustTunnelCloudflared/tunnel-alpha-partner": {
+    "accountId": "a2",
+    "configSrc": "cloudflare",
+    "name": "alpha-partner",
+    "tunnelSecret": {
+      "Element": {
+        "V": ""
+      }
+    }
+  },
+  "cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-alpha": {
+    "accountId": "a1",
+    "config": {
+      "ingresses": [
+        {
+          "hostname": "a.example.test",
+          "originRequest": {
+            "caPool": "/etc/cloudflared/certs/ca.pem",
+            "originServerName": "a.example.test"
+          },
+          "service": "https://gateway-internal.gateways.svc.cluster.example:443"
+        },
+        {
+          "service": "http_status:404"
+        }
+      ]
+    },
+    "tunnelId": "tunnel-alpha-id"
+  },
+  "cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-alpha-partner": {
+    "accountId": "a2",
+    "config": {
+      "ingresses": [
+        {
+          "hostname": "a.partner.test",
+          "originRequest": {
+            "caPool": "/etc/cloudflared/certs/ca.pem",
+            "originServerName": "a.partner.test"
+          },
+          "service": "https://gateway-internal.gateways.svc.cluster.alpha:443"
+        },
+        {
+          "service": "http_status:404"
+        }
+      ]
+    },
+    "tunnelId": "tunnel-alpha-partner-id"
+  },
+  "cloudflare:index/zoneSetting:ZoneSetting/setting-example-test-ssl": {
+    "settingId": "ssl",
+    "value": "full",
+    "zoneId": "z1"
+  },
+  "cloudflare:index/zoneSetting:ZoneSetting/setting-partner-test-ssl": {
+    "settingId": "ssl",
+    "value": "full",
+    "zoneId": "z2"
+  },
+  "pulumi:providers:cloudflare/provider-partner": {
+    "apiToken": {
+      "Element": {
+        "V": "token-partner"
+      }
+    }
+  },
+  "pulumi:providers:cloudflare/provider-platform": {
+    "apiToken": {
+      "Element": {
+        "V": "token-platform"
+      }
+    }
+  },
+  "random:index/randomBytes:RandomBytes/tunnel-secret-alpha": {
+    "length": 32
+  },
+  "random:index/randomBytes:RandomBytes/tunnel-secret-alpha-partner": {
+    "length": 32
+  },
+  "truvity:cloudflare:Tunnel/alpha": {},
+  "truvity:cloudflare:Tunnel/alpha-partner": {},
+  "truvity:cloudflare:Zone/example-test": {},
+  "truvity:cloudflare:Zone/partner-test": {}
+}
