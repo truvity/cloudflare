@@ -49,3 +49,18 @@ func TestExpressions(t *testing.T) {
 	var none *zonespec.TrustedClients
 	assert.False(t, none.Managed())
 }
+
+func TestHardeningStandsAlone(t *testing.T) {
+	on := true
+	require.NoError(t, (&zonespec.Args{ZoneID: "z", AlwaysUseHTTPS: &on}).Validate())
+	require.NoError(t, (&zonespec.Args{ZoneID: "z", HSTS: &zonespec.HSTS{Enabled: true, MaxAge: 300}}).Validate())
+	require.Error(t, (&zonespec.Args{ZoneID: "z", ManagedWAF: &zonespec.ManagedWAF{}}).Validate(),
+		"an empty host list is refused, never read as the whole zone")
+
+	assert.Equal(t, "true", zonespec.ManagedWAFExpression(&zonespec.ManagedWAF{WholeZone: true}))
+	assert.Equal(t, `http.host in {"a.example.com" "b.example.com"}`,
+		zonespec.ManagedWAFExpression(&zonespec.ManagedWAF{Zone: "example.com", Hosts: []string{"b.example.com", "a.example.com"}}))
+
+	var none *zonespec.ManagedWAF
+	assert.False(t, none.Managed())
+}

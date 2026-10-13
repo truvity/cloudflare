@@ -348,6 +348,9 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 | `TrustedClients` | `trustedClients` | see below | one rule that skips the security features for known client ranges on named hosts |
 | `RateLimits` | `rateLimits` | see below | the zone's whole `http_ratelimit` ruleset: rate limiting rules, validated against the zone plan's limits |
 | `Records` | `records` | see below | the listed DNS records, and only those: records made by hand, by an import or by a tunnel are never touched |
+| `AlwaysUseHTTPS` | `alwaysUseHttps` | `true`, `false` (a `*bool`; nil leaves it alone) | the zone setting `always_use_https`: `on` redirects every plain-HTTP request to HTTPS |
+| `HSTS` | `hsts` | see below | the zone setting `security_header`: the `Strict-Transport-Security` header |
+| `ManagedWAF` | `managedWaf` | see below | the zone's whole `http_request_firewall_managed` ruleset: the Cloudflare Managed Ruleset on the listed hosts |
 
 `TotalTLS`:
 
@@ -451,6 +454,51 @@ phase). A zone that already has custom firewall rules must adopt them with
 `pulumi import` onto the child name below, or delete them first, because
 Cloudflare refuses a second entry point ruleset for the phase.
 
+`HSTS`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `Enabled` | `enabled` | send the header; false stores the other fields and sends nothing |
+| `MaxAge` | `maxAge` | `max-age`, 0 to 31536000 seconds (12 months). `0` with `enabled` is the header that tells browsers to forget the policy |
+| `IncludeSubdomains` | `includeSubdomains` | extend the policy to every name below each name that sends it |
+| `Nosniff` | `nosniff` | also send `X-Content-Type-Options: nosniff` |
+| `Preload` | `preload` | the `preload` directive. Refused unless `enabled`, `includeSubdomains`, `maxAge` of at least 31536000 and `alwaysUseHttps: true` (the preload list's requirements) |
+
+A browser that has seen the header refuses plain HTTP to the name for
+`maxAge` seconds and offers no way past a certificate error, so roll it out
+with a short `maxAge` (minutes) and raise it once nothing broke. To turn it
+off, keep it enabled with `maxAge: 0` for at least the old `maxAge`, then
+disable it. The value is written with the Cloudflare API's own keys
+(`strict_transport_security.max_age`, ...): the camelCase keys in the
+provider's generated example never converge
+([pulumi/pulumi-cloudflare#1579](https://github.com/pulumi/pulumi-cloudflare/issues/1579)).
+
+`ManagedWAF`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `Zone` | `zone` | the zone's lower-case domain (`example.com`); required with hosts |
+| `Hosts` | `hosts` | the hosts the ruleset runs on: an exact name, or one leading wildcard label (`*.dev.example.com`: every name below `dev.example.com`, at any depth, not the name itself) |
+| `WholeZone` | `wholeZone` | run it on every request to the zone. Exclusive with `hosts` |
+| `Description` | `description` | the rule's description; empty uses `Cloudflare Managed Ruleset` |
+
+One execute rule in the zone's `http_request_firewall_managed` entry point
+ruleset: it runs the Cloudflare Managed Ruleset
+(`efb7b8c949ac4650a09736fc376e9aee`, `zone.CloudflareManagedRulesetID`)
+with its default actions on requests matching the hosts (sorted, so
+authoring order never changes the plan), or on every request with
+`wholeZone`. The OWASP Core Ruleset is not deployed. The host list is the
+rollout: a few hosts first, then more, then `wholeZone`. An empty list is
+refused rather than read as the whole zone. A `trustedClients` rule skips
+this phase for its own hosts and ranges. The managed ruleset needs a paid
+plan (Pro or above); nothing checks the zone's real plan.
+
+**A zone has one entry point ruleset per phase.** A zone that declares
+`managedWaf` owns the whole phase: managed rules deployed in the dashboard
+are replaced. Writing the ruleset needs `Zone WAF Write` on the zone
+(`account.EdgePoliciesWithWAF`). `alwaysUseHttps` and `hsts` need only
+`Zone Settings Write`, which `EdgePolicies` grants.
+
 `RateLimits`:
 
 | Field | YAML key | Meaning |
@@ -518,7 +566,7 @@ zone (`account.EdgePoliciesWithWAF`).
 | | |
 | --- | --- |
 | `Zone.ZoneID` | the zone id, as an output |
-| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>`, `firewall-custom-<name>` and `ratelimit-<name>` (`cloudflare.Ruleset`), each only when its field is set |
+| children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl`, `setting-<name>-always-use-https`, `setting-<name>-security-header` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>`, `firewall-custom-<name>`, `firewall-managed-<name>` and `ratelimit-<name>` (`cloudflare.Ruleset`), and `record-<name>-...` (`cloudflare.DnsRecord`, `zone.RecordName`), each only when its field is set |
 
 ## pkg/tunnel
 

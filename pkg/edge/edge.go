@@ -125,7 +125,9 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 	zoneIDs := make(map[string]string, len(args.Zones))
 	zoneAccounts := make(map[string]string, len(args.Zones))
 
-	for _, z := range sortedZones(args.Zones) {
+	zones := sortedZones(args.Zones)
+	for i := range zones {
+		z := zones[i]
 		zoneIDs[z.Name] = z.Args.ZoneID
 		zoneAccounts[z.Name] = z.Account
 
