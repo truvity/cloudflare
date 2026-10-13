@@ -186,6 +186,32 @@ so they can never drift apart.
 | `token.rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
 | an unknown `token.permissionGroupName` (or the default name, if Cloudflare has renamed it) | New refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
 
+### pkg/presettoken
+
+| Refusal | What it prevents |
+| --- | --- |
+| a `Config` without `SluisctlMin` or `BinaryPrefixes`, a non-https `Issuer`, a half-configured `BreakGlass` | a client that runs on defaults nobody chose, or whose root is read from an unnamed place |
+| a `sluisctl` outside `BinaryPrefixes`, or older than `SluisctlMin` | an unpinned binary, or one without `--no-cache` and `--issuer`, handling a credential |
+| an inherited `SLUISCTL_*`, `OP_*` (but `OP_SESSION_*`), proxy or CA-override variable | a shell that redirects the issuer, the 1Password account or the path a credential travels. The issuer is an argument |
+| an answer that lives longer than `Lifetime` + 2 minutes, or less than `MinRemaining` | a credential that was not the one asked for, or that expires mid-run |
+| a new API token Cloudflare does not accept within 20 seconds | a stack that starts on a token that is not usable yet (a fresh token can answer 401 for a few seconds) |
+| `SSL_CERT_FILE` or `SSL_CERT_DIR` set, a redirect, or a host other than `api.cloudflare.com` | a token sent to, or trusted by, anything else |
+| a break-glass policy holding Account API Tokens | a break-glass child that can mint |
+| a root with whitespace | a root that was trimmed into a different value |
+| any error text | carries an exit code and at most 512 bytes of stderr, never a credential |
+
+### pkg/prototypes
+
+| Refusal | What it prevents |
+| --- | --- |
+| running outside break-glass, or without `CLOUDFLARE_API_TOKEN` | a prototype change by anything but the root, deliberately |
+| `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL` or `CLOUDFLARE_API_USER_SERVICE_KEY` set; `cloudflare:apiToken`, `apiKey` or `apiUserServiceKey` in the stack config | a second credential, and a root that would be kept in the state and its history as a provider input |
+| a policy holding Account API Tokens (read or write) | a prototype sluis would refuse, and a preset that can mint |
+| a duplicate or unnamed preset, a bad account id or scope | a prototype that fails at apply time instead of before it |
+| declaring `Moved` prototypes before `<project>:stateMoved` is `true` | a preview that would create second copies with new ids |
+
+Prototypes are protected: their ids are in the sluis configuration, and a replaced one is a new id every mint of its preset then fails on. Cloudflare ignores `status: disabled` at creation and returns the token active; apply again with `--refresh` and check each status before an id goes into the sluis configuration.
+
 ### Rotation is a REPLACE, not an update
 
 `Rotation` (`ChildTokenConfig.Rotation`; `pkg/r2`'s own `TokenConfig.

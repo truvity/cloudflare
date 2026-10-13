@@ -27,6 +27,13 @@
 //     jurisdiction list, the R2 bucket-name syntax check) with no SDK
 //     import of any kind, not even this module's own pkg/account or
 //     pkg/r2, for a caller that only needs to validate a value.
+//   - pkg/presettoken — the client of a sluis Cloudflare preset: a short-lived
+//     credential from sluisctl (or, in break-glass, minted from the account
+//     root), verified before it is handed out; every estate fact is a
+//     parameter.
+//   - pkg/prototypes — the disabled prototype tokens a sluis preset is cloned
+//     from, declared on the default provider so the root never enters the
+//     state.
 //   - charts/cloudflared — the in-cluster tunnel daemon, one install per
 //     account.
 //
