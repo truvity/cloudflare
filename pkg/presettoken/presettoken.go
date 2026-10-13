@@ -59,6 +59,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -71,6 +72,13 @@ const (
 	// DefaultLifetime is what a credential is asked for when Config.Lifetime
 	// is zero.
 	DefaultLifetime = time.Hour
+	// MaxLifetime is the longest a credential may be asked for or minted for,
+	// whatever Config.Lifetime says: Validate refuses more, and a break-glass
+	// child never outlives it.
+	MaxLifetime = time.Hour
+	// MinMinRemaining is the smallest MinRemaining Validate accepts when it is
+	// set: a smaller floor accepts a credential that expires mid-run.
+	MinMinRemaining = time.Minute
 	// DefaultMinRemaining is the shortest remaining life a credential may
 	// have when Config.MinRemaining is zero.
 	DefaultMinRemaining = 15 * time.Minute
@@ -92,27 +100,52 @@ const (
 	expirySlack = 2 * time.Minute
 )
 
+var (
+	accountIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	presetPattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	envNamePattern   = regexp.MustCompile(`^[A-Z][A-Z0-9_]*BREAKGLASS[A-Z0-9_]*$`)
+)
+
+// ValidAccountID reports whether id is a Cloudflare account id: 32 lowercase
+// hex characters.
+func ValidAccountID(id string) bool { return accountIDPattern.MatchString(id) }
+
+// ValidPresetName reports whether name is a preset name this package and
+// pkg/prototypes accept: lowercase letters, digits and hyphens, starting with
+// a letter or digit, at most 63 characters.
+func ValidPresetName(name string) bool { return presetPattern.MatchString(name) }
+
+// deniedPrefixes are directories no binary prefix may be: each holds what any
+// user or package may write or install.
+var deniedPrefixes = []string{"/usr", "/bin", "/sbin", "/home", "/tmp", "/var", "/opt", "/etc", "/root"}
+
 // Config is everything an estate decides. The zero value is not usable:
 // SluisctlMin and BinaryPrefixes are required.
 type Config struct {
-	// Issuer is the sluis issuer URL, passed to sluisctl as --issuer. Empty
-	// leaves sluisctl to its own configured issuer (which the cleaned
-	// environment cannot influence). When set it must be an https URL.
+	// Issuer is the sluis issuer URL, passed to sluisctl as --issuer. SET IT:
+	// when empty, sluisctl's own configuration (its config file, the user's
+	// last login) decides which issuer is asked, so the estate does not. The
+	// cleaned environment cannot influence it, but a file can. When set it
+	// must be a plain https URL.
 	Issuer string
 	// SluisctlMin is the oldest sluisctl accepted, "MAJOR.MINOR.PATCH". A
 	// release with --no-cache and --issuer on the cloudflare commands is
 	// needed.
 	SluisctlMin string
-	// BinaryPrefixes are the path prefixes sluisctl may resolve under, after
-	// symlinks: for a nix or devbox profile, "/nix/store/". At least one.
-	// Other CLIs (op) are used from anywhere but named on stderr when they
-	// are not under a prefix.
+	// BinaryPrefixes are the directories sluisctl may resolve under, after
+	// symlinks: for a nix or devbox profile, "/nix/store". At least one. Each
+	// must be absolute and clean (no trailing slash, no "..", no "//"), have
+	// at least two components and not be a general-purpose directory (/, /usr,
+	// /bin, /sbin, /home, /tmp, /var, /opt, /etc, /root); a path matches when
+	// it lies below the directory, so "/nix/store" does not match
+	// "/nix/store-evil". Other CLIs (op) are used from anywhere but named on
+	// stderr when they are not under a prefix.
 	BinaryPrefixes []string
 	// Lifetime is asked of sluis and given to a break-glass child. Zero means
-	// DefaultLifetime.
+	// DefaultLifetime; more than MaxLifetime is refused.
 	Lifetime time.Duration
 	// MinRemaining is the shortest remaining life accepted. Zero means
-	// DefaultMinRemaining.
+	// DefaultMinRemaining; when set it is at least MinMinRemaining.
 	MinRemaining time.Duration
 	// BreakGlass is where the root is kept. The zero value disables
 	// break-glass: the credential then always comes from sluis.
@@ -129,7 +162,9 @@ type Config struct {
 // switched on and named. All fields are required once Env is set.
 type BreakGlass struct {
 	// Env is the environment variable that, set to "1", switches every
-	// credential to the root.
+	// credential to the root. Its name must match
+	// ^[A-Z][A-Z0-9_]*BREAKGLASS[A-Z0-9_]*$, so that no ordinary variable
+	// (PATH, HOME, CI) can be mistaken for it.
 	Env string
 	// Account is the 1Password account (sign-in address or id), always passed
 	// to `op read --account`, so the read never lands in another one.
@@ -154,7 +189,9 @@ func (b BreakGlass) Ref() string {
 
 func (b BreakGlass) configured() bool { return b != BreakGlass{} }
 
-func (b BreakGlass) validate() error {
+// Validate reports the first problem with the break-glass configuration. The
+// zero value (break-glass disabled) is valid.
+func (b BreakGlass) Validate() error {
 	if !b.configured() {
 		return nil
 	}
@@ -171,21 +208,38 @@ func (b BreakGlass) validate() error {
 		}
 	}
 
+	if !envNamePattern.MatchString(b.Env) {
+		return fmt.Errorf("break-glass: Env %q must match %s", b.Env, envNamePattern)
+	}
+
+	for name, v := range map[string]string{"Account": b.Account, "Vault": b.Vault, "Item": b.Item, "Field": b.Field} {
+		if strings.HasPrefix(v, "-") {
+			return fmt.Errorf("break-glass: %s must not start with a hyphen: op would read it as a flag", name)
+		}
+	}
+
 	for name, v := range map[string]string{"Vault": b.Vault, "Item": b.Item, "Field": b.Field} {
 		if strings.Contains(v, "/") {
 			return fmt.Errorf("break-glass: %s must not contain a slash", name)
 		}
 	}
 
+	for name, v := range map[string]string{"Item": b.Item, "Field": b.Field} {
+		if strings.ContainsAny(v, "?#") {
+			return fmt.Errorf("break-glass: %s must not contain ? or #: they change what a secret reference reads", name)
+		}
+	}
+
 	return nil
 }
 
+// lifetime is what is asked for and given, never more than MaxLifetime.
 func (c Config) lifetime() time.Duration {
 	if c.Lifetime > 0 {
-		return c.Lifetime
+		return min(c.Lifetime, MaxLifetime)
 	}
 
-	return DefaultLifetime
+	return min(DefaultLifetime, MaxLifetime)
 }
 
 func (c Config) minRemaining() time.Duration {
@@ -207,8 +261,8 @@ func (c Config) Validate() error {
 	}
 
 	for _, p := range c.BinaryPrefixes {
-		if !filepath.IsAbs(p) {
-			return fmt.Errorf("presettoken: binary prefix %q is not an absolute path", p)
+		if err := validPrefix(p); err != nil {
+			return err
 		}
 	}
 
@@ -223,11 +277,33 @@ func (c Config) Validate() error {
 		}
 	}
 
-	if c.Lifetime < 0 || c.MinRemaining < 0 || c.minRemaining() >= c.lifetime() {
+	if c.Lifetime < 0 || c.Lifetime > MaxLifetime {
+		return fmt.Errorf("presettoken: Lifetime %s must be positive and at most %s", c.Lifetime, MaxLifetime)
+	}
+
+	if c.MinRemaining < 0 || c.MinRemaining > 0 && c.MinRemaining < MinMinRemaining {
+		return fmt.Errorf("presettoken: MinRemaining %s must be at least %s when set", c.MinRemaining, MinMinRemaining)
+	}
+
+	if c.minRemaining() >= c.lifetime() {
 		return fmt.Errorf("presettoken: MinRemaining %s must be under Lifetime %s", c.minRemaining(), c.lifetime())
 	}
 
-	return c.BreakGlass.validate()
+	return c.BreakGlass.Validate()
+}
+
+// validPrefix refuses a binary prefix that is not a specific, clean, absolute
+// directory.
+func validPrefix(p string) error {
+	if !filepath.IsAbs(p) || filepath.Clean(p) != p {
+		return fmt.Errorf("presettoken: binary prefix %q must be an absolute, clean path (no trailing slash, \"..\" or \"//\")", p)
+	}
+
+	if len(strings.Split(strings.Trim(p, "/"), "/")) < 2 || slices.Contains(deniedPrefixes, p) {
+		return fmt.Errorf("presettoken: binary prefix %q is too broad: name the directory the pinned toolchain lives in (/nix/store)", p)
+	}
+
+	return nil
 }
 
 // Request is one provider's credential: the preset, and what break-glass
@@ -258,7 +334,9 @@ type Credential struct {
 type Runner func(ctx context.Context, env []string, stdin []byte, name string, args ...string) (stdout, stderr []byte, code int, err error)
 
 // Source gets credentials. The zero value execs sluisctl and op and talks to
-// Cloudflare; tests replace the seams.
+// Cloudflare. The seams are for tests only: production code uses the zero
+// Source (or the package-level Token), whatever a seam returns is still
+// resolved through symlinks and held to Config.BinaryPrefixes.
 type Source struct {
 	// Run replaces the CLIs.
 	Run Runner
@@ -311,8 +389,16 @@ func (s Source) Token(ctx context.Context, cfg Config, req Request) (Credential,
 		return Credential{}, err
 	}
 
-	if strings.TrimSpace(req.Preset) == "" {
-		return Credential{}, errors.New("cloudflare provider token: no preset")
+	if !ValidPresetName(req.Preset) {
+		return Credential{}, fmt.Errorf("cloudflare provider token: preset %q must match %s", req.Preset, presetPattern)
+	}
+
+	if req.AccountID == "" && (!req.R2 || cfg.BreakGlass.Enabled()) {
+		return Credential{}, fmt.Errorf("cloudflare preset %s: no account id", req.Preset)
+	}
+
+	if req.AccountID != "" && !ValidAccountID(req.AccountID) {
+		return Credential{}, fmt.Errorf("cloudflare preset %s: account id %q is not a 32-character lowercase hex string", req.Preset, req.AccountID)
 	}
 
 	var (
@@ -366,22 +452,21 @@ func useBreakGlass(cfg Config) string {
 func (s Source) resolve(cfg Config, name string) (string, error) {
 	look := s.LookPath
 	if look == nil {
-		look = func(n string) (string, error) {
-			p, err := exec.LookPath(n)
-			if err != nil {
-				return "", err
-			}
-
-			return filepath.EvalSymlinks(p)
-		}
+		look = exec.LookPath
 	}
 
 	path, err := look(name)
+	if err == nil {
+		// Whatever the lookup returned is resolved here too, so no seam can
+		// vouch for a path that is a symlink out of the pinned directory.
+		path, err = filepath.EvalSymlinks(path)
+	}
+
 	if err != nil {
 		return "", fmt.Errorf("%s is not on PATH (run inside the pinned toolchain): %w", name, err)
 	}
 
-	pinned := slices.ContainsFunc(cfg.BinaryPrefixes, func(p string) bool { return strings.HasPrefix(path, p) })
+	pinned := slices.ContainsFunc(cfg.BinaryPrefixes, func(p string) bool { return strings.HasPrefix(path, filepath.Clean(p)+"/") })
 
 	switch {
 	case name == "sluisctl" && !pinned:

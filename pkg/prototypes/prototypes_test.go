@@ -151,7 +151,12 @@ func TestRefusesToRunWithoutTheRootFromTheEnvironment(t *testing.T) {
 			rootEnv(t)
 			t.Setenv("CLOUDFLARE_API_KEY", "k")
 		}, nil, "CLOUDFLARE_API_KEY is set"},
-		"token in config": {rootEnv, map[string]string{"cloudflare:apiToken": "t"}, "cloudflare:apiToken"},
+		"token in config":    {rootEnv, map[string]string{"cloudflare:apiToken": "t"}, "cloudflare:apiToken"},
+		"base url in config": {rootEnv, map[string]string{"cloudflare:baseUrl": "https://elsewhere.example.test"}, "cloudflare:baseUrl"},
+		"base url in env": {func(t *testing.T) {
+			rootEnv(t)
+			t.Setenv("CLOUDFLARE_BASE_URL", "https://elsewhere.example.test")
+		}, nil, "CLOUDFLARE_BASE_URL is set"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.setup(t)
@@ -207,7 +212,14 @@ func TestArgsValidate(t *testing.T) {
 		"no break-glass": {func(a *Args) { a.BreakGlass = presettoken.BreakGlass{} }, "BreakGlass.Env"},
 		"no presets":     {func(a *Args) { a.Presets = nil }, "no presets"},
 		"duplicate":      {func(a *Args) { a.Presets = append(a.Presets, a.Presets[0]) }, "twice"},
-		"no name":        {func(a *Args) { a.Presets = []Preset{{Policies: a.Presets[0].Policies}} }, "no name"},
+		"upper name":     {func(a *Args) { a.Presets[0].Name = "Edge" }, "preset name"},
+		"flag name":      {func(a *Args) { a.Presets[0].Name = "--x" }, "preset name"},
+		"slash name":     {func(a *Args) { a.Presets[0].Name = "a/b" }, "preset name"},
+		"long name":      {func(a *Args) { a.Presets[0].Name = strings.Repeat("a", 64) }, "preset name"},
+		"bad env name":   {func(a *Args) { a.BreakGlass.Env = "PATH" }, "must match"},
+		"dash vault":     {func(a *Args) { a.BreakGlass.Vault = "-v" }, "hyphen"},
+		"query field":    {func(a *Args) { a.BreakGlass.Field = "f?x" }, "? or #"},
+		"no name":        {func(a *Args) { a.Presets = []Preset{{Policies: a.Presets[0].Policies}} }, "preset name"},
 		"no policies":    {func(a *Args) { a.Presets = []Preset{{Name: "x"}} }, "policy"},
 		"api tokens": {func(a *Args) {
 			a.Presets = []Preset{{Name: "x", Policies: []account.ChildTokenPolicy{
@@ -232,4 +244,16 @@ func TestArgsValidate(t *testing.T) {
 	}
 
 	require.NoError(t, testArgs().Validate())
+}
+
+// The gate is conditional: with nothing to move there is none.
+func TestNoMovedNoGate(t *testing.T) {
+	rootEnv(t)
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := Deploy(ctx, testArgs())
+
+		return err
+	}, pulumi.WithMocks("proj", "stack", newMocks()))
+	require.NoError(t, err)
 }
