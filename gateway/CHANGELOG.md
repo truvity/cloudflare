@@ -5,7 +5,7 @@ heading; one whose only change was a dependency or CI-pin bump says so and
 points at the GitHub Release for the commit list. Every chart is released
 at every version.
 
-## Unreleased
+## v1.19.0
 
 - **Feature: `ClientProxy.SignInPolicy`.** The gateway-policies chart's sign-in SecurityPolicy for a console, derived from its `ClientProxy` and a `SignIn` (the issuer's client id, the console's hostname, the route's namespace, the client secret's name and the path the gateway owns there). It binds the route or its one named rule, puts the redirect and the logout under that path, and states the posture, the allow-list, the bearer, `cookieSameSite` and the CSRF block with their defaults. An estate no longer writes that mapping itself. The types are `SignInPolicy`, `PolicyTargetRef`, `SignInOIDC`, `SecretRef`, `IDTokenAudiences`, `SignInAuthorization` and `PolicyCSRF`, with the chart's own key names. The charts are unchanged.
 
