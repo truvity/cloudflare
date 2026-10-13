@@ -61,10 +61,6 @@ func TestDeriveRefusals(t *testing.T) {
 		"unknown account":    {func(in *DeriveInput) { in.Exposures[0].Accounts = []string{"ghost"} }, `no account "ghost"`},
 		"host in no zone":    {func(in *DeriveInput) { in.Exposures[0].Groups[0].Hosts = []string{"a.elsewhere.org"} }, "lies in no zone"},
 		"account not listed": {func(in *DeriveInput) { in.Exposures[0].Accounts = []string{"main"} }, "list the account on the exposure"},
-		"two zones": {func(in *DeriveInput) {
-			in.Zones["example.net"] = "main"
-			in.Exposures[0].Accounts = []string{"main"}
-		}, "records live in one zone"},
 	} {
 		in := deriveInput()
 		tc.mutate(&in)
@@ -74,6 +70,48 @@ func TestDeriveRefusals(t *testing.T) {
 			t.Errorf("%s: err = %v, want containing %q", name, err, tc.want)
 		}
 	}
+}
+
+// A tunnel serves names in several zones of its account: each host keeps
+// its own zone (Zones, for pkg/tunnel's DNS.Zones), the ingress order is
+// the same OrderHosts order across zones, and Zone stays the first host's.
+func TestDeriveTunnelAcrossZones(t *testing.T) {
+	in := deriveInput()
+	in.Zones["example.net"] = "main"
+	in.Zones["deep.example.org"] = "main"
+	in.Exposures[0].Accounts = []string{"main"}
+	in.Exposures[0].Groups = append(in.Exposures[0].Groups,
+		Group{Name: "extra", Cluster: "prod", Hosts: []string{"api.deep.example.org"}, RouteNamespaces: []string{"shop"}})
+
+	got, err := Derive(in)
+	require.NoError(t, err)
+
+	require.Len(t, got.Tunnels, 2)
+	assert.Equal(t, []string{"example.com"}, got.Tunnels[0].Zones, "a single-zone tunnel lists its one zone")
+
+	prod := got.Tunnels[1]
+	assert.Equal(t, "prod", prod.Name)
+	assert.Equal(t, "main", prod.Account)
+	assert.Equal(t, "example.com", prod.Zone)
+	assert.Equal(t, []string{"deep.example.org", "example.com", "example.net"}, prod.Zones)
+	assert.Equal(t, []string{
+		// Exact hosts first in DNS canonical order (labels compared from the
+		// right: com, net, org), whatever their zone; then the wildcards.
+		"app.example.com", "console.example.com", "x.example.net", "api.deep.example.org",
+		"*.env.example.com", "*.example.com",
+	}, prod.Hosts)
+
+	require.NoError(t, ValidateRouting(got.Tunnels))
+}
+
+// The same name served twice, here once per cluster, stays refused when the
+// tunnels span several zones.
+func TestValidateRoutingAcrossZones(t *testing.T) {
+	err := ValidateRouting([]Tunnel{
+		{Cluster: "a", Account: "x", Zones: []string{"example.com", "example.net"}, Hosts: []string{"a.example.com", "api.example.net"}},
+		{Cluster: "b", Account: "x", Zones: []string{"example.net"}, Hosts: []string{"API.example.net"}},
+	})
+	require.ErrorContains(t, err, "already declared")
 }
 
 func TestDeriveWithoutCacheZones(t *testing.T) {

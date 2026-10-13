@@ -18,7 +18,9 @@ package edge
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -30,7 +32,7 @@ import (
 )
 
 // Tunnel is one tunnel: the hosts one cluster serves through one account's
-// zone. It is edgespec.Tunnel, so the type is shared with the Pulumi-free
+// zones. It is edgespec.Tunnel, so the type is shared with the Pulumi-free
 // Derive.
 type Tunnel = edgespec.Tunnel
 
@@ -121,9 +123,11 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 	}
 
 	zoneIDs := make(map[string]string, len(args.Zones))
+	zoneAccounts := make(map[string]string, len(args.Zones))
 
 	for _, z := range sortedZones(args.Zones) {
 		zoneIDs[z.Name] = z.Args.ZoneID
+		zoneAccounts[z.Name] = z.Account
 
 		acct, ok := accounts[z.Account]
 		if !ok {
@@ -142,13 +146,19 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 
 	tunnelIDs := make(pulumi.StringMap)
 
-	for _, t := range args.Tunnels {
+	for i := range args.Tunnels {
+		t := &args.Tunnels[i]
+
 		acct, ok := accounts[t.Account]
 		if !ok {
 			return fmt.Errorf("tunnel %s: account %q is not declared", t.Name, t.Account)
 		}
 
-		if err := deployTunnel(ctx, logger, args, acct, accountConfigs[t.Account], zoneIDs, t, tunnelIDs); err != nil {
+		if err := checkTunnelZones(*t, zoneAccounts); err != nil {
+			return fmt.Errorf("deploy tunnel %s: %w", t.Name, err)
+		}
+
+		if err := deployTunnel(ctx, logger, args, acct, accountConfigs[t.Account], zoneIDs, *t, tunnelIDs); err != nil {
 			return fmt.Errorf("deploy tunnel %s: %w", t.Name, err)
 		}
 	}
@@ -186,9 +196,88 @@ func newAccount(ctx *pulumi.Context, logger *slog.Logger, args Args, a Account) 
 	return acct, nil
 }
 
-// TunnelArgs maps one tunnel onto the library's Args: pure translation, no
-// resources.
+// TunnelArgs maps one tunnel whose hosts all lie in one zone onto the
+// library's Args: pure translation, no resources. For a tunnel whose hosts
+// lie in several zones (Tunnel.Zones), use TunnelArgsInZones.
 func TunnelArgs(args Args, accountID, zoneID string, t Tunnel) tunnel.Args {
+	return tunnelArgs(args, accountID, &tunnel.DNS{ZoneID: zoneID, Names: t.Hosts}, t)
+}
+
+// TunnelArgsInZones maps one tunnel onto the library's Args, each host's DNS
+// record in its own zone: zoneIDs maps each zone name to its id. A tunnel
+// in one zone (Zones empty, or one entry) maps exactly as TunnelArgs does;
+// one in several gets tunnel.DNS.Zones, from which pkg/tunnel picks each
+// host's zone by longest suffix. A zone with no id is an error.
+func TunnelArgsInZones(args Args, accountID string, zoneIDs map[string]string, t Tunnel) (tunnel.Args, error) {
+	zones := tunnelZones(t)
+
+	if len(zones) == 1 {
+		zoneID, ok := zoneIDs[zones[0]]
+		if !ok {
+			return tunnel.Args{}, fmt.Errorf("zone %q is not declared", zones[0])
+		}
+
+		return TunnelArgs(args, accountID, zoneID, t), nil
+	}
+
+	dns := &tunnel.DNS{Names: t.Hosts}
+
+	for _, name := range zones {
+		zoneID, ok := zoneIDs[name]
+		if !ok {
+			return tunnel.Args{}, fmt.Errorf("zone %q is not declared", name)
+		}
+
+		dns.Zones = append(dns.Zones, tunnel.DNSZone{ZoneID: zoneID, Name: name})
+	}
+
+	return tunnelArgs(args, accountID, dns, t), nil
+}
+
+// tunnelZones is every zone t's hosts lie in: Zones, or Zone alone when
+// Zones is empty.
+func tunnelZones(t Tunnel) []string {
+	if len(t.Zones) > 0 {
+		return t.Zones
+	}
+
+	return []string{t.Zone}
+}
+
+// checkTunnelZones refuses a tunnel with a zone that is not declared or
+// belongs to another account, and a host that lies in none of its zones (a
+// tunnel whose Zones were dropped on the way here would otherwise put every
+// record in Zone).
+func checkTunnelZones(t Tunnel, zoneAccounts map[string]string) error {
+	zones := tunnelZones(t)
+
+	if len(t.Zones) > 0 && t.Zone != "" && !slices.Contains(t.Zones, t.Zone) {
+		return fmt.Errorf("zone %q is not among the tunnel's zones %v", t.Zone, t.Zones)
+	}
+
+	for _, name := range zones {
+		owner, ok := zoneAccounts[name]
+		if !ok {
+			return fmt.Errorf("zone %q is not declared", name)
+		}
+
+		if owner != t.Account {
+			return fmt.Errorf("zone %q belongs to account %q, not the tunnel's account %q: a tunnel serves names in its own account's zones only",
+				name, owner, t.Account)
+		}
+	}
+
+	for _, host := range t.Hosts {
+		if edgespec.ZoneOf(zones, host) == "" {
+			return fmt.Errorf("%q lies in none of the tunnel's zones (%s): list its zone in Tunnel.Zones",
+				host, strings.Join(zones, ", "))
+		}
+	}
+
+	return nil
+}
+
+func tunnelArgs(args Args, accountID string, dns *tunnel.DNS, t Tunnel) tunnel.Args {
 	dnsDomain := t.DNSDomain
 	if dnsDomain == "" {
 		dnsDomain = "cluster." + t.Cluster
@@ -218,7 +307,7 @@ func TunnelArgs(args Args, accountID, zoneID string, t Tunnel) tunnel.Args {
 		AccountID: accountID,
 		Name:      t.Name,
 		Ingress:   ingress,
-		DNS:       &tunnel.DNS{ZoneID: zoneID, Names: t.Hosts},
+		DNS:       dns,
 	}
 }
 
@@ -232,9 +321,9 @@ func deployTunnel(
 	t Tunnel,
 	tunnelIDs pulumi.StringMap,
 ) error {
-	zoneID, ok := zoneIDs[t.Zone]
-	if !ok {
-		return fmt.Errorf("zone %q is not declared", t.Zone)
+	tunArgs, err := TunnelArgsInZones(args, acctCfg.AccountID, zoneIDs, t)
+	if err != nil {
+		return err
 	}
 
 	// Random bytes held in Pulumi state, never derived from anything public.
@@ -250,7 +339,7 @@ func deployTunnel(
 		opts = append(opts, args.TunnelOptions(t)...)
 	}
 
-	tun, err := tunnel.New(ctx, t.Name, TunnelArgs(args, acctCfg.AccountID, zoneID, t), secret.Base64, opts...)
+	tun, err := tunnel.New(ctx, t.Name, tunArgs, secret.Base64, opts...)
 	if err != nil {
 		return err
 	}

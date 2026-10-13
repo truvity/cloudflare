@@ -65,13 +65,29 @@ type (
 	}
 
 	// DNS declares the proxied CNAME records pointing hostnames at the
-	// tunnel (<tunnel-id>.cfargotunnel.com).
+	// tunnel (<tunnel-id>.cfargotunnel.com). The records live in one zone
+	// (ZoneID) or, for a tunnel whose names lie in several zones of its
+	// account, each in its own zone (Zones). Set exactly one of the two.
 	DNS struct {
-		// ZoneID of the zone the records are created in. Required when
-		// DNS is set.
+		// ZoneID of the zone every record is created in, unchecked: the
+		// names are taken to lie in it. Set this or Zones.
 		ZoneID string `json:"zoneId" yaml:"zoneId"`
 		// Names to create, verbatim (exact hosts and wildcards alike).
 		Names []string `json:"names" yaml:"names"`
+		// Zones the names lie in, for a tunnel that serves names in more
+		// than one zone. Each name's record is created in the zone whose
+		// Name is the longest suffix of it (a wildcard's `*.` is not a
+		// label of the zone); a name in none of them is refused. Set this
+		// or ZoneID. Every zone must belong to the tunnel's account.
+		Zones []DNSZone `json:"zones,omitempty" yaml:"zones,omitempty"`
+	}
+
+	// DNSZone is one zone a tunnel's DNS names may lie in.
+	DNSZone struct {
+		// ZoneID of the zone. Required.
+		ZoneID string `json:"zoneId" yaml:"zoneId"`
+		// Name is the zone apex, e.g. "example.com". Required.
+		Name string `json:"name" yaml:"name"`
 	}
 
 	// Certificates opts in to an Advanced Certificate pack per DNS name
@@ -81,6 +97,8 @@ type (
 	// plenty of plans have no zone-level features at all.
 	Certificates struct {
 		// ZoneID of the zone the packs are ordered in. Required when set.
+		// Packs are ordered in this one zone: with DNS.Zones, Hosts is
+		// required and lists names of this zone only.
 		ZoneID string `json:"zoneId" yaml:"zoneId"`
 		// Zone apex, appended to every pack's host list and used to skip
 		// the top-level wildcard (`*.<zone>` — Universal SSL's job).
@@ -154,12 +172,8 @@ func (a *Args) Validate() error {
 	}
 
 	if a.DNS != nil {
-		if a.DNS.ZoneID == "" {
-			return fmt.Errorf("tunnel %q: dns.zoneId is required when dns is set", a.Name)
-		}
-
-		if len(a.DNS.Names) == 0 {
-			return fmt.Errorf("tunnel %q: dns.names is empty — omit the dns block instead", a.Name)
+		if err := a.DNS.validate(); err != nil {
+			return fmt.Errorf("tunnel %q: %w", a.Name, err)
 		}
 	}
 
@@ -171,9 +185,91 @@ func (a *Args) Validate() error {
 		if len(c.Hosts) == 0 && (a.DNS == nil || len(a.DNS.Names) == 0) {
 			return fmt.Errorf("tunnel %q: certificates.hosts is empty and there are no dns.names to default from", a.Name)
 		}
+
+		if len(c.Hosts) == 0 && len(a.DNS.Zones) > 0 {
+			return fmt.Errorf("tunnel %q: certificates.hosts is empty and dns.names span dns.zones: "+
+				"list the hosts of certificates.zone to order packs for", a.Name)
+		}
 	}
 
 	return nil
+}
+
+// validate checks the DNS block on its own: one zone or a list of zones,
+// every name once, and (with Zones) every name in a declared zone.
+func (d *DNS) validate() error {
+	switch {
+	case d.ZoneID == "" && len(d.Zones) == 0:
+		return fmt.Errorf("dns.zoneId is required when dns is set (or dns.zones, for names in several zones)")
+	case d.ZoneID != "" && len(d.Zones) > 0:
+		return fmt.Errorf("dns.zoneId and dns.zones are both set: set dns.zoneId for one zone, dns.zones for several")
+	}
+
+	if len(d.Names) == 0 {
+		return fmt.Errorf("dns.names is empty — omit the dns block instead")
+	}
+
+	zoneNames := map[string]int{}
+	zoneIDs := map[string]int{}
+
+	for i, z := range d.Zones {
+		if z.ZoneID == "" || z.Name == "" {
+			return fmt.Errorf("dns.zones[%d] needs zoneId and name", i)
+		}
+
+		key := strings.ToLower(z.Name)
+		if j, ok := zoneNames[key]; ok {
+			return fmt.Errorf("dns.zones[%d] %q is already dns.zones[%d]", i, z.Name, j)
+		}
+
+		if j, ok := zoneIDs[z.ZoneID]; ok {
+			return fmt.Errorf("dns.zones[%d] %q has the zoneId of dns.zones[%d] %q", i, z.Name, j, d.Zones[j].Name)
+		}
+
+		zoneNames[key] = i
+		zoneIDs[z.ZoneID] = i
+	}
+
+	names := map[string]int{}
+
+	for i, host := range d.Names {
+		key := strings.ToLower(host)
+		if j, ok := names[key]; ok {
+			return fmt.Errorf("dns.names[%d] %q is already dns.names[%d]: a name has one record, in one zone", i, host, j)
+		}
+
+		names[key] = i
+
+		if _, err := d.ZoneIDOf(host); err != nil {
+			return fmt.Errorf("dns.names[%d]: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// ZoneIDOf returns the id of the zone host's record is created in: ZoneID
+// when it is set, else the zone of Zones whose name is the longest suffix
+// of host. A host in none of Zones is an error.
+func (d *DNS) ZoneIDOf(host string) (string, error) {
+	if d.ZoneID != "" {
+		return d.ZoneID, nil
+	}
+
+	names := make([]string, len(d.Zones))
+	ids := make(map[string]string, len(d.Zones))
+
+	for i, z := range d.Zones {
+		names[i] = strings.ToLower(z.Name)
+		ids[names[i]] = z.ZoneID
+	}
+
+	zone := edgespec.ZoneOf(names, host)
+	if zone == "" {
+		return "", fmt.Errorf("%q lies in no zone of dns.zones (%s)", host, strings.Join(names, ", "))
+	}
+
+	return ids[zone], nil
 }
 
 // validateIngressOrder rejects a rule that an earlier rule already
@@ -287,8 +383,16 @@ func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput,
 
 	if args.DNS != nil {
 		for _, host := range args.DNS.Names {
-			_, err := cloudflare.NewDnsRecord(ctx, "cname-"+name+"-"+Slug(host), &cloudflare.DnsRecordArgs{
-				ZoneId:  pulumi.String(args.DNS.ZoneID),
+			// Validate resolved every name already.
+			zoneID, err := args.DNS.ZoneIDOf(host)
+			if err != nil {
+				return nil, fmt.Errorf("tunnel %q: cname %s: %w", args.Name, host, err)
+			}
+
+			// The resource name carries no zone: a name has one record,
+			// and a single-zone tunnel's records keep their URNs.
+			_, err = cloudflare.NewDnsRecord(ctx, "cname-"+name+"-"+Slug(host), &cloudflare.DnsRecordArgs{
+				ZoneId:  pulumi.String(zoneID),
 				Name:    pulumi.String(host),
 				Type:    pulumi.String("CNAME"),
 				Content: comp.CNAMETarget,

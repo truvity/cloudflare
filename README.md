@@ -212,9 +212,11 @@ func main() {
 }
 ```
 
-`tunnel.Args.DNS` creates the same records for a tunnel whose hostnames
-all sit in one zone. The example creates them per zone instead, which is
-how one tunnel serves several zones of its account.
+`tunnel.Args.DNS` creates the same records: `DNS.ZoneID` for a tunnel whose
+hostnames all sit in one zone, or `DNS.Zones` (one `{ZoneID, Name}` per
+zone, each name's record in its longest-suffix zone) for one that serves
+several zones of its account. The example creates them by hand to show
+the mechanism.
 
 Then one cloudflared per account, each reading its own tunnel's token
 from a Secret the estate created (External Secrets, SOPS, or

@@ -3,6 +3,7 @@ package edge
 import (
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/truvity/cloudflare/v2/pkg/tunnel"
 	"github.com/truvity/cloudflare/v2/pkg/zone"
 )
 
@@ -184,4 +186,106 @@ func (m *mocks) input(typ, name, key string) string {
 	}
 
 	return ""
+}
+
+// multiZoneArgs adds a second zone to the platform account and lets the
+// alpha tunnel serve a name in it.
+func multiZoneArgs(sink TokenSink) Args {
+	args := baseArgs(sink)
+	args.Zones = append(args.Zones, Zone{Name: "example.net", Account: "platform", Args: zone.Args{ZoneID: "z3", SSL: "full"}})
+	args.Tunnels[0].Zones = []string{"example.net", "example.test"}
+	args.Tunnels[0].Hosts = []string{"a.example.test", "api.example.net", "*.example.test"}
+
+	return args
+}
+
+func TestDeployTunnelAcrossZones(t *testing.T) {
+	m, err := run(t, multiZoneArgs((&sunk{}).sink))
+	require.NoError(t, err)
+
+	record := "cloudflare:index/dnsRecord:DnsRecord"
+	assert.Equal(t, "z1", m.input(record, "cname-alpha-a-example-test", "zoneId"))
+	assert.Equal(t, "z1", m.input(record, "cname-alpha-star-example-test", "zoneId"))
+	assert.Equal(t, "z3", m.input(record, "cname-alpha-api-example-net", "zoneId"))
+	assert.Equal(t, "z2", m.input(record, "cname-alpha-partner-a-partner-test", "zoneId"))
+
+	// One tunnel per entry still, and no second ingress config.
+	assert.Equal(t, []string{"alpha", "alpha-partner"}, m.names("truvity:cloudflare:Tunnel"))
+	assert.Equal(t, []string{"ingress-alpha", "ingress-alpha-partner"},
+		m.names("cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig"))
+}
+
+func TestTunnelArgsInZones(t *testing.T) {
+	args := multiZoneArgs(nil)
+	ids := map[string]string{"example.test": "z1", "partner.test": "z2", "example.net": "z3"}
+
+	got, err := TunnelArgsInZones(args, "a1", ids, args.Tunnels[0])
+	require.NoError(t, err)
+	assert.Empty(t, got.DNS.ZoneID)
+	assert.Equal(t, []tunnel.DNSZone{{ZoneID: "z3", Name: "example.net"}, {ZoneID: "z1", Name: "example.test"}}, got.DNS.Zones)
+	assert.Equal(t, args.Tunnels[0].Hosts, got.DNS.Names)
+
+	var hosts []string
+	for _, r := range got.Ingress {
+		hosts = append(hosts, r.Hostname)
+	}
+
+	assert.Equal(t, args.Tunnels[0].Hosts, hosts, "ingress keeps the tunnel's host order")
+	require.NoError(t, got.Validate())
+
+	// One zone, given as Zone or as a one-entry Zones: exactly TunnelArgs.
+	single := baseArgs(nil).Tunnels[0]
+	want := TunnelArgs(args, "a1", "z1", single)
+
+	got, err = TunnelArgsInZones(args, "a1", ids, single)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+
+	single.Zones = []string{"example.test"}
+	got, err = TunnelArgsInZones(args, "a1", ids, single)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+
+	_, err = TunnelArgsInZones(args, "a1", map[string]string{"example.test": "z1"}, args.Tunnels[0])
+	require.ErrorContains(t, err, `zone "example.net" is not declared`)
+}
+
+func TestDeployTunnelAcrossZonesRefusals(t *testing.T) {
+	for name, tc := range map[string]struct {
+		mutate func(*Args)
+		want   string
+	}{
+		"a zone of another account": {
+			func(a *Args) { a.Tunnels[0].Zones = []string{"example.test", "partner.test"} },
+			`zone "partner.test" belongs to account "partner", not the tunnel's account "platform"`,
+		},
+		"a host outside the tunnel's zones": {
+			func(a *Args) { a.Tunnels[0].Hosts = append(a.Tunnels[0].Hosts, "api.example.org") },
+			`"api.example.org" lies in none of the tunnel's zones`,
+		},
+		"zones dropped on the way": {
+			func(a *Args) { a.Tunnels[0].Zones = nil },
+			`"api.example.net" lies in none of the tunnel's zones (example.test)`,
+		},
+		"zone not among zones": {
+			func(a *Args) { a.Tunnels[0].Zone = "partner.test" },
+			`zone "partner.test" is not among the tunnel's zones`,
+		},
+		"an undeclared zone": {
+			func(a *Args) { a.Tunnels[0].Zones = []string{"example.test", "missing.test"} },
+			`zone "missing.test" is not declared`,
+		},
+		"the same name twice": {
+			func(a *Args) { a.Tunnels[0].Hosts = append(a.Tunnels[0].Hosts, "API.example.net") },
+			`is already dns.names[1]`,
+		},
+	} {
+		args := multiZoneArgs((&sunk{}).sink)
+		tc.mutate(&args)
+
+		_, err := run(t, args)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want containing %q", name, err, tc.want)
+		}
+	}
 }

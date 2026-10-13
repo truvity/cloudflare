@@ -341,3 +341,127 @@ func TestOrderHosts(t *testing.T) {
 
 	require.NoError(t, a.validateIngressOrder())
 }
+
+// multiZoneArgs is a tunnel serving names in three zones of its account,
+// one of them a zone delegated under another (deep.example.com).
+func multiZoneArgs() Args {
+	return Args{
+		AccountID: "acct",
+		Name:      "cluster-a",
+		Ingress: []Ingress{
+			{Hostname: "console.apps.example.com", Service: "https://gateway.svc:443"},
+			{Hostname: "api.example.net", Service: "https://gateway.svc:443"},
+			{Hostname: "api.deep.example.com", Service: "https://gateway.svc:443"},
+			{Hostname: "*.apps.example.com", Service: "https://gateway.svc:443"},
+		},
+		DNS: &DNS{
+			Names: []string{"console.apps.example.com", "api.example.net", "api.deep.example.com", "*.apps.example.com"},
+			Zones: []DNSZone{
+				{ZoneID: "zone-com", Name: "example.com"},
+				{ZoneID: "zone-net", Name: "example.net"},
+				{ZoneID: "zone-deep", Name: "deep.example.com"},
+			},
+		},
+	}
+}
+
+func TestMultiZoneRecordsLandInTheirOwnZones(t *testing.T) {
+	m := run(t, multiZoneArgs())
+
+	const record = "cloudflare:index/dnsRecord:DnsRecord/"
+
+	for name, zone := range map[string]string{
+		"cname-cluster-a-console-apps-example-com": "zone-com",
+		"cname-cluster-a-star-apps-example-com":    "zone-com",
+		"cname-cluster-a-api-example-net":          "zone-net",
+		// The longest suffix wins: deep.example.com, not example.com.
+		"cname-cluster-a-api-deep-example-com": "zone-deep",
+	} {
+		rec, ok := m.res[record+name]
+		require.True(t, ok, "record %s", name)
+		assert.Equal(t, zone, rec["zoneId"].StringValue(), name)
+		assert.Equal(t, "tunnel-id-123.cfargotunnel.com", rec["content"].StringValue(), name)
+		assert.True(t, rec["proxied"].BoolValue(), name)
+	}
+
+	// One tunnel, one config: every name's rule, in the order given, then
+	// the catch-all.
+	cfg := m.res["cloudflare:index/zeroTrustTunnelCloudflaredConfig:ZeroTrustTunnelCloudflaredConfig/ingress-cluster-a"]
+	rules := cfg["config"].ObjectValue()["ingresses"].ArrayValue()
+
+	var hosts []string
+	for _, r := range rules[:len(rules)-1] {
+		hosts = append(hosts, r.ObjectValue()["hostname"].StringValue())
+	}
+
+	assert.Equal(t, []string{"console.apps.example.com", "api.example.net", "api.deep.example.com", "*.apps.example.com"}, hosts)
+	assert.Equal(t, "http_status:404", rules[len(rules)-1].ObjectValue()["service"].StringValue())
+}
+
+// A single zone given as Zones renders exactly as the same zone given as
+// ZoneID.
+func TestOneZoneInZonesRendersAsZoneID(t *testing.T) {
+	args := baseArgs()
+	args.DNS = &DNS{Names: args.DNS.Names, Zones: []DNSZone{{ZoneID: "zone", Name: "example.com"}}}
+
+	assert.Equal(t, string(render(t, run(t, baseArgs()))), string(render(t, run(t, args))))
+}
+
+func TestZoneIDOf(t *testing.T) {
+	d := multiZoneArgs().DNS
+
+	id, err := d.ZoneIDOf("A.Deep.Example.com")
+	require.NoError(t, err)
+	assert.Equal(t, "zone-deep", id)
+
+	id, err = d.ZoneIDOf("*.example.net")
+	require.NoError(t, err)
+	assert.Equal(t, "zone-net", id)
+
+	_, err = d.ZoneIDOf("a.example.org")
+	require.ErrorContains(t, err, "lies in no zone of dns.zones")
+
+	// One zone by id: taken as given, unchecked, as before.
+	id, err = (&DNS{ZoneID: "zone"}).ZoneIDOf("a.example.org")
+	require.NoError(t, err)
+	assert.Equal(t, "zone", id)
+}
+
+func TestValidateMultiZone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mut  func(*Args)
+		want string
+	}{
+		{"zoneId and zones both set", func(a *Args) { a.DNS.ZoneID = "zone" }, "dns.zoneId and dns.zones are both set"},
+		{"a zone with no id", func(a *Args) { a.DNS.Zones[1].ZoneID = "" }, "dns.zones[1] needs zoneId and name"},
+		{"a zone with no name", func(a *Args) { a.DNS.Zones[0].Name = "" }, "dns.zones[0] needs zoneId and name"},
+		{"a zone twice", func(a *Args) { a.DNS.Zones[1].Name = "EXAMPLE.com" }, `dns.zones[1] "EXAMPLE.com" is already dns.zones[0]`},
+		{"a zone id twice", func(a *Args) { a.DNS.Zones[1].ZoneID = "zone-com" }, "has the zoneId of dns.zones[0]"},
+		{
+			"a name outside every zone",
+			func(a *Args) { a.DNS.Names = append(a.DNS.Names, "api.example.org") },
+			`dns.names[4]: "api.example.org" lies in no zone of dns.zones`,
+		},
+		{
+			"the same name twice",
+			func(a *Args) { a.DNS.Names = append(a.DNS.Names, "API.example.net") },
+			`dns.names[4] "API.example.net" is already dns.names[1]`,
+		},
+		{
+			"certificates defaulting to names across zones",
+			func(a *Args) { a.Certificates = &Certificates{ZoneID: "zone-com", Zone: "example.com"} },
+			"dns.names span dns.zones",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := multiZoneArgs()
+			require.NoError(t, a.Validate())
+
+			tc.mut(&a)
+			err := a.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
