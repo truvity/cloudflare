@@ -17,9 +17,10 @@
 // records its apiToken as a (secret) input in the state and in every
 // checkpoint of its history; the default provider's inputs are the stack's
 // `cloudflare:*` config, and the provider reads CLOUDFLARE_API_TOKEN itself at
-// Configure. So [Deploy] refuses to run with a `cloudflare:apiToken` (or key)
-// in the stack's config, with a second credential in the environment, and
-// outside break-glass, and it never reads the token's value: it only checks
+// Configure. So [Deploy] refuses to run with a credential or an endpoint in the
+// provider's config (`cloudflare:apiToken`, `apiKey`, `apiUserServiceKey`,
+// `baseUrl`), with a second credential or an endpoint override in the
+// environment, and outside break-glass, and it never reads the token's value: it only checks
 // that one is there. A stack that runs this must allow the default provider
 // (a stack that lists cloudflare in disable-default-providers cannot).
 //
@@ -40,7 +41,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"slices"
 
 	cf "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
@@ -73,13 +73,17 @@ const (
 )
 
 // conflictingEnv would make the default provider authenticate otherwise.
-var conflictingEnv = []string{"CLOUDFLARE_API_KEY", "CLOUDFLARE_EMAIL", "CLOUDFLARE_API_USER_SERVICE_KEY"}
+// An endpoint override is one: the root would be sent where the environment
+// says.
+var conflictingEnv = []string{
+	"CLOUDFLARE_API_KEY", "CLOUDFLARE_EMAIL", "CLOUDFLARE_API_USER_SERVICE_KEY",
+	"CLOUDFLARE_BASE_URL", "CLOUDFLARE_API_BASE_URL",
+}
 
 // rootConfig are the stack config keys that would put a credential in the
 // state through the default provider's inputs.
-var rootConfig = []string{"cloudflare:apiToken", "cloudflare:apiKey", "cloudflare:apiUserServiceKey"}
-
-var accountIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+// (or the root's destination, `baseUrl`) in the state.
+var rootConfig = []string{"cloudflare:apiToken", "cloudflare:apiKey", "cloudflare:apiUserServiceKey", "cloudflare:baseUrl"}
 
 // Preset is one sluis preset and its prototype.
 type Preset struct {
@@ -106,8 +110,11 @@ type Args struct {
 	// stack runs as the root. Required, with Env set.
 	BreakGlass presettoken.BreakGlass
 	// Moved are prototypes that already exist elsewhere (another stack's
-	// state) and are moved here with `pulumi state move`. While any is
-	// listed, Deploy refuses to declare anything until the stack config
+	// state) and are moved here with `pulumi state move`. The gate is
+	// CONDITIONAL: it applies only while Moved is non-empty, so an estate with
+	// nothing to move (a fresh account) lists none and has no gate at all; an
+	// estate that does list some must keep the list until the move is done and
+	// the config key is set. While any is listed, Deploy refuses to declare anything until the stack config
 	// "<project>:<MovedKey>" is "true": a preview before the move would
 	// CREATE second copies with new ids. Empty on a fresh account.
 	Moved []string
@@ -118,7 +125,7 @@ type Args struct {
 // Validate reports the first problem with the declaration, without a Pulumi
 // context.
 func (a Args) Validate() error {
-	if !accountIDPattern.MatchString(a.AccountID) {
+	if !presettoken.ValidAccountID(a.AccountID) {
 		return fmt.Errorf("prototypes: account id %q is not a 32-character lowercase hex string", a.AccountID)
 	}
 
@@ -130,6 +137,10 @@ func (a Args) Validate() error {
 		return errors.New("prototypes: BreakGlass.Env is required: the stack runs as the account root, which is break-glass only")
 	}
 
+	if err := a.BreakGlass.Validate(); err != nil {
+		return fmt.Errorf("prototypes: %w", err)
+	}
+
 	if len(a.Presets) == 0 {
 		return errors.New("prototypes: no presets")
 	}
@@ -137,8 +148,8 @@ func (a Args) Validate() error {
 	seen := map[string]bool{}
 
 	for _, p := range a.Presets {
-		if p.Name == "" {
-			return errors.New("prototypes: a preset has no name")
+		if !presettoken.ValidPresetName(p.Name) {
+			return fmt.Errorf("prototypes: preset name %q must be lowercase letters, digits and hyphens, 1-63 characters, starting with a letter or digit", p.Name)
 		}
 
 		if seen[p.Name] {

@@ -303,7 +303,7 @@ The client of a sluis Cloudflare preset. A stack asks for one preset's credentia
 cred, err := presettoken.Token(ctx, presettoken.Config{
     Issuer:         "https://access.example.test",
     SluisctlMin:    "1.76.8",
-    BinaryPrefixes: []string{"/nix/store/"},
+    BinaryPrefixes: []string{"/nix/store"},
     BreakGlass: presettoken.BreakGlass{
         Env: "EXAMPLE_CLOUDFLARE_BREAKGLASS", Account: "example.1password.com",
         Vault: "vault", Item: "cloudflare-root", Field: "token", ChildPrefix: "example-breakglass",
@@ -317,11 +317,11 @@ cred, err := presettoken.Token(ctx, presettoken.Config{
 
 | Field | Meaning |
 | --- | --- |
-| `Issuer` | The sluis issuer, passed as `--issuer`. Optional; an https URL when set. The environment's `SLUISCTL_*` is stripped, so this is the only way an issuer reaches `sluisctl` |
+| `Issuer` | The sluis issuer, passed as `--issuer`. Set it: when empty, sluisctl's own configuration decides which issuer is asked. A plain https URL when set. The environment's `SLUISCTL_*` is stripped, so this is the only way an issuer reaches `sluisctl` |
 | `SluisctlMin` | `MAJOR.MINOR.PATCH` floor, checked once per binary with `sluisctl version --json`. Required |
-| `BinaryPrefixes` | Absolute path prefixes `sluisctl` must resolve under after symlinks (`/nix/store/` for a nix or devbox profile). Required |
-| `Lifetime`, `MinRemaining` | What is asked for (default 1h) and the least remaining life accepted (default 15m) |
-| `BreakGlass` | `Env`, `Account`, `Vault`, `Item`, `Field`, `ChildPrefix`; all or none. The zero value disables break-glass |
+| `BinaryPrefixes` | Directories `sluisctl` must resolve under after symlinks (`/nix/store` for a nix or devbox profile). Absolute, clean, at least two components, not a general directory (see [safety](safety.md#pkgpresettoken)). Required |
+| `Lifetime`, `MinRemaining` | What is asked for (default and maximum 1h, `MaxLifetime`) and the least remaining life accepted (default 15m, at least 1m when set) |
+| `BreakGlass` | `Env`, `Account`, `Vault`, `Item`, `Field`, `ChildPrefix`; all or none. `Env` must match `^[A-Z][A-Z0-9_]*BREAKGLASS[A-Z0-9_]*$`. The zero value disables break-glass |
 | `GrantHint`, `Runbook` | Text appended to the "not granted" and break-glass refusals |
 
 ### Break-glass
@@ -342,7 +342,7 @@ See [docs/safety.md](safety.md#pkgpresettoken).
 | `Presets` | `[]Preset{Name, Policies}`; each policy list is validated as a child token's, so Account API Tokens are refused |
 | `NamePrefix` | Starts every token's name in Cloudflare |
 | `BreakGlass` | The estate's break-glass configuration; `Env` is required |
-| `Moved`, `MovedKey` | Prototypes arriving from another stack's state; nothing is declared until the stack config `<project>:stateMoved` is `true` |
+| `Moved`, `MovedKey` | Prototypes arriving from another stack's state. The gate is conditional: only while `Moved` is non-empty, nothing is declared until the stack config `<project>:stateMoved` is `true` |
 
 Each token is the Pulumi resource `prototype-<name>`, `status: disabled`, protected. The stack outputs `sluisPrototypeIds` (name to id) and `sluisPrototypeStatus_<name>`. The estate keeps its own wrapper that reads the root from its vault into `CLOUDFLARE_API_TOKEN` for one `pulumi` command, and its own check that asks Cloudflare for each prototype's status.
 

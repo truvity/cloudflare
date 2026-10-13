@@ -32,7 +32,7 @@ func testCfg() Config {
 	return Config{
 		Issuer:         testIssuer,
 		SluisctlMin:    testMin,
-		BinaryPrefixes: []string{"/nix/store/"},
+		BinaryPrefixes: []string{binDir},
 		GrantHint:      "policy group example:deploy",
 		BreakGlass: BreakGlass{
 			Env: testBreakGlassEnv, Account: "example.1password.com", Vault: "vault", Item: "cf-root", Field: "token",
@@ -369,8 +369,13 @@ func TestBreakGlassRefusesAPITokens(t *testing.T) {
 	}
 }
 
+// binDir stands for the pinned toolchain (/nix/store in an estate): a real
+// directory holding real, empty executables, because a path is resolved
+// through symlinks before it is compared.
+var binDir string
+
 // nixPath stands for a devbox-installed CLI.
-func nixPath(name string) (string, error) { return "/nix/store/abc-" + name + "/bin/" + name, nil }
+func nixPath(name string) (string, error) { return filepath.Join(binDir, name), nil }
 
 // mints are the sluisctl calls that are not the version check.
 func mints(calls []call) []call {
@@ -405,7 +410,7 @@ func TestSluisctlIsPinnedAndClean(t *testing.T) {
 
 	f := &fakeCLI{sluisOut: tokenJSON("v", now.Add(time.Hour))}
 
-	_, err := (Source{Run: f.run, LookPath: func(string) (string, error) { return "/usr/local/bin/sluisctl", nil }, Now: func() time.Time { return now }}).
+	_, err := (Source{Run: f.run, LookPath: func(string) (string, error) { return "/bin/sh", nil }, Now: func() time.Time { return now }}).
 		Token(context.Background(), testCfg(), edgeReq)
 	if err == nil || !strings.Contains(err.Error(), "outside") {
 		t.Fatalf("got %v", err)
@@ -538,15 +543,22 @@ func TestBinaryPrefixesAreTheEstates(t *testing.T) {
 	t.Setenv(testBreakGlassEnv, "")
 
 	cfg := testCfg()
-	cfg.BinaryPrefixes = []string{"/opt/pinned/"}
+	other := t.TempDir()
+	cfg.BinaryPrefixes = []string{other}
 	f := &fakeCLI{sluisOut: tokenJSON("v", now.Add(time.Hour))}
 
 	_, err := f.source(nixPath).Token(context.Background(), cfg, edgeReq)
 	if err == nil || !strings.Contains(err.Error(), "outside") {
-		t.Fatalf("a nix path passed an estate that pins /opt/pinned/: %v", err)
+		t.Fatalf("a path outside the estate's prefix passed: %v", err)
 	}
 
-	pinned := func(name string) (string, error) { return "/opt/pinned/bin/" + name, nil }
+	for _, name := range []string{"sluisctl", "op"} {
+		if err := os.WriteFile(filepath.Join(other, name), nil, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	pinned := func(name string) (string, error) { return filepath.Join(other, name), nil }
 
 	if _, err := f.source(pinned).Token(context.Background(), cfg, edgeReq); err != nil {
 		t.Fatal(err)
@@ -633,5 +645,217 @@ func TestBreakGlassChildName(t *testing.T) {
 
 	if got, want := cf.created[0]["name"], "example-breakglass-example-edge-20261013T120000Z"; got != want {
 		t.Errorf("child named %v, want %v", got, want)
+	}
+}
+
+// A binary prefix is a specific, clean directory; a path matches only below it.
+func TestBinaryPrefixValidation(t *testing.T) {
+	for prefix, want := range map[string]string{
+		"/nix/store/":       "clean",
+		"/nix//store":       "clean",
+		"/nix/store/../etc": "clean",
+		"nix/store":         "clean",
+		"/":                 "too broad",
+		"/nix":              "too broad",
+		"/usr":              "too broad",
+		"/bin":              "too broad",
+		"/sbin":             "too broad",
+		"/home":             "too broad",
+		"/tmp":              "too broad",
+		"/var":              "too broad",
+		"/opt":              "too broad",
+		"/etc":              "too broad",
+		"/root":             "too broad",
+		"/nix/store":        "",
+		"/usr/local/pinned": "",
+	} {
+		cfg := testCfg()
+		cfg.BinaryPrefixes = []string{prefix}
+
+		err := cfg.Validate()
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%q: got %v, want %q", prefix, err, want)
+		}
+	}
+}
+
+// "/nix/store" does not match "/nix/store-evil", and a symlink out of the
+// pinned directory is resolved before the comparison, seam or not.
+func TestPrefixMatchesBelowTheDirectoryAndAfterSymlinks(t *testing.T) {
+	t.Setenv(testBreakGlassEnv, "")
+
+	pinned := t.TempDir()
+	sibling := pinned + "-evil"
+
+	if err := os.Mkdir(sibling, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = os.RemoveAll(sibling) })
+
+	for _, name := range []string{"sluisctl", "op"} {
+		if err := os.WriteFile(filepath.Join(sibling, name), nil, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.Symlink("/bin/sh", filepath.Join(pinned, "sluisctl")); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testCfg()
+	cfg.BinaryPrefixes = []string{pinned}
+
+	for name, look := range map[string]func(string) (string, error){
+		"sibling directory": func(n string) (string, error) { return filepath.Join(sibling, n), nil },
+		"symlink out":       func(n string) (string, error) { return filepath.Join(pinned, n), nil },
+	} {
+		f := &fakeCLI{sluisOut: tokenJSON("v", now.Add(time.Hour))}
+
+		_, err := f.source(look).Token(context.Background(), cfg, edgeReq)
+		if err == nil || !strings.Contains(err.Error(), "outside") || len(f.calls) != 0 {
+			t.Errorf("%s: got %v after %d calls", name, err, len(f.calls))
+		}
+	}
+}
+
+func TestLifetimeBounds(t *testing.T) {
+	for name, tc := range map[string]struct {
+		mutate func(*Config)
+		want   string
+	}{
+		"max":                {func(c *Config) { c.Lifetime = MaxLifetime }, ""},
+		"over max":           {func(c *Config) { c.Lifetime = MaxLifetime + time.Second }, "at most"},
+		"negative":           {func(c *Config) { c.Lifetime = -time.Hour }, "at most"},
+		"floor 1m":           {func(c *Config) { c.MinRemaining = time.Minute }, ""},
+		"floor under 1m":     {func(c *Config) { c.MinRemaining = 59 * time.Second }, "at least"},
+		"floor over life":    {func(c *Config) { c.Lifetime = 10 * time.Minute; c.MinRemaining = 10 * time.Minute }, "under Lifetime"},
+		"default floor, 10m": {func(c *Config) { c.Lifetime = 10 * time.Minute }, "under Lifetime"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := testCfg()
+			tc.mutate(&cfg)
+
+			err := cfg.Validate()
+			if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+		})
+	}
+
+	// Whatever the config, nothing is asked for or minted beyond MaxLifetime,
+	// and an answer past MaxLifetime + slack is refused.
+	if got := (Config{Lifetime: 5 * time.Hour}).lifetime(); got != MaxLifetime {
+		t.Errorf("lifetime %s", got)
+	}
+
+	t.Setenv(testBreakGlassEnv, "")
+
+	f := &fakeCLI{sluisOut: tokenJSON("v", now.Add(MaxLifetime+3*time.Minute))}
+	if _, err := f.source(nixPath).Token(context.Background(), testCfg(), edgeReq); err == nil || !strings.Contains(err.Error(), "longer than") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestBreakGlassFieldRules(t *testing.T) {
+	for name, tc := range map[string]struct {
+		mutate func(*BreakGlass)
+		want   string
+	}{
+		"env lowercase":   {func(b *BreakGlass) { b.Env = "example_breakglass" }, "must match"},
+		"env ordinary":    {func(b *BreakGlass) { b.Env = "PATH" }, "must match"},
+		"env CI":          {func(b *BreakGlass) { b.Env = "CI" }, "must match"},
+		"env no marker":   {func(b *BreakGlass) { b.Env = "EXAMPLE_CLOUDFLARE" }, "must match"},
+		"env digit lead":  {func(b *BreakGlass) { b.Env = "1BREAKGLASS" }, "must match"},
+		"env bare marker": {func(b *BreakGlass) { b.Env = "BREAKGLASS" }, "must match"},
+		"env marker":      {func(b *BreakGlass) { b.Env = "X_BREAKGLASS_ON" }, ""},
+		"account dash":    {func(b *BreakGlass) { b.Account = "--session=x" }, "hyphen"},
+		"vault dash":      {func(b *BreakGlass) { b.Vault = "-v" }, "hyphen"},
+		"item dash":       {func(b *BreakGlass) { b.Item = "-i" }, "hyphen"},
+		"field dash":      {func(b *BreakGlass) { b.Field = "-f" }, "hyphen"},
+		"item query":      {func(b *BreakGlass) { b.Item = "i?attribute=otp" }, "? or #"},
+		"field query":     {func(b *BreakGlass) { b.Field = "f?attribute=otp" }, "? or #"},
+		"field fragment":  {func(b *BreakGlass) { b.Field = "f#x" }, "? or #"},
+		"dash inside":     {func(b *BreakGlass) { b.Item = "cf-root" }, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := testCfg().BreakGlass
+			tc.mutate(&b)
+
+			err := b.Validate()
+			if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRequestFieldRules(t *testing.T) {
+	t.Setenv(testBreakGlassEnv, "")
+
+	for name, tc := range map[string]struct {
+		req  Request
+		want string
+	}{
+		"ok":                  {edgeReq, ""},
+		"r2 without account":  {Request{Preset: "example-r2", R2: true}, ""},
+		"api without account": {Request{Preset: "example-edge"}, "no account id"},
+		"short account":       {Request{Preset: "example-edge", AccountID: "abc"}, "account id"},
+		"account path":        {Request{Preset: "example-edge", AccountID: "../" + testAccount[3:]}, "account id"},
+		"upper account":       {Request{Preset: "example-edge", AccountID: strings.ToUpper(testAccount)}, "account id"},
+		"r2 bad account":      {Request{Preset: "example-r2", R2: true, AccountID: "x/y"}, "account id"},
+		"preset empty":        {Request{AccountID: testAccount}, "preset"},
+		"preset upper":        {Request{Preset: "Example", AccountID: testAccount}, "preset"},
+		"preset flag":         {Request{Preset: "--lifetime", AccountID: testAccount}, "preset"},
+		"preset slash":        {Request{Preset: "a/b", AccountID: testAccount}, "preset"},
+		"preset space":        {Request{Preset: "a b", AccountID: testAccount}, "preset"},
+		"preset long":         {Request{Preset: strings.Repeat("a", 64), AccountID: testAccount}, "preset"},
+		"preset 63":           {Request{Preset: strings.Repeat("a", 63), AccountID: testAccount}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out string
+			if tc.req.R2 {
+				b, _ := json.Marshal(map[string]any{"Version": 1, "AccessKeyId": "i", "SecretAccessKey": "s", "Expiration": now.Add(time.Hour).Format(time.RFC3339)})
+				out = string(b)
+			} else {
+				out = tokenJSON("v", now.Add(time.Hour))
+			}
+
+			f := &fakeCLI{sluisOut: out}
+
+			_, err := f.source(nixPath).Token(context.Background(), testCfg(), tc.req)
+			if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+
+			if tc.want != "" && len(f.calls) != 0 {
+				t.Errorf("%d CLI calls after a refused request", len(f.calls))
+			}
+		})
+	}
+}
+
+// The account id is a path segment: it is escaped, whatever reaches the client.
+func TestAccountIsPathEscaped(t *testing.T) {
+	var got string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.EscapedPath()
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": map[string]string{"status": "active"}})
+	}))
+	t.Cleanup(srv.Close)
+	useAPI(t, srv.URL)
+
+	c, err := newCFClient("a/b?x", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.verify(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if got != "/accounts/a%2Fb%3Fx/tokens/verify" {
+		t.Errorf("path %q", got)
 	}
 }

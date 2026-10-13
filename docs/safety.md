@@ -191,6 +191,12 @@ so they can never drift apart.
 | Refusal | What it prevents |
 | --- | --- |
 | a `Config` without `SluisctlMin` or `BinaryPrefixes`, a non-https `Issuer`, a half-configured `BreakGlass` | a client that runs on defaults nobody chose, or whose root is read from an unnamed place |
+| a `BinaryPrefixes` entry that is not absolute and clean (`filepath.Clean(p) == p`), has fewer than two components, or is `/usr`, `/bin`, `/sbin`, `/home`, `/tmp`, `/var`, `/opt`, `/etc` or `/root`. Expected: `/nix/store`. A path matches only below `<prefix>/` | a "pinned" directory that anyone can write to, or that matches a sibling such as `/nix/store-evil` |
+| `Lifetime` over `MaxLifetime` (1h); `MinRemaining` set under 1 minute or not under `Lifetime` | a long-lived credential, or a floor that accepts one about to expire. A break-glass child is capped at `MaxLifetime` whatever the config says |
+| `BreakGlass.Env` not matching `^[A-Z][A-Z0-9_]*BREAKGLASS[A-Z0-9_]*$` | break-glass switched on by an ordinary variable (`CI`, `HOME`) that happens to be `1` |
+| `BreakGlass.Account`, `Vault`, `Item` or `Field` starting with `-`; `?` or `#` in `Item` or `Field` | `op` reading a value as a flag, or a secret reference that reads another attribute of the item |
+| `Request.AccountID` not 32 lowercase hex characters (required for an API token and for break-glass); `Request.Preset` not matching `^[a-z0-9][a-z0-9-]{0,62}$` | a path or a flag built from an unchecked value. The account id is also path-escaped in every Cloudflare call |
+| an empty `Issuer` | not refused, but sluisctl's own configuration then decides which issuer is asked, so the estate does not: set it |
 | a `sluisctl` outside `BinaryPrefixes`, or older than `SluisctlMin` | an unpinned binary, or one without `--no-cache` and `--issuer`, handling a credential |
 | an inherited `SLUISCTL_*`, `OP_*` (but `OP_SESSION_*`), proxy or CA-override variable | a shell that redirects the issuer, the 1Password account or the path a credential travels. The issuer is an argument |
 | an answer that lives longer than `Lifetime` + 2 minutes, or less than `MinRemaining` | a credential that was not the one asked for, or that expires mid-run |
@@ -198,6 +204,7 @@ so they can never drift apart.
 | `SSL_CERT_FILE` or `SSL_CERT_DIR` set, a redirect, or a host other than `api.cloudflare.com` | a token sent to, or trusted by, anything else |
 | a break-glass policy holding Account API Tokens | a break-glass child that can mint |
 | a root with whitespace | a root that was trimmed into a different value |
+| the seams of `Source` (`Run`, `LookPath`, `Now`, `Stderr`) | are for tests only; a path any `LookPath` returns is still resolved through symlinks and held to `BinaryPrefixes` |
 | any error text | carries an exit code and at most 512 bytes of stderr, never a credential |
 
 ### pkg/prototypes
@@ -205,10 +212,10 @@ so they can never drift apart.
 | Refusal | What it prevents |
 | --- | --- |
 | running outside break-glass, or without `CLOUDFLARE_API_TOKEN` | a prototype change by anything but the root, deliberately |
-| `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL` or `CLOUDFLARE_API_USER_SERVICE_KEY` set; `cloudflare:apiToken`, `apiKey` or `apiUserServiceKey` in the stack config | a second credential, and a root that would be kept in the state and its history as a provider input |
+| `CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_API_USER_SERVICE_KEY`, `CLOUDFLARE_BASE_URL` or `CLOUDFLARE_API_BASE_URL` set; `cloudflare:apiToken`, `apiKey`, `apiUserServiceKey` or `baseUrl` in the stack config | a second credential or an endpoint override (the root would be sent where the config says), and a root kept in the state and its history as a provider input |
 | a policy holding Account API Tokens (read or write) | a prototype sluis would refuse, and a preset that can mint |
-| a duplicate or unnamed preset, a bad account id or scope | a prototype that fails at apply time instead of before it |
-| declaring `Moved` prototypes before `<project>:stateMoved` is `true` | a preview that would create second copies with new ids |
+| a preset name outside `^[a-z0-9][a-z0-9-]{0,62}$`, a duplicate, a bad account id or scope, a malformed `BreakGlass` | a prototype that fails at apply time instead of before it |
+| declaring `Moved` prototypes before `<project>:stateMoved` is `true`. The gate is conditional: it exists only while `Args.Moved` is non-empty | a preview that would create second copies with new ids |
 
 Prototypes are protected: their ids are in the sluis configuration, and a replaced one is a new id every mint of its preset then fails on. Cloudflare ignores `status: disabled` at creation and returns the token active; apply again with `--refresh` and check each status before an id goes into the sluis configuration.
 

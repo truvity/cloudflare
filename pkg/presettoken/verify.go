@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -98,7 +99,7 @@ func (c *cfClient) verify(ctx context.Context) error {
 		Status string `json:"status"`
 	}
 
-	if err := c.do(ctx, http.MethodGet, "/accounts/"+c.account+"/tokens/verify", nil, &v); err != nil {
+	if err := c.do(ctx, http.MethodGet, "/accounts/"+url.PathEscape(c.account)+"/tokens/verify", nil, &v); err != nil {
 		return err
 	}
 

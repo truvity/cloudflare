@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,22 @@ import (
 // waits instant, so no test reaches Cloudflare or sleeps; a test that cares
 // replaces either.
 func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "presettoken-bin-")
+	if err != nil {
+		panic(err)
+	}
+
+	// The pinned directory is resolved, as a path is before it is compared.
+	if binDir, err = filepath.EvalSymlinks(dir); err != nil {
+		panic(err)
+	}
+
+	for _, name := range []string{"sluisctl", "op"} {
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte("#!/bin/sh\n"), 0o700); err != nil {
+			panic(err)
+		}
+	}
+
 	srv := httptest.NewServer((&fakeVerify{}).handler())
 	cloudflareAPI = srv.URL
 	sleep = func(context.Context, time.Duration) error { return nil }
@@ -26,6 +43,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	srv.Close()
+	_ = os.RemoveAll(binDir)
 	os.Exit(code)
 }
 

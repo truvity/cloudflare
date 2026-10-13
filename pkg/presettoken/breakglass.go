@@ -167,7 +167,7 @@ func (s Source) breakGlass(ctx context.Context, cfg Config, req Request) (Creden
 		})
 	}
 
-	expires := s.now().Add(cfg.lifetime()).UTC().Truncate(time.Second)
+	expires := s.now().Add(min(cfg.lifetime(), MaxLifetime)).UTC().Truncate(time.Second)
 	name := fmt.Sprintf("%s-%s-%s", cfg.BreakGlass.ChildPrefix, req.Preset, s.now().UTC().Format("20060102T150405Z"))
 
 	id, value, err := c.createToken(ctx, name, policies, expires)
@@ -258,7 +258,7 @@ func (c *cfClient) permissionGroupID(ctx context.Context, name string) (string, 
 		Name string `json:"name"`
 	}
 
-	path := "/accounts/" + c.account + "/tokens/permission_groups?name=" + url.QueryEscape(name)
+	path := "/accounts/" + url.PathEscape(c.account) + "/tokens/permission_groups?name=" + url.QueryEscape(name)
 	if err := c.do(ctx, http.MethodGet, path, nil, &groups); err != nil {
 		return "", err
 	}
@@ -285,7 +285,7 @@ func (c *cfClient) createToken(ctx context.Context, name string, policies []map[
 		Value string `json:"value"`
 	}
 
-	if err := c.do(ctx, http.MethodPost, "/accounts/"+c.account+"/tokens", map[string]any{
+	if err := c.do(ctx, http.MethodPost, "/accounts/"+url.PathEscape(c.account)+"/tokens", map[string]any{
 		"name": name, "policies": policies, "expires_on": expires.Format(time.RFC3339),
 	}, &created); err != nil {
 		return "", "", err
