@@ -84,6 +84,10 @@ type (
 		Zones []string
 		// Hosts arrive derived and in ingress order, each in one of Zones.
 		Hosts []string
+		// DNSElsewhere are the hosts, a subset of Hosts, whose DNS record
+		// something else writes: each keeps its ingress rule and has no
+		// CNAME created for it (DNSNames). In ingress order.
+		DNSElsewhere []string
 		// DNSDomain is the cluster's Kubernetes DNS domain, for the origin
 		// service address. Empty falls back to "cluster."+Cluster.
 		DNSDomain string
@@ -97,6 +101,10 @@ type (
 		Hosts []string
 		// RouteNamespaces are the namespaces the group admits routes from.
 		RouteNamespaces []string
+		// DNSElsewhere are the group's hosts, a subset of Hosts, whose DNS
+		// record is written by something other than the tunnel: they get
+		// an ingress rule and no CNAME.
+		DNSElsewhere []string
 	}
 
 	// Exposure is one way names arrive through Cloudflare tunnels: the
@@ -149,6 +157,7 @@ func Derive(in DeriveInput) (Derived, error) {
 	type key struct{ cluster, account string }
 
 	hosts := map[key][]string{}
+	elsewhere := map[key]map[string]bool{}
 
 	for _, e := range in.Exposures {
 		if len(e.Accounts) == 0 {
@@ -179,6 +188,14 @@ func Derive(in DeriveInput) (Derived, error) {
 
 				k := key{g.Cluster, account}
 				hosts[k] = append(hosts[k], host)
+
+				if slices.Contains(g.DNSElsewhere, host) {
+					if elsewhere[k] == nil {
+						elsewhere[k] = map[string]bool{}
+					}
+
+					elsewhere[k][host] = true
+				}
 			}
 		}
 	}
@@ -195,19 +212,47 @@ func Derive(in DeriveInput) (Derived, error) {
 			inZone[ZoneOf(zones, host)] = true
 		}
 
+		var skipped []string
+
+		for _, host := range ordered {
+			if elsewhere[k][host] {
+				skipped = append(skipped, host)
+			}
+		}
+
 		out.Tunnels = append(out.Tunnels, Tunnel{
-			Name:    TunnelName(k.cluster, k.account, in.LegacyNames[k.account]),
-			Cluster: k.cluster,
-			Account: k.account,
-			Zone:    ZoneOf(zones, ordered[0]),
-			Zones:   sortedKeys(inZone),
-			Hosts:   ordered,
+			Name:         TunnelName(k.cluster, k.account, in.LegacyNames[k.account]),
+			Cluster:      k.cluster,
+			Account:      k.account,
+			Zone:         ZoneOf(zones, ordered[0]),
+			Zones:        sortedKeys(inZone),
+			Hosts:        ordered,
+			DNSElsewhere: skipped,
 		})
 	}
 
 	sortTunnels(out.Tunnels)
 
 	return out, nil
+}
+
+// DNSNames are the hosts the tunnel creates a CNAME for: Hosts without
+// DNSElsewhere, in ingress order. Empty when every host's record is written
+// elsewhere, and then the tunnel has no DNS block at all.
+func (t Tunnel) DNSNames() []string {
+	if len(t.DNSElsewhere) == 0 {
+		return t.Hosts
+	}
+
+	out := make([]string, 0, len(t.Hosts))
+
+	for _, host := range t.Hosts {
+		if !slices.Contains(t.DNSElsewhere, host) {
+			out = append(out, host)
+		}
+	}
+
+	return out
 }
 
 func sortTunnels(tunnels []Tunnel) {

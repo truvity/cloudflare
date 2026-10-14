@@ -202,3 +202,21 @@ func TestCovers(t *testing.T) {
 	assert.False(t, Covers("a.example.com", "b.example.com"))
 	assert.False(t, Covers("*.a.example.com", "*.example.com"))
 }
+
+func TestDeriveDNSElsewhereKeepsTheRuleAndDropsTheRecord(t *testing.T) {
+	in := deriveInput()
+	in.Exposures[0].Groups[0].DNSElsewhere = []string{"app.example.com", "*.example.com"}
+
+	got, err := Derive(in)
+	require.NoError(t, err)
+
+	prod := got.Tunnels[1]
+	assert.Equal(t, []string{"app.example.com", "console.example.com", "*.env.example.com", "*.example.com"}, prod.Hosts,
+		"every host keeps its ingress rule")
+	assert.Equal(t, []string{"app.example.com", "*.example.com"}, prod.DNSElsewhere, "in ingress order")
+	assert.Equal(t, []string{"console.example.com", "*.env.example.com"}, prod.DNSNames())
+	assert.Empty(t, got.Tunnels[0].DNSElsewhere)
+	assert.Equal(t, got.Tunnels[0].Hosts, got.Tunnels[0].DNSNames())
+
+	require.NoError(t, ValidateRouting(got.Tunnels))
+}

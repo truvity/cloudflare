@@ -186,6 +186,15 @@ type (
 		ListenerName string `yaml:"listener_name,omitempty"`
 		// SecretName is the TLS Secret, and the Certificate writing it.
 		SecretName string `yaml:"secret_name,omitempty"`
+		// DNSElsewhere says this tunnel-served name's DNS record is
+		// written by something other than the tunnel (another DNS
+		// provider, or a record kept by hand in the zone): the tunnel
+		// still gets the name's ingress rule, so traffic that reaches
+		// the tunnel is routed, but the tunnel does not create the
+		// name's CNAME. Only meaningful on a cloudflare-tunnel exposure,
+		// whose records are the tunnel's own, so it is refused on any
+		// other arrival.
+		DNSElsewhere bool `yaml:"dns_elsewhere,omitempty"`
 	}
 )
 
@@ -247,9 +256,9 @@ func (d *Domain) UnmarshalYAML(node *yaml.Node) error {
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			switch key := node.Content[i].Value; key {
-			case "host", "listener_name", "secret_name":
+			case "host", "listener_name", "secret_name", "dns_elsewhere":
 			default:
-				return fmt.Errorf("line %d: domain field %q is not host, listener_name or secret_name", node.Content[i].Line, key)
+				return fmt.Errorf("line %d: domain field %q is not host, listener_name, secret_name or dns_elsewhere", node.Content[i].Line, key)
 			}
 		}
 
@@ -257,7 +266,7 @@ func (d *Domain) UnmarshalYAML(node *yaml.Node) error {
 
 		return node.Decode((*plain)(d))
 	default:
-		return fmt.Errorf("line %d: a domain is a hostname or a {host, listener_name, secret_name} mapping", node.Line)
+		return fmt.Errorf("line %d: a domain is a hostname or a {host, listener_name, secret_name, dns_elsewhere} mapping", node.Line)
 	}
 }
 
@@ -418,6 +427,21 @@ func (e Exposure) validate(name string) error {
 					"cfg/gateways: exposures[%s].clusters[%s].groups[%s].record_elsewhere: this exposure arrives by %s, "+
 						"whose records are the tunnel's own CNAMEs",
 					name, cluster, group, ArrivalCloudflareTunnel)
+			}
+
+			// dns_elsewhere says the tunnel does not write the name's
+			// CNAME. On an exposure that is not a tunnel there is no
+			// tunnel CNAME to leave out, so the flag would read as a
+			// promise nothing keeps.
+			if e.Arrival != ArrivalCloudflareTunnel {
+				for _, d := range groups[group].Domains {
+					if d.DNSElsewhere {
+						return fmt.Errorf(
+							"cfg/gateways: exposures[%s].clusters[%s].groups[%s].domains[%s].dns_elsewhere: this exposure arrives by %s, "+
+								"and only a %s exposure has a tunnel record to leave out",
+							name, cluster, group, d.Host, e.Arrival, ArrivalCloudflareTunnel)
+					}
+				}
 			}
 
 			// cross_cluster AND record_elsewhere together is a real

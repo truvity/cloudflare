@@ -289,3 +289,21 @@ func TestDeployTunnelAcrossZonesRefusals(t *testing.T) {
 		}
 	}
 }
+
+func TestTunnelArgsLeavesOutDNSElsewhere(t *testing.T) {
+	args := baseArgs(nil)
+	tun := args.Tunnels[0]
+	tun.Hosts = []string{"a.example.test", "b.example.test"}
+	tun.DNSElsewhere = []string{"a.example.test"}
+
+	got := TunnelArgs(args, "a1", "z1", tun)
+	require.NotNil(t, got.DNS)
+	assert.Equal(t, []string{"b.example.test"}, got.DNS.Names)
+	assert.Len(t, got.Ingress, 2, "the name keeps its ingress rule")
+
+	tun.DNSElsewhere = tun.Hosts
+	got = TunnelArgs(args, "a1", "z1", tun)
+	assert.Nil(t, got.DNS, "no names, no DNS block")
+	assert.Len(t, got.Ingress, 2)
+	require.NoError(t, got.Validate())
+}

@@ -208,3 +208,54 @@ func TestGrants(t *testing.T) {
 		t.Errorf("from = %s", many.AllowedNamespaces.From)
 	}
 }
+
+const dnsElsewhereDoc = `
+version: 1
+exposures:
+  public:
+    class: edge
+    arrival: cloudflare-tunnel
+    cloudflare_accounts: [main]
+    clusters:
+      dev:
+        groups:
+          legacy:
+            domains:
+              - host: old.dev.example.com
+                dns_elsewhere: true
+              - new.dev.example.com
+            route_namespaces: [legacy]
+`
+
+func TestDNSElsewhereIsReadOnATunnelDomain(t *testing.T) {
+	c := load(t, dnsElsewhereDoc)
+
+	g := c.Groups("public", "dev")[0]
+	if !g.Domains[0].DNSElsewhere || g.Domains[1].DNSElsewhere {
+		t.Fatalf("dns_elsewhere = %v, %v, want true then false", g.Domains[0].DNSElsewhere, g.Domains[1].DNSElsewhere)
+	}
+
+	if got := strings.Join(g.Hosts(), ","); got != "old.dev.example.com,new.dev.example.com" {
+		t.Errorf("hosts = %s: the name keeps its place in the group", got)
+	}
+}
+
+func TestDNSElsewhereIsRefusedOffATunnel(t *testing.T) {
+	for _, arrival := range []string{catalog.ArrivalPrivateClusterIP, catalog.ArrivalNLB} {
+		doc := strings.Replace(dnsElsewhereDoc, "arrival: cloudflare-tunnel\n    cloudflare_accounts: [main]", "arrival: "+arrival, 1)
+
+		_, err := catalog.Load(fstest.MapFS{catalog.FileName: {Data: []byte(doc)}})
+		if err == nil || !strings.Contains(err.Error(), "dns_elsewhere") || !strings.Contains(err.Error(), "old.dev.example.com") {
+			t.Errorf("arrival %s: err = %v, want dns_elsewhere refused", arrival, err)
+		}
+	}
+}
+
+func TestDomainMappingStillRefusesUnknownKeys(t *testing.T) {
+	doc := strings.Replace(dnsElsewhereDoc, "dns_elsewhere: true", "dns_elsewhere: true\n                dns_else: true", 1)
+
+	_, err := catalog.Load(fstest.MapFS{catalog.FileName: {Data: []byte(doc)}})
+	if err == nil || !strings.Contains(err.Error(), "dns_else") {
+		t.Errorf("err = %v, want the unknown key named", err)
+	}
+}
