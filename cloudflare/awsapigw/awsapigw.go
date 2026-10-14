@@ -118,9 +118,11 @@ type DNSArgs struct {
 	ZoneID pulumi.StringInput
 	// Name is the record's name. Default DomainName.
 	Name string
-	// Proxied turns Cloudflare's proxy on. Authenticated Origin Pulls works only
-	// through the proxy, so set it.
-	Proxied bool
+	// Unproxied would make the record DNS-only. The zero value is proxied,
+	// because Authenticated Origin Pulls works only through Cloudflare's proxy
+	// and the domain always demands a client certificate: Validate refuses
+	// Unproxied, there being no configuration in which it works.
+	Unproxied bool
 	// ResourceName is the record's logical name. Default "<name>-dns". Set it
 	// to the name the stack already uses to adopt an existing record.
 	ResourceName string
@@ -205,6 +207,10 @@ func (a *Args) Validate() error {
 		}
 		if d.ZoneID == nil {
 			add("Args.DNS.ZoneID is required")
+		}
+		if d.Unproxied {
+			add("Args.DNS.Unproxied is refused: the domain demands a client certificate only Cloudflare's proxy presents, " +
+				"so a DNS-only record would be rejected by every client")
 		}
 	}
 	if t := a.ComponentType; t != "" && strings.Count(t, ":") != 2 {
@@ -386,7 +392,7 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 			Name:    pulumi.String(host),
 			Type:    pulumi.String("CNAME"),
 			Content: out.DomainTarget,
-			Proxied: pulumi.Bool(d.Proxied),
+			Proxied: pulumi.Bool(true),
 			// 1 = automatic, required for a proxied record.
 			Ttl: pulumi.Float64(1),
 		}, ropts...); err != nil {

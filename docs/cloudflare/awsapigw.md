@@ -14,7 +14,7 @@ d, err := awsapigw.New(ctx, "edge", &awsapigw.Args{
 		Name: "example-truststore", ApplyPrincipalArns: applyRoleARNs,
 	}},
 	Certificate: &awsapigw.CertificateArgs{CreateValidationRecord: createRecord},
-	DNS: &awsapigw.DNSArgs{Provider: cf, ZoneID: zoneID, Proxied: true},
+	DNS: &awsapigw.DNSArgs{Provider: cf, ZoneID: zoneID},
 }, pulumi.Provider(awsProvider))
 ```
 
@@ -36,8 +36,9 @@ A test pins the set.
 
 The package does not turn on the zone setting. Set `tls_client_auth` on the
 zone (`cloudflare/zone`: `AuthenticatedOriginPulls`), and the record must be
-proxied (`DNS.Proxied`), or Cloudflare presents no client certificate and the
-domain refuses every request. Keep the API's default `execute-api` endpoint
+proxied, or Cloudflare presents no client certificate and the domain refuses
+every request. The `DNS` record is therefore always proxied; `DNS.Unproxied`
+is refused by `Validate`. Keep the API's default `execute-api` endpoint
 disabled: it does not ask for a client certificate.
 
 ## The truststore and its guard

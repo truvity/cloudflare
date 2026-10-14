@@ -453,7 +453,7 @@ func TestDNS(t *testing.T) {
 		}
 		_, err = awsapigw.New(ctx, "edge", &awsapigw.Args{
 			FrontDoor: front(ctx), DomainName: domainName, CertificateArn: certArn(), TruststorePEM: truststore, Truststore: newBucket(),
-			DNS: &awsapigw.DNSArgs{Provider: p, ZoneID: pulumi.String("zone1"), Proxied: true, ResourceName: "cname-access-example-test",
+			DNS: &awsapigw.DNSArgs{Provider: p, ZoneID: pulumi.String("zone1"), ResourceName: "cname-access-example-test",
 				Aliases: []pulumi.Alias{{Name: pulumi.String("old")}}},
 		})
 		return err
@@ -520,7 +520,10 @@ func TestValidate(t *testing.T) {
 			a.Truststore = awsapigw.Truststore{Existing: &awsapigw.ExistingBucketArgs{Versioned: true, GuardedPrefix: true}}
 		}, "BucketName"},
 		"dns incomplete": {func(a *awsapigw.Args) { a.DNS = &awsapigw.DNSArgs{} }, "DNS.Provider"},
-		"bad type":       {func(a *awsapigw.Args) { a.ComponentType = "nope" }, "type token"},
+		"unproxied dns": {func(a *awsapigw.Args) {
+			a.DNS = &awsapigw.DNSArgs{Provider: &cloudflare.Provider{}, ZoneID: pulumi.String("z"), Unproxied: true}
+		}, "Unproxied"},
+		"bad type": {func(a *awsapigw.Args) { a.ComponentType = "nope" }, "type token"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			a := good()
