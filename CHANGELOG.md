@@ -5,6 +5,13 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/config` (new): the Cloudflare config model, with no Pulumi or Cloudflare SDK.** The typed form of an estate's `cloudflare.yaml`: `Config{Accounts, Zones, Fleets, R2, Root}`, `Account` (with an optional `Company` label), `Zone` (SSL mode, TLS floor, Total TLS, HTTPS and HSTS, cache, public cache, trusted clients, rate limits, managed WAF, records, origin CNAMEs, SSL mode rules, security.txt, `ZoneIDPending`), the derived `Tunnel` (`Name`, `Release`, `SecretName`, `Zones`, `DNSNames`), `Parse(data)`, `Load(fsys, cat, projects)`, `Validate`, `Derive`d tunnels and cache hosts, `ForAccount`, `StackName` / `StackAccount`, `ValidateForeignHosts` and the converters to the zone component's inputs. Decoding is strict. `Zone.Contributions()` returns the zone's `public_cache`, `ssl_mode_rules`, `rate_limits`, `trusted_clients` and `managed_waf` blocks as `[]rules.Contribution`. The OpenBao and SSM naming of tunnel tokens is not here: it names an estate's layout. See [docs/cloudflare/config.md](docs/cloudflare/config.md).
+- **`catalog.Domain.DNSElsewhere` (`dns_elsewhere`): a tunnel name whose DNS record something else writes.** The name keeps its ingress rule and the tunnel creates no CNAME for it: `edgespec.Group.DNSElsewhere` in, `edgespec.Tunnel.DNSElsewhere` and `Tunnel.DNSNames()` out, and `cloudflare/edge` registers DNS for the latter only (a tunnel with none gets no DNS block). Refused on an exposure that does not arrive by `cloudflare-tunnel`. Additive: no exported symbol is removed or changed.
+
 ## v3.1.0
 
 ### Added

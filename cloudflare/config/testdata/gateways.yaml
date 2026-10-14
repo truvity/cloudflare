@@ -1,0 +1,52 @@
+# The edge catalog the cloudflare.yaml fixture derives its tunnels from.
+version: 1
+exposures:
+  public:
+    class: internal
+    arrival: cloudflare-tunnel
+    cloudflare_accounts: [main, partner]
+    clusters:
+      kernel:
+        groups:
+          portal: {domains: [example.com], route_namespaces: [portal]}
+          access: {domains: [access.example.com], route_namespaces: [access]}
+          alert-ingress: {domains: [alert-ingress.example.com, alertmanager.example.com], route_namespaces: [monitoring]}
+          argocd: {domains: [argocd.example.com], route_namespaces: [argocd]}
+          grafana: {domains: [grafana.example.com, mcp.example.com], route_namespaces: [monitoring]}
+          headlamp: {domains: [headlamp.kernel.example.com], route_namespaces: [headlamp]}
+          otlp: {domains: [otlp.example.com], route_namespaces: [monitoring]}
+      devel:
+        groups:
+          dms: {domains: [dms.devel.example.com], route_namespaces: [dms]}
+          eudi: {domains: [eudi.devel.example.com, '*.eudi.devel.example.com'], route_namespaces: [eudi]}
+          headlamp: {domains: [headlamp.devel.example.com], route_namespaces: [headlamp]}
+          otlp: {domains: [otlp.devel.example.com], route_namespaces: [monitoring]}
+          shortener: {domains: [url-shortener.devel.example.com], route_namespaces: [url-shortener]}
+          gemaal: {domains: [gemaal.example.com], route_namespaces: [gemaal]}
+          catch-all: {domains: ['*.devel.example.com'], route_namespaces: [platform]}
+          legacy:
+            domains:
+              - {host: old.devel.example.com, dns_elsewhere: true}
+            route_namespaces: [legacy]
+          landing: {domains: [landing.devel.example.net], route_namespaces: [landing]}
+      stage:
+        groups:
+          dms: {domains: [dms.stage.example.com, ssi.example.org], route_namespaces: [dms]}
+          eudi: {domains: [eudi.stage.example.com], route_namespaces: [eudi]}
+          headlamp: {domains: [headlamp.stage.example.com], route_namespaces: [headlamp]}
+          shortener: {domains: [url-shortener.stage.example.com], route_namespaces: [url-shortener]}
+          landing: {domains: [landing.stage.example.net], route_namespaces: [landing]}
+      prod:
+        groups:
+          dms: {domains: [dms.prod.example.com], route_namespaces: [dms]}
+          eudi: {domains: [eudi.prod.example.com], route_namespaces: [eudi]}
+          headlamp: {domains: [headlamp.prod.example.com], route_namespaces: [headlamp]}
+          shortener: {domains: [url-shortener.prod.example.com], route_namespaces: [url-shortener]}
+          landing: {domains: [landing.prod.example.net], route_namespaces: [landing]}
+  private:
+    class: internal
+    arrival: private-clusterip
+    clusters:
+      kernel:
+        groups:
+          vault: {domains: [vault.kernel.example.internal], route_namespaces: [vault]}

@@ -16,6 +16,9 @@ documents. Read the half you adopt.
   Go input and output, and the child names that are a contract
 - [cloudflare/rules.md](cloudflare/rules.md): `cloudflare/rules`, rule
   contributions and the one-ruleset-per-phase assembler
+- [cloudflare/config.md](cloudflare/config.md): `cloudflare/config`, the
+  Cloudflare registry as a typed, Pulumi-free model (schema, derived tunnels,
+  contributions, what stays with the estate)
 - [cloudflare/cloudflared.md](cloudflare/cloudflared.md): the one cloudflared
   version pin (Go package, chart, bump script) and the instance connector
 - [cloudflare/doctrine.md](cloudflare/doctrine.md): what this repository owns
