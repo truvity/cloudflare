@@ -10,7 +10,7 @@ authority; `Validate()` on each `Args` type returns the first problem, and
 ## charts/cloudflared
 
 The in-cluster end of a **remotely managed** tunnel: ingress rules live in
-Cloudflare (`pkg/tunnel` writes them), and the pod needs only the tunnel
+Cloudflare (`cloudflare/tunnel` writes them), and the pod needs only the tunnel
 token. It renders a Deployment, a ServiceAccount and, when enabled, a
 PodDisruptionBudget. Nothing else: no Secret, no NetworkPolicy, no
 Service.
@@ -90,9 +90,9 @@ kubectl -n cloudflare-system create secret generic cloudflared-origin-ca \
   --from-file=ca.pem=./origin-ca.pem
 ```
 
-## pkg/account
+## cloudflare/account
 
-`github.com/truvity/cloudflare/v2/pkg/account`
+`github.com/truvity/edge/v3/cloudflare/account`
 
 ```go
 func New(ctx *pulumi.Context, name string, args Args, token pulumi.StringInput, opts ...pulumi.ResourceOption) (*Account, error)
@@ -120,7 +120,7 @@ so it never lands in plain state.
 | `Account.Provider` | the `cloudflare.Provider` scoped to the token |
 | `Use()` | `pulumi.Provider(a.Provider)`: pass it to every zone, tunnel and record in this account; a component's children inherit it |
 | `Invoke()` | `Use()`'s invoke-side counterpart: pass it to a `Lookup*`/`Get*` data-source call directly. A component RESOURCE inherits its parent's provider automatically; a plain invoke does not, so it needs this (or `InvokeOptionsFromResourceOptions`, below) explicitly — see [safety.md](safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does) |
-| `InvokeOptionsFromResourceOptions(opts...)` | extracts the explicit provider already present in a `New`-style `opts` list (`pulumi.Provider(...)`, or `Account.Use()`) and returns it as an `[]pulumi.InvokeOption`, empty if `opts` carried none. What `pkg/r2` and `pkg/tunnel` call internally so their own `New`'s single `opts` list drives both the resources it registers and any invoke it makes on the side |
+| `InvokeOptionsFromResourceOptions(opts...)` | extracts the explicit provider already present in a `New`-style `opts` list (`pulumi.Provider(...)`, or `Account.Use()`) and returns it as an `[]pulumi.InvokeOption`, empty if `opts` carried none. What `cloudflare/r2` and `cloudflare/tunnel` call internally so their own `New`'s single `opts` list drives both the resources it registers and any invoke it makes on the side |
 | child | one provider named `provider-<name>`; `opts` are passed to it, so an existing provider can be aliased onto that name |
 
 An Account is not a component resource and creates nothing but the
@@ -135,7 +135,7 @@ func NewChildToken(ctx *pulumi.Context, name string, acct *Account, cfg ChildTok
 Mints one account-owned Cloudflare API token
 (`cloudflare.AccountToken`, `/accounts/{account_id}/tokens`) scoped to
 exactly `cfg.Policies`, under `acct`'s account and provider — the
-generic form of the token `pkg/r2` has minted for its own bucket since
+generic form of the token `cloudflare/r2` has minted for its own bucket since
 v2.2.0. `name` is the Pulumi resource name the underlying
 `AccountToken` is registered under; pass `opts` (`pulumi.Parent(...)`,
 in particular) the way you would to any other resource in `acct`'s
@@ -175,8 +175,8 @@ ct, err := account.NewChildToken(ctx, "ci-token", acct, account.ChildTokenConfig
 The permission groups in one policy are resolved by name through the
 provider's ACCOUNT-scoped `getAccountApiTokenPermissionGroupsList` data
 source at apply time — the SAME lookup, and the same exact-match-or-refuse
-behaviour, `pkg/r2` has always used for its own bucket token (see
-[safety.md](safety.md#pkgaccount) for the full refusal table) — with
+behaviour, `cloudflare/r2` has always used for its own bucket token (see
+[safety.md](safety.md#cloudflareaccount) for the full refusal table) — with
 `acct`'s explicit Cloudflare provider carried into the invoke, never the
 default one.
 
@@ -189,7 +189,7 @@ accessed 2026-09-28):
 | --- | --- |
 | `WholeAccountScope{}` | `com.cloudflare.api.account.<ACCOUNT_ID>` — every zone and account-level resource `acct` owns |
 | `ZoneScope{ZoneID}` | `com.cloudflare.api.account.zone.<ZONE_ID>` — exactly one zone. `ZoneID` must be Cloudflare's own 32-character lowercase hex zone id (confirmed against https://developers.cloudflare.com/api/resources/zones/, accessed 2026-09-28: the `zone_id` path parameter is `maxLength: 32`, and every example value on that page is a 32-character lowercase hex string) |
-| `R2BucketScope{Jurisdiction, Bucket}` | `com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>` — the same key `pkg/r2` has always used (see [its own reference section](#pkgr2)); `Jurisdiction` empty (or `"default"`) is an ordinary, non-jurisdictional bucket |
+| `R2BucketScope{Jurisdiction, Bucket}` | `com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>` — the same key `cloudflare/r2` has always used (see [its own reference section](#cloudflarer2)); `Jurisdiction` empty (or `"default"`) is an ordinary, non-jurisdictional bucket |
 
 `ChildToken` outputs:
 
@@ -204,7 +204,7 @@ registers exactly one resource, and the `AccountToken` is registered
 directly under whatever `Parent` (or none) the caller's own `opts` give
 it — its type and name in Pulumi's state are exactly what they would be
 had the caller registered the `AccountToken` itself. This is what makes
-`pkg/r2`'s own use of `NewChildToken` (since v2.4.0) invisible to an
+`cloudflare/r2`'s own use of `NewChildToken` (since v2.4.0) invisible to an
 existing deployment: no new parent type joins the resource's URN, so
 nothing is replaced.
 
@@ -217,7 +217,7 @@ func NewChildTokenSet(ctx *pulumi.Context, name string, acct *Account, cfgs map[
 Mints one child token per entry of `cfgs`, and returns them keyed by the
 same name — "one root token mints N least-privilege children, one stack
 per child", made reusable instead of hand-written once per estate (see
-[docs/layout.md](layout.md#recommended-layout)).
+[docs/cloudflare/layout.md](layout.md#recommended-layout)).
 
 ```go
 tokens, err := account.NewChildTokenSet(ctx, "root", acct, map[string]account.ChildTokenConfig{
@@ -283,10 +283,10 @@ func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 
 | Preset | Grants |
 | --- | --- |
-| `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write`, `Cache Settings Write` and `Config Settings Write` (the dashboard's "Config Rules: Edit") on each zone in `zoneIDs` — a stack that manages zones (`pkg/zone`) and runs a tunnel (`pkg/tunnel`) |
-| `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` | Everything `EdgePolicies(zoneIDs...)` grants, plus one policy per zone in `wafZoneIDs` granting only `Zone WAF Write` there — what `pkg/zone`'s `Args.TrustedClients` needs. Opt-in: an empty `wafZoneIDs` returns `EdgePolicies` unchanged. `wafZoneIDs` is independent of `zoneIDs`; list a zone in both when the token also manages it |
-| `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`pkg/r2`, called with `Config.Token.Enabled: false`) |
-| `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `pkg/r2`'s deprecated `Config.Token` (see [pkg/r2](#pkgr2)) |
+| `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write`, `Cache Settings Write` and `Config Settings Write` (the dashboard's "Config Rules: Edit") on each zone in `zoneIDs` — a stack that manages zones (`cloudflare/zone`) and runs a tunnel (`cloudflare/tunnel`) |
+| `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` | Everything `EdgePolicies(zoneIDs...)` grants, plus one policy per zone in `wafZoneIDs` granting only `Zone WAF Write` there — what `cloudflare/zone`'s `Args.TrustedClients` needs. Opt-in: an empty `wafZoneIDs` returns `EdgePolicies` unchanged. `wafZoneIDs` is independent of `zoneIDs`; list a zone in both when the token also manages it |
+| `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`cloudflare/r2`, called with `Config.Token.Enabled: false`) |
+| `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `cloudflare/r2`'s deprecated `Config.Token` (see [cloudflare/r2](#cloudflarer2)) |
 
 Each is a plain `[]ChildTokenPolicy` value: use it as `Policies` in a
 `ChildTokenConfig` directly, or edit the slice it returns before passing
@@ -295,9 +295,9 @@ that grant is closer to an estate-specific trade-off (how much of `edge`'s
 own grant a backup token should be handed) than a shape this library can
 name once and reuse everywhere; write that one policy by hand.
 
-## pkg/presettoken
+## cloudflare/presettoken
 
-The client of a sluis Cloudflare preset. A stack asks for one preset's credential at preview and apply time and holds it in memory only; sluis clones the preset's disabled prototype (see [pkg/prototypes](#pkgprototypes)) into a token that expires.
+The client of a sluis Cloudflare preset. A stack asks for one preset's credential at preview and apply time and holds it in memory only; sluis clones the preset's disabled prototype (see [cloudflare/prototypes](#cloudflareprototypes)) into a token that expires.
 
 ```go
 cred, err := presettoken.Token(ctx, presettoken.Config{
@@ -319,7 +319,7 @@ cred, err := presettoken.Token(ctx, presettoken.Config{
 | --- | --- |
 | `Issuer` | The sluis issuer, passed as `--issuer`. Set it: when empty, sluisctl's own configuration decides which issuer is asked. A plain https URL when set. The environment's `SLUISCTL_*` is stripped, so this is the only way an issuer reaches `sluisctl` |
 | `SluisctlMin` | `MAJOR.MINOR.PATCH` floor, checked once per binary with `sluisctl version --json`. Required |
-| `BinaryPrefixes` | Directories `sluisctl` must resolve under after symlinks (`/nix/store` for a nix or devbox profile). Absolute, clean, at least two components, not a general directory (see [safety](safety.md#pkgpresettoken)). Required |
+| `BinaryPrefixes` | Directories `sluisctl` must resolve under after symlinks (`/nix/store` for a nix or devbox profile). Absolute, clean, at least two components, not a general directory (see [safety](safety.md#cloudflarepresettoken)). Required |
 | `Lifetime`, `MinRemaining` | What is asked for (default and maximum 1h, `MaxLifetime`) and the least remaining life accepted (default 15m, at least 1m when set) |
 | `BreakGlass` | `Env`, `Account`, `Vault`, `Item`, `Field`, `ChildPrefix`; all or none. `Env` must match `^[A-Z][A-Z0-9_]*BREAKGLASS[A-Z0-9_]*$`. The zero value disables break-glass |
 | `GrantHint`, `Runbook` | Text appended to the "not granted" and break-glass refusals |
@@ -330,9 +330,9 @@ With `BreakGlass.Env` set to `1` the credential is not asked of sluis. The root 
 
 ### What is refused
 
-See [docs/safety.md](safety.md#pkgpresettoken).
+See [docs/cloudflare/safety.md](safety.md#cloudflarepresettoken).
 
-## pkg/prototypes
+## cloudflare/prototypes
 
 `prototypes.Deploy(ctx, Args)` declares the disabled prototype tokens the presets are cloned from.
 
@@ -346,9 +346,9 @@ See [docs/safety.md](safety.md#pkgpresettoken).
 
 Each token is the Pulumi resource `prototype-<name>`, `status: disabled`, protected. The stack outputs `sluisPrototypeIds` (name to id) and `sluisPrototypeStatus_<name>`. The estate keeps its own wrapper that reads the root from its vault into `CLOUDFLARE_API_TOKEN` for one `pulumi` command, and its own check that asks Cloudflare for each prototype's status.
 
-## pkg/zone
+## cloudflare/zone
 
-`github.com/truvity/cloudflare/v2/pkg/zone`
+`github.com/truvity/edge/v3/cloudflare/zone`
 
 ```go
 func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOption) (*Zone, error)
@@ -619,9 +619,9 @@ zone (`account.EdgePoliciesWithWAF`).
 | `Zone.ZoneID` | the zone id, as an output |
 | children | `setting-<name>-ssl`, `setting-<name>-min-tls-version`, `setting-<name>-browser-cache-ttl`, `setting-<name>-always-use-https`, `setting-<name>-security-header` (all `cloudflare.ZoneSetting`), `total-tls-<name>` (`cloudflare.TotalTls`), `cache-rules-<name>`, `firewall-custom-<name>`, `firewall-managed-<name>` and `ratelimit-<name>` (`cloudflare.Ruleset`), and `record-<name>-...` (`cloudflare.DnsRecord`, `zone.RecordName`), each only when its field is set |
 
-## pkg/tunnel
+## cloudflare/tunnel
 
-`github.com/truvity/cloudflare/v2/pkg/tunnel`
+`github.com/truvity/edge/v3/cloudflare/tunnel`
 
 ```go
 func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput, opts ...pulumi.ResourceOption) (*Tunnel, error)
@@ -702,7 +702,7 @@ Certificate Manager):
 | `ValidityDays` | `validityDays` | `90` | |
 | `CertificateAuthority` | `certificateAuthority` | `lets_encrypt` | |
 
-Packs are validated by TXT record. A zone with Total TLS (`pkg/zone`)
+Packs are validated by TXT record. A zone with Total TLS (`cloudflare/zone`)
 does not need them.
 
 ### Outputs and names
@@ -717,9 +717,9 @@ does not need them.
 `Slug(host)` renders a hostname as a name fragment: `*` becomes `star`
 and `.` becomes `-`, so `*.team.example.com` is `star-team-example-com`.
 
-## pkg/r2
+## cloudflare/r2
 
-`github.com/truvity/cloudflare/v2/pkg/r2`
+`github.com/truvity/edge/v3/cloudflare/r2`
 
 ```go
 func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOption) (*R2, error)
@@ -788,7 +788,7 @@ deprecated in favour of minting it separately with
 `account.R2BucketParentPolicies(cfg.Jurisdiction, cfg.Bucket)` — the exact
 same permission group and resource key `Config.Token` has always used —
 then calling `New` with `Token.Enabled: false`. See
-[docs/layout.md](layout.md#recommended-layout) for why: a bucket's own
+[docs/cloudflare/layout.md](layout.md#recommended-layout) for why: a bucket's own
 admin token (`account.R2AdminPolicies`, account-wide) and a bucket
 consumer's object-level token are two different blast radii and two
 different rotation schedules, and minting the second inside the component
@@ -863,7 +863,7 @@ builds one from `Config.AccountID`, `Config.Jurisdiction` and
 This package creates no secret store entry and no chart Secret; where the
 token value and its derived S3 credentials are stored (a Pulumi config
 secret today, OpenBAO KV tomorrow) is the caller's decision, matching
-`pkg/tunnel`'s existing precedent for `Tunnel.Token`.
+`cloudflare/tunnel`'s existing precedent for `Tunnel.Token`.
 
 ## Child names are a contract
 

@@ -11,7 +11,7 @@ import (
 // them keyed by the same name — the "one root token mints every
 // least-privilege child a stack-per-token estate needs" pattern, made
 // reusable instead of hand-written once per estate (see
-// docs/layout.md#recommended-layout).
+// docs/cloudflare/layout.md#recommended-layout).
 //
 // It is a plain iteration convenience over NewChildToken, nothing more:
 // for each key k (in the sorted order described below), it calls
@@ -47,7 +47,7 @@ import (
 //
 // Every ChildTokenConfig's own Validate (refusing "Account API Tokens"
 // groups, an empty Policies list, an unrecognized Scope, and so on — see
-// NewChildToken and docs/safety.md#pkgaccount) applies per entry,
+// NewChildToken and docs/cloudflare/safety.md#cloudflareaccount) applies per entry,
 // unchanged: NewChildTokenSet adds no validation and skips none. The
 // first entry (in sorted order) that fails stops the whole set — nothing
 // partially minted from one call is left registered when another entry
@@ -87,7 +87,7 @@ func NewChildTokenSet(
 // Certificates, Zone Settings, Cache Settings and Config Settings on each
 // zone in zoneIDs — the exact grant an estate's own edge stack (cloudflare/zone
 // plus cloudflare/tunnel, scoped by account.Use()) needs to run as, and nothing
-// more. See docs/layout.md#recommended-layout for where this fits.
+// more. See docs/cloudflare/layout.md#recommended-layout for where this fits.
 //
 // "Config Settings Write" is the dashboard's "Config Rules: Edit": the
 // zone's http_config_settings phase, where Configuration Rules live (a
@@ -148,7 +148,7 @@ func EdgePoliciesWithWAF(wafZoneIDs []string, zoneIDs ...string) []ChildTokenPol
 // cloudflare/r2's own New called with Config.Token.Enabled false — the bucket
 // stack then runs on this child, and a bucket's own object-level
 // credential comes from a separate R2BucketParentPolicies child instead
-// of cloudflare/r2's deprecated Config.Token. See docs/layout.md#recommended-layout.
+// of cloudflare/r2's deprecated Config.Token. See docs/cloudflare/layout.md#recommended-layout.
 func R2AdminPolicies() []ChildTokenPolicy {
 	return []ChildTokenPolicy{
 		{PermissionGroups: []string{"Workers R2 Storage Write"}, Scope: WholeAccountScope{}},
@@ -162,7 +162,7 @@ func R2AdminPolicies() []ChildTokenPolicy {
 // Mint this from account.NewChildToken (or in a set, from
 // NewChildTokenSet) instead of cloudflare/r2's Token once a bucket's consumer
 // needs its own least-privilege credential kept apart from the bucket's
-// own admin token; see cloudflare/r2's package doc and docs/layout.md#recommended-layout.
+// own admin token; see cloudflare/r2's package doc and docs/cloudflare/layout.md#recommended-layout.
 func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy {
 	return []ChildTokenPolicy{
 		{

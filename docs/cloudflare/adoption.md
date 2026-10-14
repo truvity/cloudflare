@@ -44,7 +44,7 @@ page. Create the records in a later run if that window matters.
 
 **A consumer adopts a release only when the render (or the preview) it
 produces is byte-identical to what runs, or differs exactly by the change
-the release announces** in [CHANGELOG.md](../CHANGELOG.md).
+the release announces** in [CHANGELOG.md](../../CHANGELOG.md).
 
 - **The chart:** render your values at the pinned version and at the new
   one (`helm template <release> oci://ghcr.io/truvity/charts/cloudflared
@@ -78,10 +78,10 @@ Every child name is a contract (see
 the estate created at the top level of its own program move under the
 components by alias rather than by delete and create:
 
-- `pkg/account`: `opts` go to the provider itself, so an existing provider
+- `cloudflare/account`: `opts` go to the provider itself, so an existing provider
   is aliased onto `provider-<name>` with `pulumi.Aliases` in
   `account.New`'s options.
-- `pkg/zone` and `pkg/tunnel`: children inherit the component's options,
+- `cloudflare/zone` and `cloudflare/tunnel`: children inherit the component's options,
   transformations included. Pass a transformation that adds an alias to
   each child, from its old top-level name to `tunnel-<name>`,
   `ingress-<name>`, `cname-<name>-<slug>`, `acm-<name>-<slug>`,
@@ -187,6 +187,32 @@ upgrade, before any `--wait`: no selector error, but no guarantee that
 the new pods are ready before the old ones go. To keep the v1.x names,
 set `fullnameOverride: cloudflared` (the ServiceAccount follows it) and
 use the procedure above, with your release name in the `helm` commands.
+
+### The Go module moves to edge/v3
+
+**The repository is now `truvity/edge`, and the Go module with it.** The
+module path is `github.com/truvity/edge/v3`, first released as v3.0.0 (one
+version for the whole repository: the module and all six charts). The
+`pkg/` directory is gone: each Cloudflare package lives under
+`cloudflare/`, and the gateway catalog under `catalog/`. No API changes:
+only import paths.
+
+| Before | After |
+|---|---|
+| `github.com/truvity/cloudflare/v2/pkg/<name>` | `github.com/truvity/edge/v3/cloudflare/<name>` |
+| `github.com/truvity/gateway/catalog` | `github.com/truvity/edge/v3/catalog` |
+
+```sh
+go get github.com/truvity/edge/v3@v3.0.0
+# rewrite the imports, for example
+#   github.com/truvity/cloudflare/v2/pkg/tunnel -> github.com/truvity/edge/v3/cloudflare/tunnel
+go mod tidy   # drops the v2 requirement
+```
+
+The chart OCI names are unchanged (`oci://ghcr.io/truvity/charts/<chart>`);
+their versions jump to 3.0.0 with the content of the last release of their
+former repository. The section below is the history of the earlier move,
+to /v2.
 
 ### The Go module moves to /v2
 

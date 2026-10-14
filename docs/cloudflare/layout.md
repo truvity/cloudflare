@@ -2,12 +2,12 @@
 
 How to split an estate's Cloudflare Pulumi program into a root stack that
 mints least-privilege child tokens and one stack per child, each running
-on its own — the pattern `pkg/account`'s `NewChildToken` and
+on its own — the pattern `cloudflare/account`'s `NewChildToken` and
 `NewChildTokenSet` make reusable. This is a layout this library
 *documents*, not one it enforces: nothing here reads more than one
 stack's worth of Pulumi state, and a single-stack estate can ignore this
-page entirely and call `account.New` plus `pkg/zone`/`pkg/tunnel`/`pkg/r2`
-directly, exactly as the [README](../README.md)'s worked example does.
+page entirely and call `account.New` plus `cloudflare/zone`/`cloudflare/tunnel`/`cloudflare/r2`
+directly, exactly as the [README](../../README.md)'s worked example does.
 
 ## Why more than one token
 
@@ -52,9 +52,9 @@ need a `status` child at all.
 | Stack | Runs on | Mints/manages | Calls |
 | --- | --- | --- | --- |
 | **root** | the root token (never delivered to any other stack) | every child below, via `account.NewChildTokenSet` | `account.New`, `account.NewChildTokenSet`, the presets below |
-| **edge** | the `edge` child | zone settings and the tunnel | `pkg/zone`, `pkg/tunnel`, both with `acct.Use()` bound to the `edge` child's own provider |
-| **r2** | the `r2-admin` child | R2 buckets and their lifecycles (no tokens) | `pkg/r2`, called with `Config.Token.Enabled: false` |
-| **status** (optional) | the `status` child | a backup tunnel, DNS only | `pkg/tunnel` (and `pkg/zone` only as far as DNS) |
+| **edge** | the `edge` child | zone settings and the tunnel | `cloudflare/zone`, `cloudflare/tunnel`, both with `acct.Use()` bound to the `edge` child's own provider |
+| **r2** | the `r2-admin` child | R2 buckets and their lifecycles (no tokens) | `cloudflare/r2`, called with `Config.Token.Enabled: false` |
+| **status** (optional) | the `status` child | a backup tunnel, DNS only | `cloudflare/tunnel` (and `cloudflare/zone` only as far as DNS) |
 
 A bucket's own consumer — the thing that actually reads or writes
 objects — is not a fifth Pulumi stack in this picture: it is whatever
@@ -71,7 +71,7 @@ package main
 import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/cloudflare/v2/pkg/account"
+	"github.com/truvity/edge/v3/cloudflare/account"
 )
 
 func main() {
@@ -129,7 +129,7 @@ func main() {
 
 An optional `status` child (a backup tunnel path) is one more entry in
 `cfgs`, built from the same zone list plus a narrower policy — see
-`EdgePolicies`'s own doc in [docs/reference.md](reference.md#role-presets)
+`EdgePolicies`'s own doc in [docs/cloudflare/reference.md](reference.md#role-presets)
 for why this library ships no preset for it: how much of `edge`'s own
 grant a backup token should be handed is an estate's own trade-off, not a
 shape this library can name once and reuse everywhere.
@@ -138,7 +138,7 @@ shape this library can name once and reuse everywhere.
 
 Each downstream stack builds its OWN `*account.Account` from the child
 token it was handed — never from the root token, which it never sees —
-and calls this library exactly as the [README](../README.md)'s worked
+and calls this library exactly as the [README](../../README.md)'s worked
 example does:
 
 ```go
@@ -158,7 +158,7 @@ if _, err := zone.New(ctx, "example-com", zone.Args{
 	return err
 }
 
-// pkg/tunnel.New(...) with the same acct.Use(), as in the README.
+// cloudflare/tunnel.New(...) with the same acct.Use(), as in the README.
 ```
 
 ```go
@@ -183,7 +183,7 @@ if _, err := r2.New(ctx, "example-bucket", r2.Config{
 
 Neither `NewChildToken` nor `NewChildTokenSet` knows or cares where a
 minted token's secret value ends up. This is deliberate — see the
-[README](../README.md)'s "Credentials come in, secrets go out" contract,
+[README](../../README.md)'s "Credentials come in, secrets go out" contract,
 which every package in this library follows the same way. A root stack
 typically writes each child into whatever the estate already uses to move
 a secret between two Pulumi programs (a secret manager's own KV store, a

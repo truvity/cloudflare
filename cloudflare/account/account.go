@@ -22,7 +22,7 @@
 // Cloudflare API token scoped to exactly one resource — a zone, the whole
 // account, or (the scope cloudflare/r2 uses) one R2 bucket — under the root,
 // account-owned token this whole module's caller runs as. See its own doc
-// and docs/safety.md#child-tokens-never-hold-account-api-tokens.
+// and docs/cloudflare/safety.md#child-tokens-never-hold-account-api-tokens.
 package account
 
 import (

@@ -14,7 +14,7 @@ helm install policies oci://ghcr.io/truvity/charts/gateway-policies \
   --namespace envoy-gateway-system --values policies-values.yaml
 ```
 
-- every value and a worked example: [docs/reference.md](../../docs/reference.md#gateway-policies)
+- every value and a worked example: [docs/gateway/reference.md](../../docs/gateway/reference.md#gateway-policies)
 - every refusal, the defaults and the CSRF shadow-to-enforce procedure:
-  [docs/safety.md](../../docs/safety.md#gateway-policies)
-- prerequisites and adopting existing policies: [docs/adoption.md](../../docs/adoption.md)
+  [docs/gateway/safety.md](../../docs/gateway/safety.md#gateway-policies)
+- prerequisites and adopting existing policies: [docs/gateway/adoption.md](../../docs/gateway/adoption.md)

@@ -17,7 +17,7 @@ import (
 // tokens, so granting one to a child token would let it mint its own
 // siblings — or its own replacement after this program stops managing it.
 // Only the root token this whole module's caller runs as should ever hold
-// either. See docs/safety.md#child-tokens-never-hold-account-api-tokens.
+// either. See docs/cloudflare/safety.md#child-tokens-never-hold-account-api-tokens.
 const (
 	permissionAccountAPITokensRead  = "Account API Tokens Read"
 	permissionAccountAPITokensWrite = "Account API Tokens Write"
@@ -114,7 +114,7 @@ type (
 
 	// R2BucketScope scopes a policy's permission groups to exactly one R2
 	// bucket — the same resource key cloudflare/r2 mints its own bucket token
-	// with (see cloudflare/r2's package doc and docs/safety.md#pkgr2).
+	// with (see cloudflare/r2's package doc and docs/cloudflare/safety.md#cloudflarer2).
 	R2BucketScope struct {
 		// Jurisdiction segments the resource key exactly as it segments
 		// the bucket itself; empty (or "default") is an ordinary,
@@ -146,7 +146,7 @@ type (
 
 	// ChildTokenConfig is a child token this package mints under the
 	// account's own root token — see New's own doc and
-	// docs/safety.md#child-tokens-never-hold-account-api-tokens for what
+	// docs/cloudflare/safety.md#child-tokens-never-hold-account-api-tokens for what
 	// "child" means here.
 	ChildTokenConfig struct {
 		// Name is the token's Cloudflare-visible Name. Required. When
@@ -155,7 +155,7 @@ type (
 		Name string
 		// Rotation forces a fresh token — a new id and value — when
 		// changed to any new value; see New's doc and
-		// docs/safety.md#rotation-is-a-replace-not-an-update (the same
+		// docs/cloudflare/safety.md#rotation-is-a-replace-not-an-update (the same
 		// mechanism cloudflare/r2's TokenConfig.Rotation already uses). Optional;
 		// empty never rotates on its own.
 		Rotation string
@@ -342,7 +342,7 @@ func (cfg *ChildTokenConfig) Validate() error {
 // child resource does, so without this the lookup falls back to the
 // default Cloudflare provider regardless of what acct names, which fails
 // outright wherever that default is disabled (see
-// docs/safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does).
+// docs/cloudflare/safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does).
 func lookupPermissionGroupID(ctx *pulumi.Context, accountID, groupName string, invokeOpts ...pulumi.InvokeOption) (string, error) {
 	res, err := cloudflare.LookupAccountApiTokenPermissionGroupsList(ctx, &cloudflare.LookupAccountApiTokenPermissionGroupsListArgs{
 		AccountId: &accountID,
@@ -386,7 +386,7 @@ func lookupPermissionGroupID(ctx *pulumi.Context, accountID, groupName string, i
 // needs its own, explicit copy).
 //
 // A change to cfg.Rotation is a REPLACE, never an in-place rename: see
-// docs/safety.md#rotation-is-a-replace-not-an-update. Nothing else in
+// docs/cloudflare/safety.md#rotation-is-a-replace-not-an-update. Nothing else in
 // ChildTokenConfig triggers one.
 func NewChildToken(ctx *pulumi.Context, name string, acct *Account, cfg ChildTokenConfig, opts ...pulumi.ResourceOption) (*ChildToken, error) {
 	if acct == nil {
@@ -447,7 +447,7 @@ func NewChildToken(ctx *pulumi.Context, name string, acct *Account, cfg ChildTok
 
 	// The rotation marker lives in the Cloudflare-visible Name so that
 	// ReplaceOnChanges("name") below has something real to react to —
-	// see docs/safety.md#rotation-is-a-replace-not-an-update.
+	// see docs/cloudflare/safety.md#rotation-is-a-replace-not-an-update.
 	tokenName := cfg.Name
 	if cfg.Rotation != "" {
 		tokenName = tokenName + "-" + cfg.Rotation
@@ -478,7 +478,7 @@ func NewChildToken(ctx *pulumi.Context, name string, acct *Account, cfg ChildTok
 	// without touching id or value): force a REPLACE instead, so a
 	// Rotation change actually mints a new id and value rather than
 	// relabeling the old ones. See
-	// docs/safety.md#rotation-is-a-replace-not-an-update.
+	// docs/cloudflare/safety.md#rotation-is-a-replace-not-an-update.
 	resourceOpts = append(resourceOpts, pulumi.ReplaceOnChanges([]string{"name"}))
 
 	token, err := cloudflare.NewAccountToken(ctx, name, tokenArgs, resourceOpts...)

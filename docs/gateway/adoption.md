@@ -46,7 +46,7 @@ but an open one — see [safety.md](safety.md#gateway-routes).
 
 Adopt a release only when your render is byte-identical to what runs, or
 differs by exactly the change the release announces in
-[CHANGELOG.md](../CHANGELOG.md). Render the charts with your values at
+[CHANGELOG.md](../../CHANGELOG.md). Render the charts with your values at
 the pinned version and at the new one and compare; a diff you cannot
 explain from the CHANGELOG is a reason to stop.
 

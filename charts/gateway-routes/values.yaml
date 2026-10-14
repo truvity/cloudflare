@@ -38,5 +38,5 @@
 #                            hostname: [{name, paths, backend, filters,
 #                            extra}]. Public, because no policy names them
 #
-# See README.md for a worked caller, and ../../docs/reference.md for every
+# See README.md for a worked caller, and ../../docs/gateway/reference.md for every
 # input in detail.

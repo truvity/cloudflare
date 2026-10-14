@@ -610,7 +610,7 @@ ordered.
 
 ## catalog (Go library)
 
-`github.com/truvity/gateway/catalog` reads the file an estate keeps to say
+`github.com/truvity/edge/v3/catalog` reads the file an estate keeps to say
 which names it serves, on which way in, and from whose namespaces. The
 `gateway-groups` values are derived from it by the estate's own generator;
 the library is what every reader of the file shares.
