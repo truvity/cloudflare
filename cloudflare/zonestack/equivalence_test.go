@@ -65,8 +65,8 @@ func TestSplitStacksRegisterWhatTheSingleStackRegisters(t *testing.T) {
 		`firewall-custom-example-com rule 0: enabled: <absent> -> true`,
 		`firewall-custom-example-com rule 0: ref: <absent> -> "trusted-clients"`,
 		`firewall-managed-example-com rule 0: ref: <absent> -> "managed-waf"`,
-		`ratelimit-example-com rule 0: ref: <absent> -> "ratelimit-Browser telemetry ingest"`,
-		`ratelimit-example-com rule 1: ref: <absent> -> "ratelimit-Machine ingest"`,
+		`ratelimit-example-com rule 0: ref: <absent> -> "ratelimit-browser-telemetry-ingest"`,
+		`ratelimit-example-com rule 1: ref: <absent> -> "ratelimit-machine-ingest"`,
 		`ssl-mode-example-com rule 0: description: "access.example.com SSL strict" -> "access.example.com: SSL mode strict"`,
 		`ssl-mode-example-com rule 0: expression: "(http.host eq \"access.example.com\")" -> "http.host eq \"access.example.com\""`,
 	})

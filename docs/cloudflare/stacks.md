@@ -112,7 +112,7 @@ replacement, no create, no delete). On the fixture, the test lists them:
 - `firewall-custom-<slug>` (trusted clients): `ref` `trusted-clients` and
   `enabled` true added.
 - `firewall-managed-<slug>` (managed WAF): `ref` `managed-waf` added.
-- `ratelimit-<slug>`: `ref` `ratelimit-<rule name>` added to each rule.
+- `ratelimit-<slug>`: `ref` `ratelimit-<rule name as a slug>` (for example `ratelimit-browser-telemetry-ingest`) added to each rule.
 - `ssl-mode-<slug>`: per rule, the description `<host> SSL <mode>` becomes
   `<host>: SSL mode <mode>`, the expression loses its outer parentheses, and a
   `ref` is added where `ssl_mode_rule_refs` pins none (`ssl-mode-<host>`).

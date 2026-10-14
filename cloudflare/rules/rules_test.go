@@ -453,3 +453,24 @@ func TestSSLMode(t *testing.T) {
 		})
 	}
 }
+
+func TestRateLimitRefsAreSlugs(t *testing.T) {
+	row := func(name string) zonespec.RateLimitRule {
+		return zonespec.RateLimitRule{
+			Name: name, Endpoints: []zonespec.Endpoint{{Host: "a.example.com", Path: "/x"}},
+			Period: 10, Requests: 5, MitigationTimeout: 10, Action: "block", Characteristics: []string{"ip.src"},
+		}
+	}
+
+	c, err := rules.RateLimits("pro", []zonespec.RateLimitRule{row("Browser telemetry ingest"), row("Machine_ingest!!")})
+	require.NoError(t, err)
+	assert.Equal(t, "ratelimit-browser-telemetry-ingest", c.Rules[0].Ref)
+	assert.Equal(t, "ratelimit-machine-ingest", c.Rules[1].Ref)
+	assert.Equal(t, "Browser telemetry ingest", c.Rules[0].Description, "the description keeps the row's name")
+
+	_, err = rules.RateLimits("pro", []zonespec.RateLimitRule{row("Machine ingest"), row("machine-ingest")})
+	require.ErrorContains(t, err, `"Machine ingest" and "machine-ingest" both make the rule ref "ratelimit-machine-ingest"`)
+
+	_, err = rules.RateLimits("pro", []zonespec.RateLimitRule{row("!!!")})
+	require.ErrorContains(t, err, "no letter or digit")
+}
