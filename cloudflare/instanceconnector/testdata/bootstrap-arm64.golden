@@ -1,0 +1,74 @@
+##### Install
+# cloudflared 2026.10.0 linux-arm64: installed to /usr/local/bin/cloudflared, checksum pinned in cloudflare/cloudflared.
+cloudflared_install() {
+  local want='e6422b9d4f72d3194bc5a38676f13667c06666523217b842a877d72a80b5ac08' url='https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/cloudflared-linux-arm64' dest=/usr/local/bin/cloudflared tmp i
+  if [ -x "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$want" ]; then
+    return 0
+  fi
+  tmp="$(mktemp -d)" || return 1
+  for i in 1 2 3 4 5; do
+    if curl -fsSL --connect-timeout 10 --max-time 300 -o "$tmp/cloudflared" "$url" \
+      && printf '%s  %s\n' "$want" "$tmp/cloudflared" | sha256sum -c - >/dev/null 2>&1; then
+      install -d -m 0755 '/usr/local/bin' || { rm -rf "$tmp"; return 1; }
+      install -m 0755 "$tmp/cloudflared" "$dest" || { rm -rf "$tmp"; return 1; }
+      rm -rf "$tmp"
+      return 0
+    fi
+    echo "cloudflared: download of $url failed or did not match its checksum (attempt $i)" >&2
+    rm -f "$tmp/cloudflared"
+    sleep "${CLOUDFLARED_RETRY_SLEEP:-5}"
+  done
+  rm -rf "$tmp"
+  return 1
+}
+cloudflared_install
+
+##### Unit (/etc/systemd/system/cloudflared.service)
+[Unit]
+Description=cloudflared tunnel (cloudflared)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cloudflared
+Group=cloudflared
+EnvironmentFile=/run/cloudflared/tunnel.env
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel run
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+##### LoadToken
+# The tunnel token goes from SSM to /run/cloudflared/tunnel.env (tmpfs); it is never printed.
+cloudflared_load_token() {
+  local param='/example/estate/tunnel-token' envfile=/run/cloudflared/tunnel.env value i
+  mkdir -p '/run/cloudflared' && chmod 0700 '/run/cloudflared' || return 1
+  for i in 1 2 3 4 5 6; do
+    if value="$(aws ssm get-parameter --name "$param" --with-decryption --query Parameter.Value --output text --region 'eu-west-1')"; then
+      break
+    fi
+    value=""
+    [ "$i" = 6 ] || sleep "${CLOUDFLARED_RETRY_SLEEP:-5}"
+  done
+  if [ -z "$value" ] || [ "$value" = None ]; then
+    echo "cloudflared: could not read SSM parameter $param" >&2
+    return 1
+  fi
+  case "$value" in
+    *$'\n'*) echo "cloudflared: the value of $param contains a newline" >&2; value=""; return 1 ;;
+  esac
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  (umask 077 && printf 'TUNNEL_TOKEN="%s"\n' "$value" >"$envfile.part") || { value=""; return 1; }
+  value=""
+  chmod 0600 "$envfile.part" && mv "$envfile.part" "$envfile"
+}
+cloudflared_load_token
+
+##### Start
+systemctl daemon-reload
+systemctl start cloudflared.service
+
+##### SSMParameters
+/example/estate/tunnel-token
