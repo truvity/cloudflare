@@ -202,7 +202,7 @@ func newAccount(ctx *pulumi.Context, logger *slog.Logger, args Args, a Account) 
 // library's Args: pure translation, no resources. For a tunnel whose hosts
 // lie in several zones (Tunnel.Zones), use TunnelArgsInZones.
 func TunnelArgs(args Args, accountID, zoneID string, t Tunnel) tunnel.Args {
-	return tunnelArgs(args, accountID, &tunnel.DNS{ZoneID: zoneID, Names: t.Hosts}, t)
+	return tunnelArgs(args, accountID, &tunnel.DNS{ZoneID: zoneID, Names: t.DNSNames()}, t)
 }
 
 // TunnelArgsInZones maps one tunnel onto the library's Args, each host's DNS
@@ -222,7 +222,7 @@ func TunnelArgsInZones(args Args, accountID string, zoneIDs map[string]string, t
 		return TunnelArgs(args, accountID, zoneID, t), nil
 	}
 
-	dns := &tunnel.DNS{Names: t.Hosts}
+	dns := &tunnel.DNS{Names: t.DNSNames()}
 
 	for _, name := range zones {
 		zoneID, ok := zoneIDs[name]
@@ -300,6 +300,12 @@ func tunnelArgs(args Args, accountID string, dns *tunnel.DNS, t Tunnel) tunnel.A
 			OriginServerName: host,
 			CAPool:           caPool,
 		})
+	}
+
+	// Every host's record written elsewhere (Tunnel.DNSElsewhere): the
+	// library takes no DNS block with no names.
+	if dns != nil && len(dns.Names) == 0 {
+		dns = nil
 	}
 
 	// No certificate packs: the zone's Total TLS issues a certificate for
