@@ -93,7 +93,7 @@
 // `account.R2BucketParentPolicies(cfg.Jurisdiction, cfg.Bucket)` — the
 // same permission group and the same resource key Config.Token has always
 // used — then call New with Token.Enabled false. See
-// docs/layout.md#recommended-layout for why: a bucket's own admin token
+// docs/cloudflare/layout.md#recommended-layout for why: a bucket's own admin token
 // (`account.R2AdminPolicies`, account-wide) and a consumer's object-level
 // token are two different blast radii and two different rotation
 // schedules, and bundling the second into the component that creates the
@@ -237,11 +237,11 @@ type (
 		// false. This keeps a bucket's admin credential (account.
 		// R2AdminPolicies, scoped to the whole account) and its consumers'
 		// object-level credentials on separate tokens with separate
-		// rotation, the shape docs/layout.md#recommended-layout
+		// rotation, the shape docs/cloudflare/layout.md#recommended-layout
 		// describes, rather than bundling one bucket-scoped token into the
 		// same component that creates the bucket. Left in place, not
 		// removed: removing a field is a major version
-		// (docs/reference.md#child-names-are-a-contract's own rule for
+		// (docs/cloudflare/reference.md#child-names-are-a-contract's own rule for
 		// child names applies just as much to a Config field a caller's
 		// YAML already sets), and Token keeps working exactly as before.
 		Token TokenConfig `json:"token" yaml:"token"`

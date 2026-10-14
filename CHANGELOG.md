@@ -7,6 +7,22 @@ together at every version.
 
 ## Unreleased
 
+## v3.0.0
+
+**Breaking: `truvity/cloudflare` becomes `truvity/edge` and absorbs `truvity/gateway`.** One repository, one Go module and one version for everything: the Cloudflare half (Pulumi Go packages and the `cloudflared` chart) and the Envoy half (the `gateway-fleet`, `gateway-groups`, `gateway-policies`, `gateway-projects` and `gateway-routes` charts and the `catalog` package). The full history of `truvity/gateway` is imported (each imported commit carries an `Origin: truvity/gateway@<sha>` trailer); its tags are not, and its changelog up to v1.19.0 is [docs/gateway/CHANGELOG-history.md](docs/gateway/CHANGELOG-history.md). The headings below this one are the former `truvity/cloudflare` releases.
+
+- **Breaking: the Go module is `github.com/truvity/edge/v3`, and `pkg/` is gone.** Import paths change, nothing else in the Go API does:
+
+  | Before | After |
+  |---|---|
+  | `github.com/truvity/cloudflare/v2/pkg/<name>` | `github.com/truvity/edge/v3/cloudflare/<name>` |
+  | `github.com/truvity/gateway/catalog` | `github.com/truvity/edge/v3/catalog` |
+
+  `<name>` is one of `account`, `cfnames`, `edge`, `edgespec`, `presettoken`, `prototypes`, `r2`, `tokensplit`, `tunnel`, `zone`, `zonespec`. Run `go get github.com/truvity/edge/v3@v3.0.0`, rewrite the imports, `go mod tidy`. GitHub redirects the old repository name, but the Go proxy serves the old module path only at the versions already published.
+- **Chart versions jump to 3.0.0 with identical content.** Every chart is published at v3.0.0 under its existing OCI name (`oci://ghcr.io/truvity/charts/<chart>`); the rendered output of each chart is byte-identical to the last release of its former repository (`cloudflared` v2.22.0, `gateway-*` v1.19.0). Chart `home` and `sources` now point at `https://github.com/truvity/edge`. A consumer changes the pinned version and nothing else, and its zero-diff gate stays empty.
+- **One release, six charts.** A tag publishes `cloudflared`, `gateway-fleet`, `gateway-groups`, `gateway-policies`, `gateway-projects` and `gateway-routes` together, and the same tag is the Go module's version.
+- **Documentation is split by half:** `docs/cloudflare/` and `docs/gateway/`, with an index in `docs/README.md`. The repository's CI, Justfile, release and leak-canary configuration are the former `truvity/cloudflare` ones, now covering both halves; `catalog/` is linted by golangci-lint, which `truvity/gateway` did not run.
+
 ## v2.22.0
 
 - **`pkg/presettoken` (new): the client of a sluis Cloudflare preset, extracted from an estate's Pulumi code and estate-neutral.** `presettoken.Token(ctx, Config, Request)` (or `Source.Token`, which takes test seams) returns a `Credential` for one preset: an API token, or an R2 access-key pair when `Request.R2`. It execs `sluisctl cloudflare token|r2 <preset> --lifetime ... --no-cache --issuer <url>`, refuses a `sluisctl` that does not resolve under one of `Config.BinaryPrefixes` or is older than `Config.SluisctlMin`, strips every inherited `SLUISCTL_*` and `OP_*` (except `OP_SESSION_*`), proxy and CA-override variable (the issuer therefore travels as `--issuer`, never as `SLUISCTL_ISSUER`), caps every stderr and timeout, refuses an answer that outlives the lifetime asked or expires within `Config.MinRemaining`, and verifies a new API token against `api.cloudflare.com` (fixed host, system roots, no proxy, no redirect) before handing it out; an R2 pair is left to settle. With `Config.BreakGlass` configured and its variable set to `1`, the credential is minted from the account root instead (read from 1Password into memory, never printed) as a child with `Request.Policies`, for an hour at most, and verified as that child. Config is validated before anything runs: binary prefixes must be clean, specific directories (expected `/nix/store`), the lifetime is capped at `MaxLifetime` (1h), the break-glass variable name must contain `BREAKGLASS`, and account ids and preset names are pattern-checked. Nothing defaults to an estate: the issuer, the version floor, the binary prefixes, the break-glass variable, 1Password account, vault, item and field, the child name prefix, the account id and the policies are all inputs. Additive.

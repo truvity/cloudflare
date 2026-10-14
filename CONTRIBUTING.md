@@ -18,7 +18,7 @@ cannot be edited after the push.
 `just check` is the gate and needs no credentials and no cluster. It runs:
 
 - `build` compiles the module
-- `lint` lints the charts, proves every refusal fixture fails, and runs golangci-lint and govulncheck
+- `lint` lints the charts (and checks that `gateway-projects` is in step with `gateway-groups` and `gateway-policies`), proves every refusal fixture fails, and runs golangci-lint and govulncheck
 - `test` runs the Go tests and the golden renders
 - `leak-canary`
 

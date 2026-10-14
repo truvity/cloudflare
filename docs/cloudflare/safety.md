@@ -38,7 +38,7 @@ creates nothing, not even the component. A caller that unmarshals its own
 YAML into the `Args` types can call `Validate()` itself and fail before a
 Pulumi run. Each rule is covered by the package's tests.
 
-### pkg/account
+### cloudflare/account
 
 | Refusal | What it prevents |
 | --- | --- |
@@ -56,7 +56,7 @@ Pulumi run. Each rule is covered by the package's tests.
 | `"Account API Tokens Read"` or `"Account API Tokens Write"` named in any `PermissionGroups` | a child token that could itself create, read or manage other tokens — see [Child tokens never hold Account API Tokens](#child-tokens-never-hold-account-api-tokens) |
 | a nil, or otherwise unrecognized, `Scope` | a policy with no resource to be scoped to. `ChildTokenScope`'s own methods are unexported, so only `WholeAccountScope`, `ZoneScope` and `R2BucketScope` — the types this package has reviewed — can ever implement it from outside the package; a nil interface is therefore the only "unknown" scope reachable at all |
 | a `ZoneScope.ZoneID` that is not a 32-character lowercase hex string | a zone id the API would refuse, or a resource key that matches no zone at all |
-| an `R2BucketScope.Bucket`/`Jurisdiction` outside pkg/r2's own bucket-naming and jurisdiction rules | the same "a bucket name the API would refuse" refusal pkg/r2's own `Config.Bucket` has always made, now made identically wherever a bucket is named as a scope |
+| an `R2BucketScope.Bucket`/`Jurisdiction` outside cloudflare/r2's own bucket-naming and jurisdiction rules | the same "a bucket name the API would refuse" refusal cloudflare/r2's own `Config.Bucket` has always made, now made identically wherever a bucket is named as a scope |
 | `ExpiresOn` not RFC3339, or not in the future | a token that is already expired, or a value the API rejects |
 | `Rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
 | an unknown permission group name | `NewChildToken` refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
@@ -81,7 +81,7 @@ genuinely needs to manage tokens should mint that token as the estate's
 root token, outside this package, not ask `NewChildToken` to make an
 exception.
 
-### pkg/zone
+### cloudflare/zone
 
 | Refusal | What it prevents |
 | --- | --- |
@@ -110,7 +110,7 @@ exception.
 | a `cache.hosts` wildcard that is not one leading label (`app.*.example`, `*.`) | a wildcard Cloudflare's set literal cannot express, silently matching nothing |
 | a `cache.hosts` entry listed twice | a second rule term for a host already covered, which reads as two policies for one name |
 
-### pkg/tunnel
+### cloudflare/tunnel
 
 | Refusal | What it prevents |
 | --- | --- |
@@ -161,7 +161,7 @@ An exact rule never shadows a wildcard, and sibling wildcards
 (`*.a.example.com`, `*.b.example.com`) never shadow each other, so neither
 is refused.
 
-### pkg/r2
+### cloudflare/r2
 
 The parent token is account-owned (`cloudflare.AccountToken`,
 `/accounts/{account_id}/tokens`), not a user token: it is not tied to a
@@ -169,7 +169,7 @@ person who might leave, and its permission group is looked up through the
 **account-scoped** `getAccountApiTokenPermissionGroupsList` data source —
 never the global, user-token-scoped list, which would look up the right
 name in the wrong catalog. Since v2.4.0 the token itself is minted by
-`account.NewChildToken` (see [pkg/account](#pkgaccount)); the rows below
+`account.NewChildToken` (see [cloudflare/account](#cloudflareaccount)); the rows below
 that are genuinely `account.ChildTokenConfig`'s own refusals (jurisdiction,
 `expiresOn`, `rotation`) are enforced twice — once by `Config.Validate`
 below, before anything is registered, and again inside `NewChildToken` —
@@ -186,7 +186,7 @@ so they can never drift apart.
 | `token.rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
 | an unknown `token.permissionGroupName` (or the default name, if Cloudflare has renamed it) | New refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
 
-### pkg/presettoken
+### cloudflare/presettoken
 
 | Refusal | What it prevents |
 | --- | --- |
@@ -207,7 +207,7 @@ so they can never drift apart.
 | the seams of `Source` (`Run`, `LookPath`, `Now`, `Stderr`) | are for tests only; a path any `LookPath` returns is still resolved through symlinks and held to `BinaryPrefixes` |
 | any error text | carries an exit code and at most 512 bytes of stderr, never a credential |
 
-### pkg/prototypes
+### cloudflare/prototypes
 
 | Refusal | What it prevents |
 | --- | --- |
@@ -221,7 +221,7 @@ Prototypes are protected: their ids are in the sluis configuration, and a replac
 
 ### Rotation is a REPLACE, not an update
 
-`Rotation` (`ChildTokenConfig.Rotation`; `pkg/r2`'s own `TokenConfig.
+`Rotation` (`ChildTokenConfig.Rotation`; `cloudflare/r2`'s own `TokenConfig.
 Rotation` is the same field, one level up) is not a Cloudflare field. It
 is embedded in the account-owned token's Cloudflare-visible `Name` — a
 real, mutable field: Cloudflare's account-token update endpoint, like its
@@ -242,14 +242,14 @@ than assuming it. Nothing else changes `Name`, so nothing else triggers a
 rotation by accident. The value of `Rotation` itself has no meaning here
 beyond "different from before" — a date, a counter, or a reason all work
 equally well as the estate's own audit trail for why a rotation happened.
-`pkg/r2` (since v2.2.0) and any other caller of `NewChildToken` get this
+`cloudflare/r2` (since v2.2.0) and any other caller of `NewChildToken` get this
 for free — it is `NewChildToken` that sets `ReplaceOnChanges`, never the
 caller.
 
 ## Defaults chosen because the other one failed
 
 **Zone settings are opt-in, field by field.** An unset field is a setting
-the estate does not manage, and `pkg/tunnel` touches no zone setting at
+the estate does not manage, and `cloudflare/tunnel` touches no zone setting at
 all. Plenty of Cloudflare plans have no zone-level features; an estate
 must not acquire a setting, or a failed apply on a plan without it, by
 upgrading a library.
@@ -323,12 +323,12 @@ without that egress leaves every replica unable to connect.
 A child RESOURCE registered with `pulumi.Parent(comp)` picks up `comp`'s
 own provider automatically if it names none of its own — that is the
 whole reason `Account.Use()` in `opts` is enough for every bucket, token,
-tunnel or DNS record `pkg/r2` and `pkg/tunnel` register. A plain data-
+tunnel or DNS record `cloudflare/r2` and `cloudflare/tunnel` register. A plain data-
 source lookup (`ctx.Invoke`, or a generated `Lookup*`/`Get*` call) is
 different: with no explicit `pulumi.Provider(...)` of its own, it falls
 back to the caller's DEFAULT Cloudflare provider, `Parent` or no `Parent`.
 
-`pkg/r2` shipped exactly this gap in v2.2.0: `lookupPermissionGroupID`
+`cloudflare/r2` shipped exactly this gap in v2.2.0: `lookupPermissionGroupID`
 called `cloudflare.LookupAccountApiTokenPermissionGroupsList` with no
 invoke option at all. Every estate that keeps the default Cloudflare
 provider enabled never saw it — the invoke fell back to a provider that
@@ -339,7 +339,7 @@ preview the moment `Token.Enabled` was turned on: `Default provider for
 'cloudflare' disabled ... must use an explicit provider`, with no
 resource yet touched.
 
-Fixed in v2.3.0: `pkg/r2`'s permission-group lookup and `pkg/tunnel`'s
+Fixed in v2.3.0: `cloudflare/r2`'s permission-group lookup and `cloudflare/tunnel`'s
 token lookup now both thread the SAME explicit provider their sibling
 resources use — via `account.InvokeOptionsFromResourceOptions(opts...)`
 — into the invoke as well. A caller who already passes `acct.Use()` needs
@@ -352,7 +352,7 @@ structurally for its own permission-group lookup: it takes `acct
 *Account` as a required argument, not just an `opts` list a caller might
 forget to populate, and binds `acct.Provider` onto the lookup invoke
 itself — there is no `opts`-shaped way to call `NewChildToken` and get the
-v2.2.0 gap back. `pkg/r2` rebuilds the `*Account` its own `New` never
+v2.2.0 gap back. `cloudflare/r2` rebuilds the `*Account` its own `New` never
 received directly (its own public signature still takes `AccountID` and
 `opts`, unchanged) from `opts`' provider, once, right where the old
 `InvokeOptionsFromResourceOptions` call used to sit.

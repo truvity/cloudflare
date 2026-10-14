@@ -65,6 +65,6 @@ Envoy matches the **most specific** path prefix, so `/app/assets` wins over
 `app`'s `/` without ordering tricks: the rules can be read in any order and
 mean the same thing.
 
-- every input: [../../docs/reference.md](../../docs/reference.md#gateway-routes)
-- every refusal and the traps: [../../docs/safety.md](../../docs/safety.md#gateway-routes)
-- why the split lives in one object: [../../docs/doctrine.md](../../docs/doctrine.md)
+- every input: [../../docs/gateway/reference.md](../../docs/gateway/reference.md#gateway-routes)
+- every refusal and the traps: [../../docs/gateway/safety.md](../../docs/gateway/safety.md#gateway-routes)
+- why the split lives in one object: [../../docs/gateway/doctrine.md](../../docs/gateway/doctrine.md)

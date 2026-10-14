@@ -7,11 +7,11 @@ cross accounts. An estate whose domains live in more than one account
 therefore cannot treat "which account" as a global, as if one provider
 arriving ambiently were enough. So:
 
-- **`pkg/account` binds one token to one account** and hands back
+- **`cloudflare/account` binds one token to one account** and hands back
   `Use()`, the resource option every zone, tunnel and record in that
   account is created with. A caller never has to remember which of
   several providers a resource belongs to; it passes the account's.
-- **A zone belongs to exactly one account,** and `pkg/zone` is created
+- **A zone belongs to exactly one account,** and `cloudflare/zone` is created
   with that account's `Use()`. Several zones of one account share it.
 - **One tunnel, and one cloudflared, per cluster and account.** The
   tunnel is in one account, so a cluster serving two accounts runs two.
@@ -48,27 +48,27 @@ this repository.
 
 ## Only what an estate decides
 
-`pkg/zone` manages three settings: origin SSL mode, minimum TLS version
+`cloudflare/zone` manages three settings: origin SSL mode, minimum TLS version
 and Total TLS. A zone has scores of settings, and the rest are defaults
 nobody should manage from a deployment tool; these three change what
 traffic is accepted, so they belong in the same review as the routes that
 depend on them. Every one is opt-in, and an unset field is a setting the
 estate does not manage.
 
-**Total TLS is the reason `pkg/zone` exists.** Without it, every proxied
+**Total TLS is the reason `cloudflare/zone` exists.** Without it, every proxied
 hostname deeper than one label under the apex needs its own Advanced
 Certificate pack, so adding a hostname means creating a certificate
 resource and waiting for validation. With it, the zone issues
 per-hostname certificates itself and adding a hostname is a DNS record and
 nothing else.
 
-`pkg/tunnel` touches no zone setting. Its certificate packs are an opt-in
+`cloudflare/tunnel` touches no zone setting. Its certificate packs are an opt-in
 block for zones that manage certificates per host instead.
 
 ## Remotely managed tunnels
 
 The ingress rules are the tunnel's configuration in Cloudflare, written by
-`pkg/tunnel`; cloudflared runs with nothing but the token. The chart
+`cloudflare/tunnel`; cloudflared runs with nothing but the token. The chart
 therefore carries no ingress, no config file and no per-host value, and a
 routing change is a Pulumi change that never restarts a pod.
 
