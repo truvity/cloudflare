@@ -332,6 +332,8 @@ With `BreakGlass.Env` set to `1` the credential is not asked of sluis. The root 
 
 See [docs/cloudflare/safety.md](safety.md#cloudflarepresettoken).
 
+`presettoken.Estate` holds what an estate decides once for all of its accounts (`SluisctlMin`, `BinaryPrefixes`, `Lifetime`, `GrantHint`, `Runbook` and `BreakGlass EstateBreakGlass{Env, ItemEnv, Account, Vault, Field, ChildPrefix, ItemHint}`). `Estate.Config(account, item, issuer, getenv)` is the `Config` of one account: the account's 1Password item (or the `ItemEnv` variable over it) completes the break-glass block; with no item, break-glass off is the zero block and break-glass on is an error naming what to set. `Estate.Credential(ctx, src, account, req, item, issuer, getenv)` is `Source.Token` for it, and refuses an API-token preset that comes back without a token. `presets.Preset.Request()` is the `Request` of a preset. See [presets.md](presets.md).
+
 ## cloudflare/prototypes
 
 `prototypes.Deploy(ctx, Args)` declares the disabled prototype tokens the presets are cloned from.
@@ -345,6 +347,8 @@ See [docs/cloudflare/safety.md](safety.md#cloudflarepresettoken).
 | `Moved`, `MovedKey` | Prototypes arriving from another stack's state. The gate is conditional: only while `Moved` is non-empty, nothing is declared until the stack config `<project>:stateMoved` is `true` |
 
 Each token is the Pulumi resource `prototype-<name>`, `status: disabled`, protected. The stack outputs `sluisPrototypeIds` (name to id) and `sluisPrototypeStatus_<name>`. The estate keeps its own wrapper that reads the root from its vault into `CLOUDFLARE_API_TOKEN` for one `pulumi` command, and its own check that asks Cloudflare for each prototype's status.
+
+`prototypes.DeployTable(ctx, Table)` is `Deploy` over the table of [cloudflare/presets](presets.md): `Table{Account, Presets, Estate, Item, Getenv, NamePrefix, Moved, MovedKey, Options}` declares the prototype of each preset of `Account`, after refusing a stack whose account root item the estate does not name. `prototypes.FromPresets(table, account)` is the conversion alone. `Args.Options` (and `Table.Options`) returns extra resource options per preset, appended after the protection: an alias, for a prototype declared under another URN.
 
 ## cloudflare/zone
 

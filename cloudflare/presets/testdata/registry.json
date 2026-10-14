@@ -1,0 +1,34 @@
+{
+  "accounts": [
+    {
+      "name": "acme",
+      "id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
+    },
+    {
+      "name": "globex",
+      "id": "1f2e3d4c5b6a79880716253443526170"
+    }
+  ],
+  "zones": [
+    {
+      "name": "example.com",
+      "id": "3b5d7f9102468ace13579bdf02468ace",
+      "account": "acme"
+    },
+    {
+      "name": "example.net",
+      "id": "4c6e80a2b4d6f8091a2b3c4d5e6f7081",
+      "account": "acme"
+    },
+    {
+      "name": "example.org",
+      "id": "5d7f91a3c5e7092b1c3d5f708192a3b4",
+      "account": "acme"
+    },
+    {
+      "name": "example.dev",
+      "id": "6e80a2b4d6f8112a3c4e60718293a4b5",
+      "account": "globex"
+    }
+  ]
+}

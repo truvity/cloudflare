@@ -1,0 +1,216 @@
+[
+  {
+    "name": "globex-edge",
+    "account": "globex",
+    "kind": "edge",
+    "description": "Pulumi: tunnels, DNS, SSL, zone settings and cache of the globex account; no R2",
+    "lifetime": "1h0m0s",
+    "store": "none",
+    "grants": [
+      "example:deploy"
+    ],
+    "policies": [
+      {
+        "groups": [
+          "Cloudflare Tunnel Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.1f2e3d4c5b6a79880716253443526170": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write",
+          "SSL and Certificates Write",
+          "Zone Settings Write",
+          "Cache Settings Write",
+          "Config Settings Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.6e80a2b4d6f8112a3c4e60718293a4b5": "*"
+        }
+      }
+    ]
+  },
+  {
+    "name": "globex-status",
+    "account": "globex",
+    "kind": "status",
+    "description": "Pulumi: tunnel and DNS of the globex account's status service",
+    "lifetime": "1h0m0s",
+    "store": "none",
+    "grants": [
+      "example:deploy"
+    ],
+    "policies": [
+      {
+        "groups": [
+          "Cloudflare Tunnel Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.1f2e3d4c5b6a79880716253443526170": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.6e80a2b4d6f8112a3c4e60718293a4b5": "*"
+        }
+      }
+    ]
+  },
+  {
+    "name": "globex-r2-admin",
+    "account": "globex",
+    "kind": "r2-admin",
+    "description": "Pulumi: R2 buckets of the globex account",
+    "lifetime": "1h0m0s",
+    "store": "none",
+    "grants": [
+      "example:deploy"
+    ],
+    "policies": [
+      {
+        "groups": [
+          "Workers R2 Storage Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.1f2e3d4c5b6a79880716253443526170": "*"
+        }
+      }
+    ]
+  },
+  {
+    "name": "acme-edge",
+    "account": "acme",
+    "kind": "edge",
+    "description": "Pulumi: tunnels, DNS, SSL, zone settings and cache of the acme account; no R2",
+    "lifetime": "1h0m0s",
+    "store": "none",
+    "grants": [
+      "example:deploy"
+    ],
+    "policies": [
+      {
+        "groups": [
+          "Cloudflare Tunnel Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.0a1b2c3d4e5f60718293a4b5c6d7e8f9": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write",
+          "SSL and Certificates Write",
+          "Zone Settings Write",
+          "Cache Settings Write",
+          "Config Settings Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.3b5d7f9102468ace13579bdf02468ace": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write",
+          "SSL and Certificates Write",
+          "Zone Settings Write",
+          "Cache Settings Write",
+          "Config Settings Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.4c6e80a2b4d6f8091a2b3c4d5e6f7081": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write",
+          "SSL and Certificates Write",
+          "Zone Settings Write",
+          "Cache Settings Write",
+          "Config Settings Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.5d7f91a3c5e7092b1c3d5f708192a3b4": "*"
+        }
+      },
+      {
+        "groups": [
+          "Zone WAF Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.3b5d7f9102468ace13579bdf02468ace": "*"
+        }
+      }
+    ]
+  },
+  {
+    "name": "acme-status",
+    "account": "acme",
+    "kind": "status",
+    "description": "Pulumi: tunnel and DNS of the acme account's status service",
+    "lifetime": "1h0m0s",
+    "store": "none",
+    "grants": [
+      "example:deploy"
+    ],
+    "policies": [
+      {
+        "groups": [
+          "Cloudflare Tunnel Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.0a1b2c3d4e5f60718293a4b5c6d7e8f9": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.3b5d7f9102468ace13579bdf02468ace": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.4c6e80a2b4d6f8091a2b3c4d5e6f7081": "*"
+        }
+      },
+      {
+        "groups": [
+          "DNS Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.zone.5d7f91a3c5e7092b1c3d5f708192a3b4": "*"
+        }
+      }
+    ]
+  },
+  {
+    "name": "acme-r2-admin",
+    "account": "acme",
+    "kind": "r2-admin",
+    "description": "Pulumi: R2 buckets of the acme account",
+    "lifetime": "1h0m0s",
+    "store": "none",
+    "grants": [
+      "example:deploy"
+    ],
+    "policies": [
+      {
+        "groups": [
+          "Workers R2 Storage Write"
+        ],
+        "resources": {
+          "com.cloudflare.api.account.0a1b2c3d4e5f60718293a4b5c6d7e8f9": "*"
+        }
+      }
+    ]
+  }
+]

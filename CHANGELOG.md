@@ -5,6 +5,18 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/presets` (new): the sluis Cloudflare presets, built from plain rows.** `Row{Name, Kind, Account, Zones, WAFZones, CloudConnectorZones, DNSOnlyZones, Bucket, Jurisdiction, Grants, Lifetime, Rotation, Store}` and a `Registry{Accounts, Zones}` give `Build`, `BuildReady` (leaves out an account with a pending zone), `ForAccount`, `Named`, `AccountOf` and `StandardRows` (`<account>-edge`, `-status`, `-r2-admin`); the kind (`edge`, `status`, `dns`, `insights` (read only: Account Security Center Insights, and Bot Management Read, Analytics Read and Zone WAF Read per zone), `r2-admin`, `bucket-rw`, `bucket-write`) decides the permission groups, their scopes and their order. `Validate` reports every problem; `Preset.Documents()` renders the policies as Cloudflare receives them and `Preset.Request()` is the `presettoken.Request`. No file, no environment, no resource. A golden test over a synthetic registry and six rows pins every group, scope and order a kind produces. See [docs/cloudflare/presets.md](docs/cloudflare/presets.md).
+- **`presettoken.Estate`: what an estate decides once, and one account's `Config` from it.** `Estate{SluisctlMin, BinaryPrefixes, Lifetime, GrantHint, Runbook, BreakGlass EstateBreakGlass}`, `Estate.Config(account, item, issuer, getenv)` (the account's root item, or the `ItemEnv` variable over it, completes the break-glass block; none known: off is the zero block, on is an error naming what to set) and `Estate.Credential(...)`, the credential of one preset's `Request`. They replace an estate's own `TokenConfig` and `ProviderToken`.
+- **`prototypes.DeployTable`, `prototypes.FromPresets` and `Args.Options`.** `DeployTable(ctx, Table)` is the prototypes stack of one account over the presets table: it refuses an account whose root item the estate does not name, then calls `Deploy`, whose Pulumi names (`prototype-<preset>`), token names and policy order are unchanged. `Args.Options` (and `Table.Options`) adds resource options per preset, such as an alias. Additive: no exported symbol is removed or changed.
+
+### Documentation
+
+- `PublicPathsCache` in [docs/cloudflare/rules.md](docs/cloudflare/rules.md): when a signing key in a cached key set is removed after a compromise, purge those paths, because a removed key is otherwise served until the edge TTL expires.
+
 ## v3.2.0
 
 ### Added

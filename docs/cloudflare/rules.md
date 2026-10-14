@@ -84,6 +84,8 @@ public-paths-access.example.com]` and the bypass is
 | `ManagedWAF(m)` | firewall managed | one `execute` rule |
 | `SSLMode(host, mode, ref)` | config settings | one `set_config` rule |
 
+`PublicPathsCache` caches a key set (a JWKS or similar public document) at the edge for the TTL it is given. When a signing key is removed after a compromise, purge those paths at Cloudflare as part of the removal: a removed key is otherwise still served from the edge cache until the edge TTL expires, and a verifier that fetches the set keeps trusting it for that long.
+
 There is no builder for Authenticated Origin Pulls: it is a zone or hostname
 certificate setting, not a ruleset rule. `zone.Args.AuthenticatedOriginPulls`
 sets it (see below).
