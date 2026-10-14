@@ -2,6 +2,8 @@ package rules
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/truvity/edge/v3/cloudflare/zonespec"
 )
@@ -29,11 +31,25 @@ func RateLimits(plan string, rows []zonespec.RateLimitRule) (Contribution, error
 	}
 
 	c := Contribution{Source: "rate-limits", Phase: PhaseRateLimit, Order: OrderHostsCache}
+	byRef := map[string]string{}
 
 	for i := range rows {
 		r := &rows[i]
+
+		slug := refSlug(r.Name)
+		if slug == "" {
+			return Contribution{}, fmt.Errorf("rules: rate limit %q has no letter or digit to name its rule by", r.Name)
+		}
+
+		ref := "ratelimit-" + slug
+		if prev, dup := byRef[ref]; dup {
+			return Contribution{}, fmt.Errorf("rules: rate limits %q and %q both make the rule ref %q: rename one", prev, r.Name, ref)
+		}
+
+		byRef[ref] = r.Name
+
 		c.Rules = append(c.Rules, Rule{
-			Ref:         "ratelimit-" + r.Name,
+			Ref:         ref,
 			Description: r.Name,
 			Action:      r.Action,
 			Expression:  r.MatchExpression(),
@@ -48,6 +64,14 @@ func RateLimits(plan string, rows []zonespec.RateLimitRule) (Contribution, error
 	}
 
 	return c, nil
+}
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+// refSlug is a name as a rule ref fragment: lowercase, every run of other
+// characters one "-", trimmed of "-".
+func refSlug(name string) string {
+	return strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(name), "-"), "-")
 }
 
 // TrustedClients is the zone's one skip rule for known client address ranges
