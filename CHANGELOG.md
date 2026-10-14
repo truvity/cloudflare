@@ -5,6 +5,13 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/securitytxt` (new) and `cmd/edge-securitytxt`: a zone's security.txt, planned and applied.** `Targets(cfg, zone, account)` takes the `security_txt` blocks of a `cloudflare/config`, `Client.Plan` reads each zone's live document through `GET /zones/{zone_id}/security-center/securitytxt` and returns the difference, `Client.Apply` writes (`PUT`) the zones that differ and nothing else. RFC 9116 checks: `expires` required, in the future and less than a year ahead, a warning within 60 days. The command is a dry run unless `-apply`; the token comes from `CLOUDFLARE_API_TOKEN` (or `-token-env`) or `-token-cmd`, and is never printed. Needs the zone settings of the `edge` preset kind. See [docs/cloudflare/securitytxt.md](docs/cloudflare/securitytxt.md).
+- **`cloudflare/insights` (new) and `cmd/edge-insights`: read-only checks for a WAF rollout.** `Client.List` lists Security Center insights of an account or a zone (filters: severity, type, class, dismissed); `Client.Events` sums Security Events per host, rule and action over a window from the GraphQL `firewallEventsAdaptiveGroups` dataset, so false positives show per host before the managed WAF widens. JSON or table output. Needs the `insights` preset kind. See [docs/cloudflare/insights.md](docs/cloudflare/insights.md).
+
 ## v3.3.0
 
 ### Added
