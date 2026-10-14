@@ -5,7 +5,7 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
-## Unreleased
+## v3.0.1
 
 - **`cloudflare/rules` (new): rule contributions and the one-ruleset-per-phase assembler.** A zone holds one ruleset per phase, so features that each want rules in a phase cannot each create it. `rules.Contribution` states the rules one source wants (`Source`, `Phase`, `Order`, `Rules`, and in the cache phase a `Claim`), and `rules.Assemble` merges them into one ordered `[]Rule` per `Phase`, refusing conflicting writers (a `Ref` written twice in a phase, a `Claim` outside the cache phase). In the cache phase it adds the catch-all bypass at Order 500, whose expression folds over the claims (`true`, `not <a>`, `(not <a>) and not <b>`), the same string a zone's library bypass narrowed by one public-documents rule has today. Builders: `CacheHosts`, `PublicPathsCache` (the sluis edge package's `PublicCacheRule`, moved unchanged, returning a `CacheRule` with the same fields), `StaticSiteCache`, `RateLimits`, `TrustedClients`, `ManagedWAF`, `SSLMode`. The package links the standard library and `cloudflare/zonespec` only. Additive: no existing package changes. See [docs/cloudflare/rules.md](docs/cloudflare/rules.md).
 
