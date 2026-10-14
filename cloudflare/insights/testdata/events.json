@@ -1,0 +1,5 @@
+{"data":{"viewer":{"zones":[{"firewallEventsAdaptiveGroups":[
+{"count":100,"dimensions":{"clientRequestHTTPHost":"api.example.com","ruleId":"100010","description":"Example managed rule","source":"managed","action":"block"}},
+{"count":20,"dimensions":{"clientRequestHTTPHost":"api.example.com","ruleId":"100011","description":"Example managed rule 2","source":"managed","action":"managed_challenge"}},
+{"count":20,"dimensions":{"clientRequestHTTPHost":"api.example.com","ruleId":"100012","description":"Log only rule","source":"managed","action":"log"}},
+{"count":7,"dimensions":{"clientRequestHTTPHost":"www.example.com","ruleId":"100010","description":"Example managed rule","source":"managed","action":"log"}}]}]}},"errors":null}

@@ -1,0 +1,201 @@
+// Command edge-insights reads, and only reads, what shows a WAF rollout is
+// safe and Security Center warnings are clearing.
+//
+//	edge-insights list   -account ID | -zone ID [-severity S] [-type T] [-dismissed no|yes|any]
+//	edge-insights events -zone ID [-since 24h | -from T -to T] [-host H] [-rule R] [-action A] [-source S]
+//
+// list is the Security Center insights of an account or a zone. events is the
+// Security Events (firewall events) of a zone summed per host, rule and
+// action, from the GraphQL Analytics API. Both print a table, or JSON with
+// -format json.
+//
+// The token comes from the environment variable named by -token-env
+// (CLOUDFLARE_API_TOKEN by default) or from the output of -token-cmd. The
+// preset kind `insights` is enough.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/truvity/edge/v3/cloudflare/insights"
+	"github.com/truvity/edge/v3/cmd/internal/token"
+)
+
+func main() {
+	if err := run(context.Background(), os.Args[1:], os.Stdout, os.Getenv, time.Now(), ""); err != nil {
+		fmt.Fprintln(os.Stderr, "edge-insights:", err)
+		os.Exit(1)
+	}
+}
+
+type list []string
+
+func (l *list) String() string { return strings.Join(*l, ",") }
+
+// Set takes a value or a comma-separated list; the flag may repeat.
+func (l *list) Set(v string) error {
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			*l = append(*l, p)
+		}
+	}
+
+	return nil
+}
+
+func run(ctx context.Context, args []string, out io.Writer, getenv func(string) string, now time.Time, base string) error {
+	if len(args) == 0 || (args[0] != "list" && args[0] != "events") {
+		return errors.New("usage: edge-insights list|events [flags]")
+	}
+
+	cmd := args[0]
+	fs := flag.NewFlagSet("edge-insights "+cmd, flag.ContinueOnError)
+	format := fs.String("format", "table", "table or json")
+	tokenEnv := fs.String("token-env", token.DefaultEnv, "environment variable holding the API token")
+	tokenCmd := fs.String("token-cmd", "", "credential helper: a command (no shell) whose output is the API token")
+	zone := fs.String("zone", "", "zone id")
+	account := fs.String("account", "", "account id (list only)")
+
+	var severity, kinds, classes list
+
+	dismissed := fs.String("dismissed", "no", "list: no, yes or any")
+	fs.Var(&severity, "severity", "list: Low, Moderate, Critical (repeat or comma-separate)")
+	fs.Var(&kinds, "type", "list: issue type (repeat or comma-separate)")
+	fs.Var(&classes, "class", "list: issue class (repeat or comma-separate)")
+
+	since := fs.Duration("since", 24*time.Hour, "events: the window ends now and starts this long ago")
+	from := fs.String("from", "", "events: window start, RFC 3339 (with -to; replaces -since)")
+	to := fs.String("to", "", "events: window end, RFC 3339")
+	host := fs.String("host", "", "events: only this host")
+	rule := fs.String("rule", "", "events: only this rule id")
+	action := fs.String("action", "", "events: only this action")
+	source := fs.String("source", "", "events: only this source")
+	limit := fs.Int("limit", 0, "events: most groups asked for (default and maximum 10000)")
+
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+
+	if *format != "table" && *format != "json" {
+		return fmt.Errorf("-format %q: want table or json", *format)
+	}
+
+	tok, err := token.Resolve(ctx, *tokenEnv, *tokenCmd, getenv)
+	if err != nil {
+		return err
+	}
+
+	c := insights.NewClient(tok)
+	c.API.Base = base
+
+	if cmd == "list" {
+		var d insights.Dismissed
+
+		switch *dismissed {
+		case "no":
+			d = insights.Active
+		case "yes":
+			d = insights.OnlyDismissed
+		case "any":
+			d = insights.AnyState
+		default:
+			return fmt.Errorf("-dismissed %q: want no, yes or any", *dismissed)
+		}
+
+		items, err := c.List(ctx, insights.Scope{AccountID: *account, ZoneID: *zone},
+			insights.Filter{Severity: severity, Type: kinds, Class: classes, Dismissed: d})
+		if err != nil {
+			return err
+		}
+
+		if *format == "json" {
+			return writeJSON(out, items)
+		}
+
+		return listTable(out, items)
+	}
+
+	w := insights.Window{From: now.Add(-*since), To: now}
+
+	if *from != "" || *to != "" {
+		if w.From, err = time.Parse(time.RFC3339, *from); err != nil {
+			return fmt.Errorf("-from %q: want RFC 3339", *from)
+		}
+
+		if w.To, err = time.Parse(time.RFC3339, *to); err != nil {
+			return fmt.Errorf("-to %q: want RFC 3339", *to)
+		}
+	}
+
+	sum, err := c.Events(ctx, insights.EventsQuery{
+		ZoneID: *zone, Window: w, Host: *host, RuleID: *rule, Action: *action, Source: *source, Limit: *limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	if *format == "json" {
+		return writeJSON(out, sum)
+	}
+
+	return eventsTable(out, sum)
+}
+
+func writeJSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+
+	return enc.Encode(v)
+}
+
+func listTable(w io.Writer, items []insights.Insight) error {
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "SEVERITY\tTYPE\tCLASS\tSUBJECT\tDISMISSED\tSINCE")
+
+	for k := range items {
+		i := &items[k]
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%t\t%s\n", i.Severity, i.IssueType, i.IssueClass, i.Subject, i.Dismissed, i.Timestamp)
+	}
+
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	_, err := fmt.Fprintf(w, "%d insight(s)\n", len(items))
+
+	return err
+}
+
+func eventsTable(w io.Writer, s *insights.Summary) error {
+	_, _ = fmt.Fprintf(w, "zone %s, %s to %s\n", s.ZoneID, s.From.Format(time.RFC3339), s.To.Format(time.RFC3339))
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "HOST\tRULE\tSOURCE\tACTION\tCOUNT\tDESCRIPTION")
+
+	for _, h := range s.Hosts {
+		_, _ = fmt.Fprintf(tw, "%s\t\t\t\t%d\t(total; %d blocking or challenged)\n", h.Host, h.Total, h.Blocking)
+
+		for _, r := range h.Rows {
+			_, _ = fmt.Fprintf(tw, "\t%s\t%s\t%s\t%d\t%s\n", r.RuleID, r.Source, r.Action, r.Count, r.Description)
+		}
+	}
+
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	if s.Truncated {
+		_, _ = fmt.Fprintln(w, "note: the row limit was reached; narrow the window or filter, the counts are a lower bound")
+	}
+
+	return nil
+}
