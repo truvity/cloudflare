@@ -15,6 +15,8 @@ import (
 	"net/netip"
 	"sort"
 	"strings"
+
+	"github.com/truvity/edge/v3/cloudflare/rulespec"
 )
 
 // Shortest prefixes a trusted range may have: anything broader is close to
@@ -154,6 +156,33 @@ type (
 		// hosts. Nil leaves the http_request_firewall_managed phase
 		// alone; non-nil owns it.
 		ManagedWAF *ManagedWAF `json:"managedWaf,omitempty" yaml:"managedWaf,omitempty"`
+		// Contributions are further rules the zone's rulesets take, from
+		// the builders in cloudflare/rules (public-paths caching, an SSL
+		// mode for one host, ...). They are assembled together with the
+		// blocks above, one ruleset per phase. Set in code, not read from
+		// configuration.
+		Contributions []rulespec.Contribution `json:"-" yaml:"-"`
+		// AuthenticatedOriginPulls is the zone setting tls_client_auth:
+		// true makes Cloudflare present its shared origin-pull client
+		// certificate to every origin; false turns that off. Nil leaves
+		// the setting alone.
+		AuthenticatedOriginPulls *bool `json:"authenticatedOriginPulls,omitempty" yaml:"authenticatedOriginPulls,omitempty"`
+		// ImportRulesets adopts a phase's existing entry point ruleset by
+		// its id instead of creating it, for a zone whose ruleset was made
+		// by hand. A phase listed here must be one the zone manages. Drop
+		// the entry once the import is applied.
+		ImportRulesets map[rulespec.Phase]string `json:"importRulesets,omitempty" yaml:"importRulesets,omitempty"`
+		// Compat keeps resources that predate this library at their URNs.
+		Compat Compat `json:"compat,omitempty" yaml:"compat,omitempty"`
+	}
+
+	// Compat is what a consumer sets to adopt this library without
+	// replacing resources it already has.
+	Compat struct {
+		// TopLevelAliases aliases the firewall-custom, tls-client-auth and
+		// ssl-mode children to the same name with no parent, the URN a
+		// resource at the stack root has.
+		TopLevelAliases bool `json:"topLevelAliases,omitempty" yaml:"topLevelAliases,omitempty"`
 	}
 
 	// Records is a set of DNS records the estate owns inside one zone.
@@ -346,8 +375,15 @@ func (a *Args) Validate() error {
 		}
 	}
 
+	for phase, id := range a.ImportRulesets {
+		if phase == "" || id == "" || strings.ContainsAny(id, "/ \t\n") {
+			return fmt.Errorf("zone %q: importRulesets[%q] %q must be a phase and a ruleset id", a.ZoneID, phase, id)
+		}
+	}
+
 	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.Managed() &&
-		!a.RateLimits.Managed() && !a.Records.Managed() && a.AlwaysUseHTTPS == nil && a.HSTS == nil && !a.ManagedWAF.Managed() {
+		!a.RateLimits.Managed() && !a.Records.Managed() && a.AlwaysUseHTTPS == nil && a.HSTS == nil && !a.ManagedWAF.Managed() &&
+		a.AuthenticatedOriginPulls == nil && len(a.Contributions) == 0 {
 		return fmt.Errorf("zone %q: nothing to apply — omit the zone instead of declaring one that manages no setting", a.ZoneID)
 	}
 

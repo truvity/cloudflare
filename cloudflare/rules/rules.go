@@ -6,11 +6,34 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/truvity/edge/v3/cloudflare/rulespec"
 )
 
-// Phase is a Cloudflare ruleset phase: a zone holds one entry point ruleset
-// per phase.
-type Phase string
+// The rule shapes live in cloudflare/rulespec, which zonespec can import;
+// they are aliased here, so rules.Rule and rulespec.Rule are one type.
+type (
+	// Phase is rulespec.Phase.
+	Phase = rulespec.Phase
+	// TTL is rulespec.TTL.
+	TTL = rulespec.TTL
+	// CacheParams is rulespec.CacheParams.
+	CacheParams = rulespec.CacheParams
+	// ConfigParams is rulespec.ConfigParams.
+	ConfigParams = rulespec.ConfigParams
+	// SkipParams is rulespec.SkipParams.
+	SkipParams = rulespec.SkipParams
+	// ExecuteParams is rulespec.ExecuteParams.
+	ExecuteParams = rulespec.ExecuteParams
+	// Params is rulespec.Params.
+	Params = rulespec.Params
+	// RateLimit is rulespec.RateLimit.
+	RateLimit = rulespec.RateLimit
+	// Rule is rulespec.Rule.
+	Rule = rulespec.Rule
+	// Contribution is rulespec.Contribution.
+	Contribution = rulespec.Contribution
+)
 
 // The phases this package assembles.
 const (
@@ -59,91 +82,6 @@ const (
 	TTLRespectOrigin   = "respect_origin"
 	TTLBypassByDefault = "bypass_by_default"
 )
-
-// TTL is a cache TTL: a mode and, for the overriding modes, the seconds.
-type TTL struct {
-	Mode string
-	// Default is the TTL in seconds (the API's "default"); 0 where the
-	// mode takes none.
-	Default int
-}
-
-// CacheParams are the action parameters of set_cache_settings.
-type CacheParams struct {
-	// Cache is whether matching responses are cached at all.
-	Cache bool
-	// EdgeTTL and BrowserTTL are unset when nil.
-	EdgeTTL    *TTL
-	BrowserTTL *TTL
-	// RespectStrongETags honours the origin's strong ETag when set.
-	RespectStrongETags bool
-}
-
-// ConfigParams are the action parameters of set_config.
-type ConfigParams struct {
-	// SSL is the SSL mode: off, flexible, full or strict.
-	SSL string
-}
-
-// SkipParams are the action parameters of skip.
-type SkipParams struct {
-	// Ruleset is "current" to skip the rest of the rule's own ruleset.
-	Ruleset  string
-	Phases   []string
-	Products []string
-}
-
-// ExecuteParams are the action parameters of execute.
-type ExecuteParams struct {
-	// ID of the ruleset executed.
-	ID string
-}
-
-// Params are the action parameters of a rule. At most one member is set,
-// the one its Action takes.
-type Params struct {
-	Cache   *CacheParams
-	Config  *ConfigParams
-	Skip    *SkipParams
-	Execute *ExecuteParams
-}
-
-// RateLimit is the rate limiting block of a rule in the http_ratelimit phase.
-type RateLimit struct {
-	Characteristics    []string
-	Period             int
-	Requests           int
-	MitigationTimeout  int
-	CountingExpression string
-}
-
-// Rule is one Cloudflare ruleset rule in provider-neutral terms.
-type Rule struct {
-	// Ref identifies the rule within its phase; unique per phase.
-	Ref         string
-	Description string
-	Action      string
-	Expression  string
-	// Disabled turns the rule off; the zero value is an enabled rule.
-	Disabled  bool
-	Params    Params
-	RateLimit *RateLimit
-	// Logging is whether a match is logged (skip rules).
-	Logging bool
-}
-
-// Contribution is the rules one source wants in one phase.
-type Contribution struct {
-	// Source names the contributor; with Order it fixes the sort order.
-	Source string
-	Phase  Phase
-	// Order is ascending; ties are broken by Source.
-	Order int
-	Rules []Rule
-	// Claim is the parenthesised expression this contribution serves. Only
-	// the cache phase takes one; the bypass rule excludes it.
-	Claim string
-}
 
 // Assemble merges contributions into one ordered rule list per phase. It
 // sorts by (Order, Source), rejects conflicting writers, and in the cache

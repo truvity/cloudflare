@@ -85,4 +85,34 @@ public-paths-access.example.com]` and the bypass is
 | `SSLMode(host, mode, ref)` | config settings | one `set_config` rule |
 
 There is no builder for Authenticated Origin Pulls: it is a zone or hostname
-certificate setting, not a ruleset rule.
+certificate setting, not a ruleset rule. `zone.Args.AuthenticatedOriginPulls`
+sets it (see below).
+
+## Applying contributions: `zone.Args`
+
+`cloudflare/zone` builds its rulesets from contributions. The `cache`,
+`trustedClients`, `managedWaf` and `rateLimits` blocks are expressed as
+contributions internally (`CacheHosts`, `TrustedClients`, `ManagedWAF`,
+`RateLimits`), joined by `Args.Contributions`, and the lot goes through
+`Assemble`: one ruleset per phase. With no extra contributions the registered
+inputs are byte-identical to before (the `edge` and `tunnel` goldens did not
+move).
+
+| Field | Meaning |
+|---|---|
+| `Contributions []rules.Contribution` | further rules, merged with the blocks above (code only, not read from YAML/JSON) |
+| `AuthenticatedOriginPulls *bool` | zone setting `tls_client_auth`, child `tls-client-auth-<name>`; nil leaves it alone |
+| `ImportRulesets map[rules.Phase]string` | adopt the phase's existing entry point ruleset by id (`pulumi.Import("zones/<zone>/<id>")`); the phase must be one the zone manages; drop the entry once applied |
+| `Compat.TopLevelAliases` | add `Alias{NoParent: true}` to `firewall-custom-<name>`, `tls-client-auth-<name>` and `ssl-mode-<name>`, for resources that live at the stack root today |
+
+Child names per phase: cache `cache-rules-<name>`, firewall custom
+`firewall-custom-<name>`, firewall managed `firewall-managed-<name>`, rate
+limit `ratelimit-<name>`, config settings `ssl-mode-<name>`. Rules a
+contribution adds are registered with their `Ref` as the rule's `ref` and
+enabled; the blocks' own rules keep the inputs they always had (no `ref`).
+A zone that declares an SSL-mode contribution owns the whole
+`http_config_settings` phase, like the others.
+
+`Contribution`, `Rule` and their parts are defined in `cloudflare/rulespec`
+(standard library only) so that `zonespec.Args` can carry them; `rules`
+aliases them, so `rules.Contribution` is the same type.

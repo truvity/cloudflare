@@ -25,6 +25,11 @@ func TestNoNonStdlibImports(t *testing.T) {
 			continue
 		}
 
+		// cloudflare/rulespec is this module's own standard-library-only leaf.
+		if line == "github.com/truvity/edge/v3/cloudflare/rulespec" {
+			continue
+		}
+
 		root, _, _ := strings.Cut(line, "/")
 		assert.NotContains(t, root, ".", "cloudflare/zonespec must depend on the standard library only, found %q", line)
 	}

@@ -1,0 +1,106 @@
+{
+  "cloudflare:index/ruleset:Ruleset/cache-rules-example": {
+    "kind": "zone",
+    "name": "default",
+    "phase": "http_request_cache_settings",
+    "rules": [
+      {
+        "action": "set_cache_settings",
+        "actionParameters": {
+          "browserTtl": {
+            "mode": "respect_origin"
+          },
+          "cache": true,
+          "edgeTtl": {
+            "mode": "bypass_by_default"
+          }
+        },
+        "description": "Cacheable hostname: the origin's Cache-Control decides",
+        "expression": "http.host in {\"app.example.com\"}"
+      },
+      {
+        "action": "set_cache_settings",
+        "actionParameters": {
+          "cache": false
+        },
+        "description": "Not a cacheable hostname",
+        "expression": "(not (http.host in {\"app.example.com\"})) and not (http.host eq \"api.example.com\" and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/.well-known/oauth-authorization-server\" \"/.well-known/openid-configuration\" \"/keys\"} and not any(lower(http.request.headers.names[*])[*] eq \"origin\"))"
+      },
+      {
+        "action": "set_cache_settings",
+        "actionParameters": {
+          "browserTtl": {
+            "mode": "respect_origin"
+          },
+          "cache": true,
+          "edgeTtl": {
+            "default": 300,
+            "mode": "override_origin"
+          }
+        },
+        "description": "api.example.com: public documents, 5m0s at the edge, requests without Origin",
+        "enabled": true,
+        "expression": "(http.host eq \"api.example.com\" and http.request.method in {\"GET\" \"HEAD\"} and http.request.uri.path in {\"/.well-known/oauth-authorization-server\" \"/.well-known/openid-configuration\" \"/keys\"} and not any(lower(http.request.headers.names[*])[*] eq \"origin\"))",
+        "ref": "public-paths-api.example.com"
+      }
+    ],
+    "zoneId": "zone-1"
+  },
+  "cloudflare:index/ruleset:Ruleset/firewall-custom-example": {
+    "kind": "zone",
+    "name": "default",
+    "phase": "http_request_firewall_custom",
+    "rules": [
+      {
+        "action": "skip",
+        "actionParameters": {
+          "phases": [
+            "http_ratelimit",
+            "http_request_firewall_managed",
+            "http_request_sbfm"
+          ],
+          "products": [
+            "bic",
+            "hot",
+            "rateLimit",
+            "securityLevel",
+            "uaBlock",
+            "waf",
+            "zoneLockdown"
+          ],
+          "ruleset": "current"
+        },
+        "description": "Trusted clients: skip security features",
+        "expression": "(http.host in {\"api.example.com\"}) and (ip.src in {192.0.2.0/24})",
+        "logging": {
+          "enabled": true
+        }
+      }
+    ],
+    "zoneId": "zone-1"
+  },
+  "cloudflare:index/ruleset:Ruleset/ssl-mode-example": {
+    "kind": "zone",
+    "name": "default",
+    "phase": "http_config_settings",
+    "rules": [
+      {
+        "action": "set_config",
+        "actionParameters": {
+          "ssl": "full"
+        },
+        "description": "legacy.example.com: SSL mode full",
+        "enabled": true,
+        "expression": "http.host eq \"legacy.example.com\"",
+        "ref": "ssl-legacy-example-com"
+      }
+    ],
+    "zoneId": "zone-1"
+  },
+  "cloudflare:index/zoneSetting:ZoneSetting/tls-client-auth-example": {
+    "settingId": "tls_client_auth",
+    "value": "on",
+    "zoneId": "zone-1"
+  },
+  "truvity:cloudflare:Zone/example": {}
+}

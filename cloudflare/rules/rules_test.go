@@ -30,11 +30,11 @@ func TestNoNonStdlibImports(t *testing.T) {
 		}
 
 		root, _, _ := strings.Cut(line, "/")
-		if line == "github.com/truvity/edge/v3/cloudflare/zonespec" {
+		if line == "github.com/truvity/edge/v3/cloudflare/zonespec" || line == "github.com/truvity/edge/v3/cloudflare/rulespec" {
 			continue
 		}
 
-		assert.NotContains(t, root, ".", "cloudflare/rules must depend on the standard library and zonespec only, found %q", line)
+		assert.NotContains(t, root, ".", "cloudflare/rules must depend on the standard library, zonespec and rulespec only, found %q", line)
 	}
 }
 
