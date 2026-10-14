@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/truvity/gateway/catalog"
+	"github.com/truvity/edge/v3/catalog"
 )
 
 func TestSignInPolicy(t *testing.T) {

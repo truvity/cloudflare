@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/truvity/gateway/catalog"
+	"github.com/truvity/edge/v3/catalog"
 )
 
 func TestClientProxyDefaults(t *testing.T) {
