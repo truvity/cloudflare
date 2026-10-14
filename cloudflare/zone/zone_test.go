@@ -16,12 +16,22 @@ import (
 type mocks struct {
 	mu  sync.Mutex
 	res map[string]resource.PropertyMap // "type/name" → inputs
+	// imported is the id each imported resource was adopted by, "type/name" → id.
+	imported map[string]string
 }
 
 func (m *mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.res[args.TypeToken+"/"+args.Name] = args.Inputs
+
+	if args.ID != "" {
+		if m.imported == nil {
+			m.imported = map[string]string{}
+		}
+
+		m.imported[args.TypeToken+"/"+args.Name] = args.ID
+	}
 
 	return args.Name + "-id", args.Inputs.Copy(), nil
 }

@@ -48,59 +48,19 @@ const (
 	settingBrowserCacheTTL = "browser_cache_ttl"
 	settingAlwaysUseHTTPS  = "always_use_https"
 	settingSecurityHeader  = "security_header"
+	settingTLSClientAuth   = "tls_client_auth"
 )
 
-// The cache ruleset. A zone has one ruleset per phase, so a zone that
-// declares a cache policy here owns the whole phase: rules added beside
-// these in the dashboard are not merged with them, they are replaced.
+// Every phase's ruleset is the zone's whole entry point ruleset for that
+// phase (see rulesets.go): a zone that manages a phase owns it, and rules
+// added beside these in the dashboard are not merged with them, they are
+// replaced.
 const (
-	cacheRulesetKind = "zone"
-	cachePhase       = "http_request_cache_settings"
-	// Cloudflare names the entry point ruleset of a phase "default".
-	cacheRulesetName = "default"
-
-	actionSetCacheSettings = "set_cache_settings"
-
-	// Edge TTL: use the origin's Cache-Control when it sent one, and
-	// bypass the cache when it did not. Cloudflare spells this
-	// "bypass_by_default", which reads like "never cache" and is not:
-	// the bypass is the FALLBACK, for a response whose origin said
-	// nothing.
-	edgeTTLOriginElseBypass = "bypass_by_default"
-	// Browser TTL: hand the origin's Cache-Control to the browser
-	// unchanged.
-	browserTTLRespectOrigin = "respect_origin"
+	rulesetKind = "zone"
 
 	// Browser Cache TTL, the zone setting: 0 is Cloudflare's "Respect
 	// Existing Headers".
 	browserCacheTTLRespectHeaders = 0
-)
-
-// The trusted-clients ruleset. Same rule as the cache ruleset: a zone has
-// ONE entry point ruleset per phase, so a zone that declares trusted
-// clients owns the whole http_request_firewall_custom phase.
-const (
-	firewallPhase       = "http_request_firewall_custom"
-	firewallRulesetName = "default"
-	// skipRuleset also skips the rest of the custom ruleset itself.
-	skipRuleset = "current"
-
-	rateLimitPhase       = "http_ratelimit"
-	rateLimitRulesetName = "default"
-
-	managedPhase       = "http_request_firewall_managed"
-	managedRulesetName = "default"
-	actionExecute      = "execute"
-)
-
-// What a trusted client is exempted from, besides the rest of the custom
-// rules. Phases: rate limiting, managed rules, Super Bot Fight Mode.
-// Products: the legacy security products (browser integrity check,
-// hotlink protection, legacy rate limiting, security level, user-agent
-// rules, WAF, zone lockdown).
-var (
-	skipPhases   = []string{"http_ratelimit", "http_request_firewall_managed", "http_request_sbfm"}
-	skipProducts = []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock", "waf", "zoneLockdown"}
 )
 
 // The declaration types and their validation live in cloudflare/zonespec, which
@@ -138,6 +98,9 @@ type (
 	// ManagedWAF deploys the Cloudflare Managed Ruleset on named hosts.
 	// See zonespec.ManagedWAF.
 	ManagedWAF = zonespec.ManagedWAF
+	// Compat keeps resources that predate this library at their URNs. See
+	// zonespec.Compat.
+	Compat = zonespec.Compat
 )
 
 // CloudflareManagedRulesetID is the ruleset ManagedWAF executes. See
@@ -160,52 +123,6 @@ type (
 		ZoneID pulumi.StringOutput `pulumi:"zoneId"`
 	}
 )
-
-// cacheRules is the phase's whole ruleset: one rule for the hostnames that
-// may be cached, one for everything else.
-//
-// The two expressions PARTITION the zone — the second is the negation of
-// the first — so exactly one of them matches any request. That costs a
-// repeated expression and buys the thing worth having: the outcome does
-// not depend on how Cloudflare merges two cache rules that both match, or
-// on the order they happen to be in.
-func cacheRules(hosts []string) cloudflare.RulesetRuleArray {
-	bypass := cloudflare.RulesetRuleArgs{
-		Action:      pulumi.String(actionSetCacheSettings),
-		Description: pulumi.String("Not a cacheable hostname"),
-		Expression:  pulumi.String("true"),
-		ActionParameters: &cloudflare.RulesetRuleActionParametersArgs{
-			Cache: pulumi.Bool(false),
-		},
-	}
-
-	// No hosts: the catch-all is the whole policy, and the zone caches
-	// nothing.
-	if len(hosts) == 0 {
-		return cloudflare.RulesetRuleArray{bypass}
-	}
-
-	cacheable := zonespec.HostExpression(hosts)
-	bypass.Expression = pulumi.String("not (" + cacheable + ")")
-
-	return cloudflare.RulesetRuleArray{
-		cloudflare.RulesetRuleArgs{
-			Action:      pulumi.String(actionSetCacheSettings),
-			Description: pulumi.String("Cacheable hostname: the origin's Cache-Control decides"),
-			Expression:  pulumi.String(cacheable),
-			ActionParameters: &cloudflare.RulesetRuleActionParametersArgs{
-				Cache: pulumi.Bool(true),
-				EdgeTtl: &cloudflare.RulesetRuleActionParametersEdgeTtlArgs{
-					Mode: pulumi.String(edgeTTLOriginElseBypass),
-				},
-				BrowserTtl: &cloudflare.RulesetRuleActionParametersBrowserTtlArgs{
-					Mode: pulumi.String(browserTTLRespectOrigin),
-				},
-			},
-		},
-		bypass,
-	}
-}
 
 // New applies one zone's settings. Children are named "setting-<name>-ssl",
 // "setting-<name>-min-tls-version", "setting-<name>-browser-cache-ttl",
@@ -286,78 +203,32 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 		}
 	}
 
-	if args.Cache != nil {
-		if _, err := cloudflare.NewRuleset(ctx, "cache-rules-"+name, &cloudflare.RulesetArgs{
-			ZoneId: zoneID,
-			Kind:   pulumi.String(cacheRulesetKind),
-			Phase:  pulumi.String(cachePhase),
-			Name:   pulumi.String(cacheRulesetName),
-			Rules:  cacheRules(args.Cache.Hosts),
-		}, child...); err != nil {
-			return nil, fmt.Errorf("zone %q: cache: %w", name, err)
+	if args.AuthenticatedOriginPulls != nil {
+		value := "off"
+		if *args.AuthenticatedOriginPulls {
+			value = "on"
 		}
 
-		if args.Cache.RespectOriginBrowserTTL {
-			if _, err := cloudflare.NewZoneSetting(ctx, "setting-"+name+"-browser-cache-ttl", &cloudflare.ZoneSettingArgs{
-				ZoneId:    zoneID,
-				SettingId: pulumi.String(settingBrowserCacheTTL),
-				Value:     pulumi.Int(browserCacheTTLRespectHeaders),
-			}, child...); err != nil {
-				return nil, fmt.Errorf("zone %q: browser cache ttl: %w", name, err)
-			}
+		if _, err := cloudflare.NewZoneSetting(ctx, "tls-client-auth-"+name, &cloudflare.ZoneSettingArgs{
+			ZoneId:    zoneID,
+			SettingId: pulumi.String(settingTLSClientAuth),
+			Value:     pulumi.String(value),
+		}, withTopLevelAlias(child, args.Compat)...); err != nil {
+			return nil, fmt.Errorf("zone %q: authenticatedOriginPulls: %w", name, err)
 		}
 	}
 
-	if args.TrustedClients.Managed() {
-		description := args.TrustedClients.Description
-		if description == "" {
-			description = zonespec.DefaultTrustedDescription
-		}
-
-		if _, err := cloudflare.NewRuleset(ctx, "firewall-custom-"+name, &cloudflare.RulesetArgs{
-			ZoneId: zoneID,
-			Kind:   pulumi.String(cacheRulesetKind),
-			Phase:  pulumi.String(firewallPhase),
-			Name:   pulumi.String(firewallRulesetName),
-			Rules: cloudflare.RulesetRuleArray{
-				cloudflare.RulesetRuleArgs{
-					Action:      pulumi.String("skip"),
-					Description: pulumi.String(description),
-					Expression:  pulumi.String(zonespec.TrustedExpression(args.TrustedClients)),
-					ActionParameters: &cloudflare.RulesetRuleActionParametersArgs{
-						Ruleset:  pulumi.String(skipRuleset),
-						Phases:   pulumi.ToStringArray(skipPhases),
-						Products: pulumi.ToStringArray(skipProducts),
-					},
-					Logging: &cloudflare.RulesetRuleLoggingArgs{Enabled: pulumi.Bool(true)},
-				},
-			},
-		}, child...); err != nil {
-			return nil, fmt.Errorf("zone %q: trusted clients: %w", name, err)
-		}
+	if err := newRulesets(ctx, name, &args, zoneID, child); err != nil {
+		return nil, err
 	}
 
-	if args.ManagedWAF.Managed() {
-		if _, err := cloudflare.NewRuleset(ctx, "firewall-managed-"+name, &cloudflare.RulesetArgs{
-			ZoneId: zoneID,
-			Kind:   pulumi.String(cacheRulesetKind),
-			Phase:  pulumi.String(managedPhase),
-			Name:   pulumi.String(managedRulesetName),
-			Rules:  managedWAFRules(args.ManagedWAF),
+	if args.Cache != nil && args.Cache.RespectOriginBrowserTTL {
+		if _, err := cloudflare.NewZoneSetting(ctx, "setting-"+name+"-browser-cache-ttl", &cloudflare.ZoneSettingArgs{
+			ZoneId:    zoneID,
+			SettingId: pulumi.String(settingBrowserCacheTTL),
+			Value:     pulumi.Int(browserCacheTTLRespectHeaders),
 		}, child...); err != nil {
-			return nil, fmt.Errorf("zone %q: managed waf: %w", name, err)
-		}
-	}
-
-	if args.RateLimits.Managed() {
-		if _, err := cloudflare.NewRuleset(ctx, "ratelimit-"+name, &cloudflare.RulesetArgs{
-			ZoneId: zoneID,
-			Kind:   pulumi.String(cacheRulesetKind),
-			Phase:  pulumi.String(rateLimitPhase),
-			Name:   pulumi.String(rateLimitRulesetName),
-			Rules:  rateLimitRules(args.RateLimits.Rules),
-		}, child...); err != nil {
-			return nil, fmt.Errorf("zone %q: rate limits: %w", name, err)
+			return nil, fmt.Errorf("zone %q: browser cache ttl: %w", name, err)
 		}
 	}
 
@@ -409,57 +280,6 @@ func hstsValue(h *HSTS) pulumi.Map {
 			"preload":            pulumi.Bool(h.Preload),
 		},
 	}
-}
-
-// managedWAFRules is the managed phase's whole ruleset: one rule that
-// executes the Cloudflare Managed Ruleset, with its default actions, on the
-// declared hosts.
-func managedWAFRules(m *ManagedWAF) cloudflare.RulesetRuleArray {
-	description := m.Description
-	if description == "" {
-		description = zonespec.DefaultManagedWAFDescription
-	}
-
-	return cloudflare.RulesetRuleArray{
-		cloudflare.RulesetRuleArgs{
-			Action:      pulumi.String(actionExecute),
-			Description: pulumi.String(description),
-			Enabled:     pulumi.Bool(true),
-			Expression:  pulumi.String(zonespec.ManagedWAFExpression(m)),
-			ActionParameters: &cloudflare.RulesetRuleActionParametersArgs{
-				Id: pulumi.String(CloudflareManagedRulesetID),
-			},
-		},
-	}
-}
-
-// rateLimitRules is the phase's whole ruleset, in the order declared.
-func rateLimitRules(rules []RateLimitRule) cloudflare.RulesetRuleArray {
-	out := cloudflare.RulesetRuleArray{}
-
-	for i := range rules {
-		r := &rules[i]
-
-		limit := &cloudflare.RulesetRuleRatelimitArgs{
-			Characteristics:   pulumi.ToStringArray(r.CharacteristicList()),
-			Period:            pulumi.Int(r.Period),
-			RequestsPerPeriod: pulumi.Int(r.Requests),
-			MitigationTimeout: pulumi.Int(r.MitigationTimeout),
-		}
-		if r.CountingExpression != "" {
-			limit.CountingExpression = pulumi.String(r.CountingExpression)
-		}
-
-		out = append(out, cloudflare.RulesetRuleArgs{
-			Action:      pulumi.String(r.Action),
-			Description: pulumi.String(r.Name),
-			Enabled:     pulumi.Bool(true),
-			Expression:  pulumi.String(r.MatchExpression()),
-			Ratelimit:   limit,
-		})
-	}
-
-	return out
 }
 
 // RecordName is the child name of one record: "record-<name>-<host-slug>-cname"

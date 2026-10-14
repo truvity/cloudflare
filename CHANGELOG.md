@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/zone` assembles its rulesets from `cloudflare/rules` contributions, and gains Authenticated Origin Pulls.** `zone.Args` (that is, `zonespec.Args`) gains `Contributions []rules.Contribution`, `AuthenticatedOriginPulls *bool` (zone setting `tls_client_auth`, child `tls-client-auth-<name>`), `ImportRulesets map[rules.Phase]string` (adopt a phase's existing entry point ruleset by id) and `Compat{TopLevelAliases}` (aliases `firewall-custom-`, `tls-client-auth-` and `ssl-mode-` children to a no-parent URN). The `cache`, `trustedClients`, `managedWaf` and `rateLimits` blocks are now contributions too, and every ruleset is registered from `rules.Assemble` under the existing child names (`ssl-mode-<name>` for the config phase). Additive: no exported symbol is removed or changed and a zone without the new fields registers byte-identical inputs. The rule shapes move to the new standard-library-only package `cloudflare/rulespec` and `rules` aliases them (`rules.Rule` is `rulespec.Rule`). See [docs/cloudflare/rules.md](docs/cloudflare/rules.md).
+
 ## v3.0.1
 
 - **`cloudflare/rules` (new): rule contributions and the one-ruleset-per-phase assembler.** A zone holds one ruleset per phase, so features that each want rules in a phase cannot each create it. `rules.Contribution` states the rules one source wants (`Source`, `Phase`, `Order`, `Rules`, and in the cache phase a `Claim`), and `rules.Assemble` merges them into one ordered `[]Rule` per `Phase`, refusing conflicting writers (a `Ref` written twice in a phase, a `Claim` outside the cache phase). In the cache phase it adds the catch-all bypass at Order 500, whose expression folds over the claims (`true`, `not <a>`, `(not <a>) and not <b>`), the same string a zone's library bypass narrowed by one public-documents rule has today. Builders: `CacheHosts`, `PublicPathsCache` (the sluis edge package's `PublicCacheRule`, moved unchanged, returning a `CacheRule` with the same fields), `StaticSiteCache`, `RateLimits`, `TrustedClients`, `ManagedWAF`, `SSLMode`. The package links the standard library and `cloudflare/zonespec` only. Additive: no existing package changes. See [docs/cloudflare/rules.md](docs/cloudflare/rules.md).
