@@ -1,3 +1,10 @@
+> **Deprecated.** This repository is now `truvity/edge`, and the Go module
+> `github.com/truvity/cloudflare/v2` has moved to `github.com/truvity/edge/v3`
+> (packages under `cloudflare/`, same API). This path receives no further
+> releases. Import mapping:
+> `github.com/truvity/cloudflare/v2/pkg/X` becomes
+> `github.com/truvity/edge/v3/cloudflare/X`.
+
 # cloudflare
 
 Cloudflare for Kubernetes estates, as reusable mechanism: accounts, zone

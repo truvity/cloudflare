@@ -1,3 +1,4 @@
+// Deprecated: moved to github.com/truvity/edge/v3 (packages under cloudflare/, same API); this path receives no further releases.
 module github.com/truvity/cloudflare/v2
 
 go 1.27.0

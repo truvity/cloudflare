@@ -7,6 +7,10 @@ together at every version.
 
 ## Unreleased
 
+## v2.22.1
+
+- **Deprecation notice only: the module moved to `github.com/truvity/edge/v3`.** `go.mod` carries a `// Deprecated:` comment and the README points to the new path; no code changed. This is the last release of `github.com/truvity/cloudflare/v2`.
+
 ## v2.22.0
 
 - **`pkg/presettoken` (new): the client of a sluis Cloudflare preset, extracted from an estate's Pulumi code and estate-neutral.** `presettoken.Token(ctx, Config, Request)` (or `Source.Token`, which takes test seams) returns a `Credential` for one preset: an API token, or an R2 access-key pair when `Request.R2`. It execs `sluisctl cloudflare token|r2 <preset> --lifetime ... --no-cache --issuer <url>`, refuses a `sluisctl` that does not resolve under one of `Config.BinaryPrefixes` or is older than `Config.SluisctlMin`, strips every inherited `SLUISCTL_*` and `OP_*` (except `OP_SESSION_*`), proxy and CA-override variable (the issuer therefore travels as `--issuer`, never as `SLUISCTL_ISSUER`), caps every stderr and timeout, refuses an answer that outlives the lifetime asked or expires within `Config.MinRemaining`, and verifies a new API token against `api.cloudflare.com` (fixed host, system roots, no proxy, no redirect) before handing it out; an R2 pair is left to settle. With `Config.BreakGlass` configured and its variable set to `1`, the credential is minted from the account root instead (read from 1Password into memory, never printed) as a child with `Request.Policies`, for an hour at most, and verified as that child. Config is validated before anything runs: binary prefixes must be clean, specific directories (expected `/nix/store`), the lifetime is capped at `MaxLifetime` (1h), the break-glass variable name must contain `BREAKGLASS`, and account ids and preset names are pattern-checked. Nothing defaults to an estate: the issuer, the version floor, the binary prefixes, the break-glass variable, 1Password account, vault, item and field, the child name prefix, the account id and the policies are all inputs. Additive.
