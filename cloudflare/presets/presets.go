@@ -1,0 +1,656 @@
+// Package presets is the table of sluis Cloudflare presets, built from plain
+// data rows: what an estate states (a preset's name, kind, account, zones,
+// grants and lifetime) is a [Row], and what follows from the kind (the
+// permission groups, the scope of each, their order) is computed here.
+//
+// A preset is the unit sluis mints a Cloudflare credential for. Its rights are
+// the policies of a DISABLED prototype token (cloudflare/prototypes declares
+// it) and, in break-glass, of a child minted by cloudflare/presettoken. Both
+// read the one [Preset] this package builds, so the rights a prototype holds
+// and the rights break-glass mints can never differ.
+//
+// KINDS. A kind names a set of rights, not a stack:
+//
+//	edge      tunnel write on the account; DNS, SSL, zone settings, cache
+//	          settings and config settings write on each zone; then Zone WAF
+//	          Write on Row.WAFZones, Cloud Connector Write on
+//	          Row.CloudConnectorZones, and DNS Write on Row.DNSOnlyZones. No R2.
+//	status    tunnel write on the account; DNS write on each zone.
+//	dns       DNS write on each zone, nothing else.
+//	insights  read only: Account Security Center Insights on the account; Bot
+//	          Management Read, Analytics Read and Zone WAF Read on each zone.
+//	r2-admin  Workers R2 Storage Write on the account (every bucket).
+//	bucket-rw     R2 object read and write on ONE bucket (an R2 credential).
+//	bucket-write  R2 object write on ONE bucket (an R2 credential).
+//
+// A zone-scoped kind with no Row.Zones covers every zone of its account, in
+// zone-name order, so a further zone picks the grant up with no row change.
+// No kind grants Account API Tokens, Billing, Account Settings, Memberships or
+// Access identity providers: sluis refuses such a prototype outright, and
+// [Row] has no way to ask for one.
+//
+// The package reads no file and no environment, and registers no resource. An
+// estate's registry (accounts and zones) and rows are plain values; a zone
+// without an id yet (zone_id_pending) is refused where its account's presets
+// are asked for.
+package presets
+
+import (
+	"cmp"
+	"errors"
+	"fmt"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/truvity/edge/v3/cloudflare/account"
+	"github.com/truvity/edge/v3/cloudflare/presettoken"
+	"github.com/truvity/edge/v3/cloudflare/tokensplit"
+)
+
+// The kinds.
+const (
+	KindEdge        = "edge"
+	KindStatus      = "status"
+	KindDNS         = "dns"
+	KindInsights    = "insights"
+	KindR2Admin     = "r2-admin"
+	KindBucketRW    = "bucket-rw"
+	KindBucketWrite = "bucket-write"
+)
+
+// The permission groups a kind adds to tokensplit's own.
+const (
+	permCloudConnectorWrite = "Cloud Connector Write"
+	// The insights kind's read-only groups, by the names of Cloudflare's
+	// permission reference (developers.cloudflare.com/fundamentals/api/reference/permissions,
+	// read 2026-10-15). The account-scope group is listed there as "Account
+	// Security Center Insights" (read), not "... Read".
+	// TODO verify the account group's name against the account's own list
+	// (the permission-group lookup at apply time resolves by exact name).
+	permAccountSecurityInsights = "Account Security Center Insights"
+	permBotManagementRead       = "Bot Management Read"
+	permAnalyticsRead           = "Analytics Read"
+	permZoneWAFRead             = "Zone WAF Read"
+	permBucketItemRead          = "Workers R2 Storage Bucket Item Read"
+	permBucketItemWrite         = tokensplit.PermWorkersR2StorageBucketItemWrite
+)
+
+// Store is where sluis keeps a preset's current credential.
+type Store string
+
+const (
+	// StoreNone is on demand only: never rotated into a store.
+	StoreNone Store = "none"
+	// StoreExternal is rotated into the estate's external store.
+	StoreExternal Store = "external"
+)
+
+// DefaultLifetime is a preset's lifetime when Row.Lifetime is zero.
+const DefaultLifetime = time.Hour
+
+var (
+	// Kinds are the kinds this package builds.
+	Kinds = []string{KindEdge, KindStatus, KindDNS, KindInsights, KindR2Admin, KindBucketRW, KindBucketWrite}
+
+	// grantPattern is a policy group's name: the estate's own, a short label.
+	grantPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:._-]*$`)
+)
+
+type (
+	// Account is one Cloudflare account of the registry.
+	Account struct {
+		Name string
+		// ID is the 32-character lowercase hex account id.
+		ID string
+	}
+
+	// Zone is one zone of the registry.
+	Zone struct {
+		Name string
+		// ID is the zone id; empty while the zone is pending (zone_id_pending).
+		ID      string
+		Account string
+	}
+
+	// Registry is the accounts and zones the rows refer to.
+	Registry struct {
+		Accounts []Account
+		Zones    []Zone
+	}
+
+	// Row is one preset as an estate states it.
+	Row struct {
+		// Name is the sluis preset name: <account>-<kind> by convention
+		// ([PresetName]).
+		Name string
+		// Kind is one of [Kinds].
+		Kind string
+		// Account is a registry account name.
+		Account string
+		// Description is shown wherever the preset is listed. Empty: the
+		// kind's own sentence ([Description]).
+		Description string
+		// Zones are zone names of Account, for the kinds that are zone-scoped.
+		// Empty: every zone of the account, by name.
+		Zones []string
+		// WAFZones (edge only) get Zone WAF Write; each must be among the
+		// zones of the row.
+		WAFZones []string
+		// CloudConnectorZones (edge only) get Cloud Connector Write; each must
+		// be a zone of Account. They need not be among the row's zones.
+		CloudConnectorZones []string
+		// DNSOnlyZones (edge only) get DNS Write alone; each must be a zone of
+		// Account that Zones does not already list.
+		DNSOnlyZones []string
+		// Bucket and Jurisdiction (bucket kinds only) name the one R2 bucket.
+		Bucket, Jurisdiction string
+		// Grants are the policy groups that may ask for the preset.
+		Grants []string
+		// Lifetime of a minted credential; zero is [DefaultLifetime].
+		Lifetime time.Duration
+		// Rotation of the stored credential: set exactly when Store is
+		// [StoreExternal], and shorter than Lifetime.
+		Rotation time.Duration
+		// Store is [StoreNone] when empty.
+		Store Store
+	}
+
+	// Preset is a row with its policies built.
+	Preset struct {
+		Name, Kind string
+		// Account is the account name, AccountID its id.
+		Account, AccountID string
+		Description        string
+		// Policies are what every minted credential may do, and what
+		// break-glass mints the same credential with. In a fixed order.
+		Policies []account.ChildTokenPolicy
+		// R2 presets hand out an S3 pair, not an API token.
+		R2       bool
+		Lifetime time.Duration
+		Rotation time.Duration
+		Store    Store
+		Grants   []string
+	}
+
+	// PolicyDocument is one policy as Cloudflare receives it: the permission
+	// group names and the resource keys with their grant.
+	PolicyDocument struct {
+		Groups    []string          `json:"groups"`
+		Resources map[string]string `json:"resources"`
+	}
+)
+
+// PresetName is the conventional name of the preset of one kind in one account.
+func PresetName(accountName, kind string) string { return accountName + "-" + kind }
+
+// Description is the generic sentence a kind's preset has when its row gives
+// none. An estate that wants its own wording sets Row.Description.
+func Description(accountName, kind string) string {
+	switch kind {
+	case KindEdge:
+		return "Pulumi: tunnels, DNS, SSL, zone settings and cache of the " + accountName + " account; no R2"
+	case KindStatus:
+		return "Pulumi: tunnel and DNS of the " + accountName + " account's status service"
+	case KindDNS:
+		return "Pulumi: DNS records in the " + accountName + " account"
+	case KindInsights:
+		return "Read-only security insights, bot management, analytics and WAF settings of the " + accountName + " account"
+	case KindR2Admin:
+		return "Pulumi: R2 buckets of the " + accountName + " account"
+	case KindBucketRW:
+		return "R2 objects of one bucket in the " + accountName + " account, read and write"
+	case KindBucketWrite:
+		return "R2 objects of one bucket in the " + accountName + " account, write"
+	}
+
+	return ""
+}
+
+// StandardRows are the three rows an account has when it runs the edge, status
+// and r2-admin stacks, in that order, named <account>-<kind>, with Zone WAF
+// Write on wafZones. grants and the other fields of a row are the estate's:
+// set them on the returned rows.
+func StandardRows(accountName string, grants, wafZones []string) []Row {
+	return []Row{
+		{Name: PresetName(accountName, KindEdge), Kind: KindEdge, Account: accountName, WAFZones: slices.Clone(wafZones), Grants: slices.Clone(grants)},
+		{Name: PresetName(accountName, KindStatus), Kind: KindStatus, Account: accountName, Grants: slices.Clone(grants)},
+		{Name: PresetName(accountName, KindR2Admin), Kind: KindR2Admin, Account: accountName, Grants: slices.Clone(grants)},
+	}
+}
+
+// PendingZone is an error naming a zone of the account that has no id yet, or
+// nil. A preset's rights need the id, so every preset of such an account waits
+// for it.
+func (r Registry) PendingZone(accountName string) error {
+	for _, z := range r.zonesOf(accountName) {
+		if z.ID == "" {
+			return fmt.Errorf("cloudflare presets: zones[%s] of account %s has no zone_id (zone_id_pending): its presets need it", z.Name, accountName)
+		}
+	}
+
+	return nil
+}
+
+// zonesOf are the zones of an account sorted by name.
+func (r Registry) zonesOf(accountName string) []Zone {
+	var out []Zone
+
+	for _, z := range r.Zones {
+		if z.Account == accountName {
+			out = append(out, z)
+		}
+	}
+
+	slices.SortFunc(out, func(a, b Zone) int { return cmp.Compare(a.Name, b.Name) })
+
+	return out
+}
+
+func (r Registry) account(name string) (Account, bool) {
+	for _, a := range r.Accounts {
+		if a.Name == name {
+			return a, true
+		}
+	}
+
+	return Account{}, false
+}
+
+// Validate reports every problem with the registry and the rows, without
+// building anything. Build calls it.
+func Validate(reg Registry, rows []Row) error {
+	var errs []error
+
+	seenAccount := map[string]bool{}
+
+	for _, a := range reg.Accounts {
+		switch {
+		case a.Name == "":
+			errs = append(errs, errors.New("presets: an account has no name"))
+		case seenAccount[a.Name]:
+			errs = append(errs, fmt.Errorf("presets: account %q is declared twice", a.Name))
+		case !presettoken.ValidAccountID(a.ID):
+			errs = append(errs, fmt.Errorf("presets: account %q: id %q is not a 32-character lowercase hex string", a.Name, a.ID))
+		}
+
+		seenAccount[a.Name] = true
+	}
+
+	seenZone := map[string]bool{}
+
+	for _, z := range reg.Zones {
+		switch {
+		case z.Name == "":
+			errs = append(errs, errors.New("presets: a zone has no name"))
+		case seenZone[z.Name]:
+			errs = append(errs, fmt.Errorf("presets: zone %q is declared twice", z.Name))
+		case !seenAccount[z.Account]:
+			errs = append(errs, fmt.Errorf("presets: zone %q: no account %q", z.Name, z.Account))
+		}
+
+		seenZone[z.Name] = true
+	}
+
+	names := map[string]bool{}
+
+	for i := range rows {
+		row := &rows[i]
+		label := fmt.Sprintf("row %d (%q)", i, row.Name)
+
+		if names[row.Name] {
+			errs = append(errs, fmt.Errorf("presets: %s: the name is used twice", label))
+		}
+
+		names[row.Name] = true
+
+		for _, err := range validateRow(reg, row) {
+			errs = append(errs, fmt.Errorf("presets: %s: %w", label, err))
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func validateRow(reg Registry, row *Row) []error {
+	var errs []error
+
+	bad := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+
+	if !presettoken.ValidPresetName(row.Name) {
+		bad("the name must be lowercase letters, digits and hyphens, 1-63 characters, starting with a letter or digit")
+	}
+
+	if !slices.Contains(Kinds, row.Kind) {
+		bad("kind %q is not one of %v", row.Kind, Kinds)
+	}
+
+	if _, ok := reg.account(row.Account); !ok {
+		bad("no account %q in the registry", row.Account)
+
+		return errs
+	}
+
+	zoned := slices.Contains([]string{KindEdge, KindStatus, KindDNS, KindInsights}, row.Kind)
+	bucketed := row.Kind == KindBucketRW || row.Kind == KindBucketWrite
+
+	inAccount := map[string]bool{}
+	for _, z := range reg.zonesOf(row.Account) {
+		inAccount[z.Name] = true
+	}
+
+	checkList := func(field string, names []string, allowed func(string) bool, why string) {
+		seen := map[string]bool{}
+
+		for _, n := range names {
+			switch {
+			case !inAccount[n]:
+				bad("%s: zone %q is not a zone of account %s", field, n, row.Account)
+			case seen[n]:
+				bad("%s: zone %q is listed twice", field, n)
+			case !allowed(n):
+				bad("%s: zone %q %s", field, n, why)
+			}
+
+			seen[n] = true
+		}
+	}
+
+	all := func(string) bool { return true }
+
+	if !zoned && len(row.Zones) > 0 {
+		bad("Zones is for the edge, status, dns and insights kinds, not %s", row.Kind)
+	}
+
+	if zoned {
+		checkList("Zones", row.Zones, all, "")
+
+		if len(row.Zones) == 0 && len(inAccount) == 0 {
+			bad("account %s has no zone", row.Account)
+		}
+	}
+
+	if row.Kind != KindEdge && (len(row.WAFZones) > 0 || len(row.CloudConnectorZones) > 0 || len(row.DNSOnlyZones) > 0) {
+		bad("WAFZones, CloudConnectorZones and DNSOnlyZones are for the edge kind, not %s", row.Kind)
+	}
+
+	if row.Kind == KindEdge {
+		covered := func(n string) bool { return len(row.Zones) == 0 || slices.Contains(row.Zones, n) }
+		notCovered := func(n string) bool { return !covered(n) }
+
+		checkList("WAFZones", row.WAFZones, covered, "is not among the zones of the row")
+		checkList("CloudConnectorZones", row.CloudConnectorZones, all, "")
+		checkList("DNSOnlyZones", row.DNSOnlyZones, notCovered, "is already among the zones of the row")
+	}
+
+	switch {
+	case bucketed && !account.ValidR2BucketName(row.Bucket):
+		bad("Bucket %q is not an R2 bucket name", row.Bucket)
+	case bucketed && !account.ValidR2Jurisdiction(row.Jurisdiction):
+		bad("Jurisdiction %q is not default, eu, fedramp or us", row.Jurisdiction)
+	case !bucketed && (row.Bucket != "" || row.Jurisdiction != ""):
+		bad("Bucket and Jurisdiction are for the bucket kinds, not %s", row.Kind)
+	}
+
+	for _, g := range row.Grants {
+		if !grantPattern.MatchString(g) {
+			bad("grant %q is not a policy group name", g)
+		}
+	}
+
+	if row.Lifetime < 0 {
+		bad("Lifetime %s is negative", row.Lifetime)
+	}
+
+	switch row.Store {
+	case "", StoreNone:
+		if row.Rotation != 0 {
+			bad("Rotation is set on a store %q preset: sluis refuses a rotation on it", StoreNone)
+		}
+	case StoreExternal:
+		if row.Rotation <= 0 || row.Rotation >= row.lifetime() {
+			bad("Rotation %s must be positive and under Lifetime %s for a store %q preset", row.Rotation, row.lifetime(), StoreExternal)
+		}
+	default:
+		bad("store %q is not %q or %q", row.Store, StoreNone, StoreExternal)
+	}
+
+	return errs
+}
+
+func (r *Row) lifetime() time.Duration {
+	if r.Lifetime > 0 {
+		return r.Lifetime
+	}
+
+	return DefaultLifetime
+}
+
+// Build is the presets of the rows, in row order. It fails on any problem with
+// the registry or a row, and on an account with a pending zone.
+func Build(reg Registry, rows []Row) ([]Preset, error) {
+	if err := Validate(reg, rows); err != nil {
+		return nil, err
+	}
+
+	out := make([]Preset, 0, len(rows))
+
+	for i := range rows {
+		p, err := build(reg, &rows[i])
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, p)
+	}
+
+	return out, nil
+}
+
+// BuildReady is Build for the rows of every account that has no pending zone;
+// an account with one contributes no preset (its prototypes would be narrower
+// than its children, and every other account is unaffected). [ForAccount]
+// names the problem when that account's own presets are asked for.
+func BuildReady(reg Registry, rows []Row) ([]Preset, error) {
+	if err := Validate(reg, rows); err != nil {
+		return nil, err
+	}
+
+	var out []Preset
+
+	for i := range rows {
+		if reg.PendingZone(rows[i].Account) != nil {
+			continue
+		}
+
+		p, err := build(reg, &rows[i])
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, p)
+	}
+
+	return out, nil
+}
+
+// ForAccount is the presets of one account's rows. It fails only for that
+// account's own problems, never another account's.
+func ForAccount(reg Registry, rows []Row, accountName string) ([]Preset, error) {
+	if _, ok := reg.account(accountName); !ok {
+		return nil, fmt.Errorf("cloudflare presets: no account %q", accountName)
+	}
+
+	if err := reg.PendingZone(accountName); err != nil {
+		return nil, err
+	}
+
+	var mine []Row
+
+	for i := range rows {
+		if rows[i].Account == accountName {
+			mine = append(mine, rows[i])
+		}
+	}
+
+	return Build(reg, mine)
+}
+
+// Named is one preset of the table.
+func Named(table []Preset, name string) (Preset, error) {
+	for i := range table {
+		if table[i].Name == name {
+			return table[i], nil
+		}
+	}
+
+	return Preset{}, fmt.Errorf("cloudflare: no preset %q", name)
+}
+
+// AccountOf is the account whose name starts the preset's (<account>-<kind>),
+// the longest such name, or "" when none does.
+func AccountOf(reg Registry, preset string) string {
+	best := ""
+
+	for _, a := range reg.Accounts {
+		if strings.HasPrefix(preset, a.Name+"-") && len(a.Name) > len(best) {
+			best = a.Name
+		}
+	}
+
+	return best
+}
+
+func build(reg Registry, row *Row) (Preset, error) {
+	acct, _ := reg.account(row.Account)
+
+	if err := reg.PendingZone(row.Account); err != nil {
+		return Preset{}, err
+	}
+
+	zones := reg.zonesOf(row.Account)
+	if len(row.Zones) > 0 {
+		zones = zones[:0]
+
+		for _, n := range row.Zones {
+			zones = append(zones, zoneNamed(reg, n))
+		}
+	}
+
+	ids := idsOf(zones)
+
+	p := Preset{
+		Name: row.Name, Kind: row.Kind, Account: row.Account, AccountID: acct.ID,
+		Description: row.Description, Lifetime: row.lifetime(), Rotation: row.Rotation, Store: row.Store,
+		Grants: slices.Clone(row.Grants),
+	}
+
+	if p.Description == "" {
+		p.Description = Description(row.Account, row.Kind)
+	}
+
+	if p.Store == "" {
+		p.Store = StoreNone
+	}
+
+	switch row.Kind {
+	case KindEdge:
+		var waf []string
+		for _, n := range row.WAFZones {
+			waf = append(waf, zoneNamed(reg, n).ID)
+		}
+
+		p.Policies = account.EdgePoliciesWithWAF(waf, ids...)
+
+		for _, n := range row.CloudConnectorZones {
+			p.Policies = append(p.Policies, account.ChildTokenPolicy{
+				PermissionGroups: []string{permCloudConnectorWrite}, Scope: account.ZoneScope{ZoneID: zoneNamed(reg, n).ID},
+			})
+		}
+
+		for _, n := range row.DNSOnlyZones {
+			p.Policies = append(p.Policies, account.ChildTokenPolicy{
+				PermissionGroups: []string{tokensplit.PermDNSWrite}, Scope: account.ZoneScope{ZoneID: zoneNamed(reg, n).ID},
+			})
+		}
+	case KindStatus:
+		p.Policies = tokensplit.StatusPolicies(ids)
+	case KindDNS:
+		for _, id := range ids {
+			p.Policies = append(p.Policies, account.ChildTokenPolicy{
+				PermissionGroups: []string{tokensplit.PermDNSWrite}, Scope: account.ZoneScope{ZoneID: id},
+			})
+		}
+	case KindInsights:
+		p.Policies = []account.ChildTokenPolicy{{PermissionGroups: []string{permAccountSecurityInsights}, Scope: account.WholeAccountScope{}}}
+		for _, id := range ids {
+			p.Policies = append(p.Policies, account.ChildTokenPolicy{
+				PermissionGroups: []string{permBotManagementRead, permAnalyticsRead, permZoneWAFRead}, Scope: account.ZoneScope{ZoneID: id},
+			})
+		}
+	case KindR2Admin:
+		p.Policies = account.R2AdminPolicies()
+	case KindBucketRW:
+		p.R2 = true
+		p.Policies = []account.ChildTokenPolicy{{
+			PermissionGroups: []string{permBucketItemRead, permBucketItemWrite},
+			Scope:            account.R2BucketScope{Jurisdiction: row.Jurisdiction, Bucket: row.Bucket},
+		}}
+	case KindBucketWrite:
+		p.R2 = true
+		p.Policies = []account.ChildTokenPolicy{{
+			PermissionGroups: []string{permBucketItemWrite},
+			Scope:            account.R2BucketScope{Jurisdiction: row.Jurisdiction, Bucket: row.Bucket},
+		}}
+	}
+
+	check := account.ChildTokenConfig{Name: "prototype-" + p.Name, Policies: p.Policies}
+	if err := check.Validate(); err != nil {
+		return Preset{}, fmt.Errorf("cloudflare preset %s: %w", p.Name, err)
+	}
+
+	return p, nil
+}
+
+func zoneNamed(reg Registry, name string) Zone {
+	for _, z := range reg.Zones {
+		if z.Name == name {
+			return z
+		}
+	}
+
+	return Zone{}
+}
+
+func idsOf(zones []Zone) []string {
+	out := make([]string, 0, len(zones))
+	for _, z := range zones {
+		out = append(out, z.ID)
+	}
+
+	return out
+}
+
+// Request is what presettoken needs to mint the preset's credential:
+// break-glass mints the same rights without sluis.
+func (p Preset) Request() presettoken.Request {
+	return presettoken.Request{Preset: p.Name, R2: p.R2, AccountID: p.AccountID, Policies: p.Policies}
+}
+
+// Documents are the policies as Cloudflare receives them, in order: the same
+// resource keys a prototype token and a break-glass child are written with.
+func (p Preset) Documents() ([]PolicyDocument, error) {
+	out := make([]PolicyDocument, 0, len(p.Policies))
+
+	for i, pol := range p.Policies {
+		key, err := account.ResourceKey(pol.Scope, p.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("cloudflare preset %s: policy %d: %w", p.Name, i, err)
+		}
+
+		out = append(out, PolicyDocument{Groups: slices.Clone(pol.PermissionGroups), Resources: map[string]string{key: "*"}})
+	}
+
+	return out, nil
+}

@@ -120,6 +120,11 @@ type Args struct {
 	Moved []string
 	// MovedKey replaces DefaultMovedKey.
 	MovedKey string
+	// Options returns extra resource options for one preset's token, appended
+	// after the protection every prototype has: an Alias to keep the URN of a
+	// prototype that was declared under another name or parent, an
+	// IgnoreChanges. Optional.
+	Options func(preset string) []pulumi.ResourceOption
 }
 
 // Validate reports the first problem with the declaration, without a Pulumi
@@ -258,12 +263,17 @@ func declare(ctx *pulumi.Context, args Args, p Preset) (*cf.AccountToken, error)
 		})
 	}
 
+	opts := []pulumi.ResourceOption{pulumi.Protect(true)}
+	if args.Options != nil {
+		opts = append(opts, args.Options(p.Name)...)
+	}
+
 	tok, err := cf.NewAccountToken(ctx, ResourcePrefix+p.Name, &cf.AccountTokenArgs{
 		AccountId: pulumi.String(args.AccountID),
 		Name:      pulumi.String(args.NamePrefix + p.Name),
 		Status:    pulumi.String(Status),
 		Policies:  policies,
-	}, pulumi.Protect(true))
+	}, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("prototype %s: %w", p.Name, err)
 	}

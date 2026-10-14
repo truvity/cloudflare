@@ -18,6 +18,9 @@ documents. Read the half you adopt.
   contributions and the one-ruleset-per-phase assembler
 - [cloudflare/awsapigw.md](cloudflare/awsapigw.md): `cloudflare/awsapigw`, the AWS API Gateway
   front door behind Cloudflare (mutual TLS, truststore, migration from sluis)
+- [cloudflare/presets.md](cloudflare/presets.md): `cloudflare/presets`, the
+  sluis Cloudflare presets built from plain rows (kinds, policies, the builders
+  for `presettoken` and `prototypes`, the equality proof)
 - [cloudflare/config.md](cloudflare/config.md): `cloudflare/config`, the
   Cloudflare registry as a typed, Pulumi-free model (schema, derived tunnels,
   contributions, what stays with the estate)
