@@ -1,0 +1,113 @@
+# The Cloudflare stack entry points
+
+Three packages are whole Pulumi programs' worth of Cloudflare, one per kind of
+stack. Each takes the loaded registry (`cloudflare/config`) and registers
+resources; none reads a secret or names an estate. Credentials come in
+(`Tokens`, already resolved by the caller) and secrets go out (a tunnel's token
+to the caller's sink).
+
+| Package | Stack | Registers |
+| --- | --- | --- |
+| `cloudflare/zonestack` | zone base, one per company | a provider per account of the company, and per zone of those accounts the zone component: settings, rulesets, records |
+| `cloudflare/services` | services, one per company | a provider per account of the company, and per cluster and account one tunnel with its ingress rules and CNAMEs |
+| `cloudflare/instancetunnel` | one per instance | a provider, a secret and a tunnel whose connector runs on a single host |
+
+`cloudflare/edge.Deploy` stays: it is the one-stack form (zones and tunnels in
+one program) and the compatibility facade over the same components.
+`edge.DeployTunnel` is its tunnel half, which `services` calls.
+
+## Which stack runs which
+
+A company is `accounts.<name>.company` in `cloudflare.yaml`, else the account's
+own name (`Config.CompanyOf`, `Config.AccountsOf`). A zone stack and a services
+stack are per company and see the accounts of that company only; a tunnel serves
+names in its own account's zones (the registry refuses anything else), so the
+split along companies never cuts a tunnel from its zone.
+
+```go
+// zone stack of company "example"
+err := zonestack.Deploy(ctx, zonestack.Args{
+    Config: cfg, Company: "example", Tokens: tokens,
+})
+
+// services stack of the same company
+err := services.Deploy(ctx, services.Args{
+    Config: cfg, Company: "example", Tokens: tokens,
+    Clusters: []services.Cluster{{Name: "kernel", DNSDomain: "cluster.local"}},
+    Sink: func(ctx *pulumi.Context, t services.Tunnel, token pulumi.StringOutput) error { /* store it */ },
+})
+
+// a box outside any cluster
+tun, err := instancetunnel.Deploy(ctx, instancetunnel.Args{
+    Name: "status", AccountID: id, Token: token, Zones: zones,
+    Routes: []instancetunnel.Route{{Host: "status.example.com", Service: "http://127.0.0.1:8081", Zone: "example.com"}},
+})
+```
+
+The tunnels are `Config.Tunnels`, derived from the edge catalog by `config.Load`
+(one per cluster and account, hosts in ingress order), so `services` takes no
+catalog of its own: a second copy could only disagree. A name the catalog marks
+`dns_elsewhere` keeps its ingress rule and gets no CNAME. A host listed in its
+zone's `origin_cnames` has its CNAME's content rewritten to that origin.
+
+`Clusters` only supplies each cluster's Kubernetes DNS domain (default
+`cluster.<name>`); every tunnel of the company is deployed whether or not its
+cluster is listed. `Origin` defaults to the registry's `fleets.internal`.
+
+The hooks (`AccountOptions`, `ZoneOptions`, `TunnelOptions`, `Contributions`)
+add resource options and rules. An estate adopting existing resources passes
+aliases through them: the legacy provider names for the `legacy_names` account
+(`cloudflare`, a former account key) belong in `AccountOptions`, the moves of a
+record between a zone and a tunnel in `TunnelOptions` and `ZoneOptions`.
+
+## The names contract
+
+Splitting a live stack into a zone stack and a services stack with
+`pulumi state move` replaces nothing only if the new stacks register what the old
+one did. The test `TestSplitStacksRegisterWhatTheSingleStackRegisters`
+(`cloudflare/zonestack`) runs the single stack (`edge.Deploy` plus the glue an
+estate wrote around it) and both new stacks, once per company, on the
+`cloudflare/config` fixture, and requires the union of the new stacks' resources
+to equal the old stack's: type, logical name, parent, provider and inputs. The
+names:
+
+- Providers: `provider-<account>` in each stack (the legacy account key, and
+  the name before the registry, are aliases the caller passes in
+  `AccountOptions`); `provider-aop-provider-<zone slug>` (the component named
+  `aop-provider-<zone slug>`) for a zone with active `origin_cnames` or
+  `ssl_mode_rules`, which serves exactly `tls-client-auth-<slug>` and
+  `ssl-mode-<slug>`.
+- Zone component `truvity:cloudflare:Zone`, named `tunnel.Slug(zone)`, with
+  children `setting-<slug>-ssl`, `-min-tls-version`, `-browser-cache-ttl`,
+  `-always-use-https`, `-security-header`; `total-tls-<slug>`;
+  `cache-rules-<slug>`; `firewall-custom-<slug>`; `firewall-managed-<slug>`;
+  `ratelimit-<slug>`; `ssl-mode-<slug>`; `tls-client-auth-<slug>`; and records
+  `record-<slug>-<host slug>-cname` or `record-<slug>-<host slug>-<type>-<content slug>`.
+- Tunnel component `truvity:cloudflare:Tunnel`, named by the tunnel (`<cluster>`
+  for the `legacy_names` account, `<cluster>-<account>` otherwise), with children
+  `tunnel-<name>`, `ingress-<name>`, `cname-<name>-<host slug>` and
+  `acm-<name>-<host slug>`, and `random:RandomBytes` `tunnel-secret-<name>`. The
+  stack exports `tunnelIds`.
+- Instance tunnel: component `<Name>`, secret `<Name>-tunnel-secret`, provider
+  `provider-<Name>`, records `cname-<Name>-<host slug>`.
+
+### The one parent change
+
+`tls-client-auth-<slug>` and `ssl-mode-<slug>` are top-level resources of the
+single stack and children of the zone component in the zone stack. The zone
+component aliases them to the no-parent URN (`zonespec.Compat.TopLevelAliases`,
+which `zonestack` sets), so the first preview after the move updates a URN and
+replaces nothing. `firewall-custom-<slug>` is a child in both and carries the
+same alias. The test asserts this one difference by name.
+
+### Inputs that stay as they were
+
+Two rule shapes are registered the way the single stack registered them, not the
+way the `cloudflare/rules` builders render them by default, so adopting them
+changes no ruleset: the public documents' cache rule and the per-host SSL mode
+rules carry no `ref` input (Cloudflare assigned it) unless `ssl_mode_rule_refs`
+pins one, and the SSL mode rule is described `<host> SSL <mode>` with the
+expression `(http.host eq "<host>")`. `zonespec.Compat.OmitRefs` is the
+mechanism for the first; `zonestack.ZoneArgs` does the second. The trusted
+clients, rate limit and managed WAF blocks travel as the zone component's blocks
+(not as contributions) for the same reason.

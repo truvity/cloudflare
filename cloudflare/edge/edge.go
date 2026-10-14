@@ -156,11 +156,7 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 			return fmt.Errorf("tunnel %s: account %q is not declared", t.Name, t.Account)
 		}
 
-		if err := checkTunnelZones(*t, zoneAccounts); err != nil {
-			return fmt.Errorf("deploy tunnel %s: %w", t.Name, err)
-		}
-
-		if err := deployTunnel(ctx, logger, args, acct, accountConfigs[t.Account], zoneIDs, *t, tunnelIDs); err != nil {
+		if err := DeployTunnel(ctx, args, acct, accountConfigs[t.Account].AccountID, zoneIDs, zoneAccounts, *t, tunnelIDs); err != nil {
 			return fmt.Errorf("deploy tunnel %s: %w", t.Name, err)
 		}
 	}
@@ -174,6 +170,39 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 	)
 
 	return nil
+}
+
+// DeployTunnel registers one tunnel exactly as Deploy does: its secret, the
+// tunnel component with its ingress and CNAMEs, the token handed to
+// args.Sink, and its id added to tunnelIDs. acct is the provider of the
+// tunnel's account; zoneIDs maps every zone the tunnel may serve names in to
+// its id and zoneAccounts to the account that owns it. Only the tunnel
+// fields of args are read (Origin, CAPoolPath, Sink, TunnelOptions, Logger).
+// It is the half of Deploy a stack that has no zones of its own (a services
+// stack, cloudflare/services) calls.
+func DeployTunnel(
+	ctx *pulumi.Context,
+	args Args,
+	acct *account.Account,
+	accountID string,
+	zoneIDs, zoneAccounts map[string]string,
+	t Tunnel,
+	tunnelIDs pulumi.StringMap,
+) error {
+	if args.Sink == nil {
+		return fmt.Errorf("edge: a TokenSink is required: where a tunnel token lives is the caller's decision")
+	}
+
+	logger := args.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
+	if err := checkTunnelZones(t, zoneAccounts); err != nil {
+		return err
+	}
+
+	return deployTunnel(ctx, logger, args, acct, Account{Name: t.Account, AccountID: accountID}, zoneIDs, t, tunnelIDs)
 }
 
 func newAccount(ctx *pulumi.Context, logger *slog.Logger, args Args, a Account) (*account.Account, error) {

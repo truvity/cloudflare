@@ -19,6 +19,9 @@ documents. Read the half you adopt.
 - [cloudflare/config.md](cloudflare/config.md): `cloudflare/config`, the
   Cloudflare registry as a typed, Pulumi-free model (schema, derived tunnels,
   contributions, what stays with the estate)
+- [cloudflare/stacks.md](cloudflare/stacks.md): `cloudflare/zonestack`,
+  `cloudflare/services` and `cloudflare/instancetunnel`, the stack entry points,
+  and the names they keep.
 - [cloudflare/cloudflared.md](cloudflare/cloudflared.md): the one cloudflared
   version pin (Go package, chart, bump script) and the instance connector
 - [cloudflare/doctrine.md](cloudflare/doctrine.md): what this repository owns

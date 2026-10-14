@@ -71,7 +71,36 @@ func contributions(args *Args) ([]cfrules.Contribution, builtins, error) {
 		add(c, true)
 	}
 
-	return append(out, args.Contributions...), known, nil
+	out = append(out, args.Contributions...)
+
+	// A contributed rule whose ref stays out of the inputs is registered like
+	// a block's rule: enabled, no ref (providerRule).
+	for _, ref := range args.Compat.OmitRefs {
+		found := false
+
+		for i := range args.Contributions {
+			c := &args.Contributions[i]
+
+			for j := range c.Rules {
+				if c.Rules[j].Ref != ref {
+					continue
+				}
+
+				if c.Rules[j].Disabled {
+					return nil, nil, fmt.Errorf("compat.omitRefs: rule %q is disabled: a disabled rule keeps its ref", ref)
+				}
+
+				known[builtinKey{c.Phase, ref}] = true
+				found = true
+			}
+		}
+
+		if !found {
+			return nil, nil, fmt.Errorf("compat.omitRefs: no contributed rule has ref %q", ref)
+		}
+	}
+
+	return out, known, nil
 }
 
 // rulesetChild is the child name of a phase's ruleset: a documented
