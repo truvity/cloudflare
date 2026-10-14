@@ -14,25 +14,28 @@ const (
 )
 
 type (
-	// AllowedNamespaces, LabelSelector, LabelExpression and RouteKind are
-	// Gateway API's allowedRoutes shapes, as a ListenerSet's grant is
-	// written.
+	// AllowedNamespaces is Gateway API's allowedRoutes.namespaces shape, as
+	// a ListenerSet's grant is written; LabelSelector, LabelExpression and
+	// RouteKind are the other allowedRoutes shapes.
 	AllowedNamespaces struct {
 		From     string        `yaml:"from"`
 		Selector LabelSelector `yaml:"selector,omitempty"`
 	}
 
+	// LabelSelector selects namespaces by label.
 	LabelSelector struct {
 		MatchLabels      map[string]string `yaml:"matchLabels,omitempty"`
 		MatchExpressions []LabelExpression `yaml:"matchExpressions,omitempty"`
 	}
 
+	// LabelExpression is one matchExpressions entry of a LabelSelector.
 	LabelExpression struct {
 		Key      string   `yaml:"key"`
 		Operator string   `yaml:"operator"`
 		Values   []string `yaml:"values,omitempty"`
 	}
 
+	// RouteKind is one kind of route a grant admits.
 	RouteKind struct {
 		Group string `yaml:"group"`
 		Kind  string `yaml:"kind"`

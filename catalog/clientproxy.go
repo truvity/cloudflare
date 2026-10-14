@@ -17,13 +17,18 @@ const (
 	// the stale one, so `groups` is for applications that have no roles of
 	// their own.
 	PostureAuthenticated = "authenticated"
-	PostureGroups        = "groups"
+	// PostureGroups makes the gateway the enforcement point: see
+	// PostureAuthenticated.
+	PostureGroups = "groups"
 
-	// CSRF postures for a browser route. `shadow` reports what enforcing
-	// would refuse without refusing it, which is the only safe way to learn
-	// whether a real client of this application sends an Origin.
-	CSRFOff     = "off"
-	CSRFShadow  = "shadow"
+	// CSRFOff does not check the Origin of a mutating request.
+	CSRFOff = "off"
+	// CSRFShadow reports what enforcing would refuse without refusing it,
+	// which is the only safe way to learn whether a real client of this
+	// application sends an Origin.
+	CSRFShadow = "shadow"
+	// CSRFEnforce refuses a mutating request whose Origin is not the
+	// destination's own or a listed additional origin.
 	CSRFEnforce = "enforce"
 )
 

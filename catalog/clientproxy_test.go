@@ -40,8 +40,11 @@ func TestClientProxyValidate(t *testing.T) {
 		edit func(*catalog.ClientProxy)
 		want string
 	}{
-		"no route":             {func(p *catalog.ClientProxy) { p.AttachRouteName = "" }, "name the route this binds to with attach_route_name"},
-		"a rule not a name":    {func(p *catalog.ClientProxy) { p.AttachRouteRule = "Static_Assets" }, "rows[web].proxy.attach_route_rule: \"Static_Assets\" is not a Gateway API rule name"},
+		"no route": {func(p *catalog.ClientProxy) { p.AttachRouteName = "" }, "name the route this binds to with attach_route_name"},
+		"a rule not a name": {
+			func(p *catalog.ClientProxy) { p.AttachRouteRule = "Static_Assets" },
+			"rows[web].proxy.attach_route_rule: \"Static_Assets\" is not a Gateway API rule name",
+		},
 		"unknown csrf":         {func(p *catalog.ClientProxy) { p.CSRF = "warn" }, `.csrf: "warn" is not "off", "shadow" or "enforce"`},
 		"origins without csrf": {func(p *catalog.ClientProxy) { p.CSRFAdditionalOrigins = []string{"https://a.example.com"} }, "listed without csrf"},
 		"unknown samesite":     {func(p *catalog.ClientProxy) { p.SameSite = "lax" }, `.same_site: "lax" is not Lax, Strict or None`},

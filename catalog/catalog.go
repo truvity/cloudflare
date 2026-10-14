@@ -14,13 +14,13 @@
 package catalog
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"regexp"
 	"sort"
 	"strings"
 
-	"bytes"
 	"go.yaml.in/yaml/v3"
 )
 

@@ -58,9 +58,9 @@ func groupsInput() catalog.DeriveInput {
 func group(t *testing.T, got *catalog.GroupsValue, name string) catalog.GroupValue {
 	t.Helper()
 
-	for _, g := range got.Groups {
-		if g.Name == name {
-			return g
+	for i := range got.Groups {
+		if got.Groups[i].Name == name {
+			return got.Groups[i]
 		}
 	}
 
