@@ -1,4 +1,4 @@
-module github.com/truvity/cloudflare/v2
+module github.com/truvity/edge/v3
 
 go 1.27.0
 
