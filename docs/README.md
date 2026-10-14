@@ -16,6 +16,8 @@ documents. Read the half you adopt.
   Go input and output, and the child names that are a contract
 - [cloudflare/rules.md](cloudflare/rules.md): `cloudflare/rules`, rule
   contributions and the one-ruleset-per-phase assembler
+- [cloudflare/awsapigw.md](cloudflare/awsapigw.md): `cloudflare/awsapigw`, the AWS API Gateway
+  front door behind Cloudflare (mutual TLS, truststore, migration from sluis)
 - [cloudflare/config.md](cloudflare/config.md): `cloudflare/config`, the
   Cloudflare registry as a typed, Pulumi-free model (schema, derived tunnels,
   contributions, what stays with the estate)

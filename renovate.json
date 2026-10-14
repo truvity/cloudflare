@@ -23,6 +23,20 @@
   ],
   "packageRules": [
     {
+      "description": "pulumi-aws is a dependency of cloudflare/awsapigw alone, and every bump of a module dependency cuts a release. Group them monthly and leave them to a human, so a provider bump is one release a month at most and never an automatic one.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "github.com/pulumi/pulumi-aws/**"
+      ],
+      "groupName": "pulumi-aws",
+      "schedule": [
+        "* * 1-7 * *"
+      ],
+      "automerge": false
+    },
+    {
       "description": "The go directive is OWNED by devbox-update (ci-workflows v2.10.0): it aligns go.mod to the toolchain triple in the same PR as devbox.lock. Renovate leaves `go` alone so the three can never disagree.",
       "matchManagers": [
         "gomod"
