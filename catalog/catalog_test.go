@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/truvity/gateway/catalog"
+	"github.com/truvity/edge/v3/catalog"
 )
 
 const fixture = `

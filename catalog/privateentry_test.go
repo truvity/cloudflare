@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/truvity/gateway/catalog"
+	"github.com/truvity/edge/v3/catalog"
 )
 
 func testEntry(loadBalancer bool) *catalog.PrivateEntry {

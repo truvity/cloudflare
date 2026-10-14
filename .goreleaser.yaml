@@ -2,7 +2,7 @@
 # which runs goreleaser and then pushes every chart under charts/ to
 # ghcr.io/truvity/charts at the tag's version.
 #
-# No binaries: this repository ships a Helm chart and a Go library, which
+# No binaries: this repository ships Helm charts and a Go library, which
 # needs no build step — goreleaser's job here is the GitHub Release with
 # the changelog, nothing else. `skip: true` is its documented shape for
 # library projects. (v2.5.0 to v2.18.0 also built the r2broker binary,
@@ -24,9 +24,14 @@ changelog:
 release:
   github: {}
   header: |
-    ## truvity/cloudflare {{ .Tag }}
+    ## truvity/edge {{ .Tag }}
 
     | | |
     |---|---|
     | cloudflared chart | `oci://ghcr.io/truvity/charts/cloudflared:{{ .Version }}` |
-    | Go | `go get github.com/truvity/cloudflare/v2@{{ .Tag }}` |
+    | gateway-fleet chart | `oci://ghcr.io/truvity/charts/gateway-fleet:{{ .Version }}` |
+    | gateway-groups chart | `oci://ghcr.io/truvity/charts/gateway-groups:{{ .Version }}` |
+    | gateway-policies chart | `oci://ghcr.io/truvity/charts/gateway-policies:{{ .Version }}` |
+    | gateway-projects chart | `oci://ghcr.io/truvity/charts/gateway-projects:{{ .Version }}` |
+    | gateway-routes chart (library) | `oci://ghcr.io/truvity/charts/gateway-routes:{{ .Version }}` |
+    | Go | `go get github.com/truvity/edge/v3@{{ .Tag }}` |

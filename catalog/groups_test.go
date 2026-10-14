@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/truvity/gateway/catalog"
+	"github.com/truvity/edge/v3/catalog"
 )
 
 const groupsLabel = "example.test/route-grant-business"
