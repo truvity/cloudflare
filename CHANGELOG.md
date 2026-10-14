@@ -9,7 +9,13 @@ together at every version.
 
 ### Added
 
+- **`cloudflare/cloudflared` (new): the one cloudflared version pin.** `Version` (`2026.10.0`), `ImageRepository`, `ImageDigest` (the multi-architecture index), `SHA256AMD64` / `SHA256ARM64` (the release assets `cloudflared-linux-<arch>`), `BinaryURL(arch)` and `BinarySHA256(arch)`. Standard library only. `hack/cloudflared-pin.sh <version>` rewrites the pin and the chart value from the upstream release. See [docs/cloudflare/cloudflared.md](docs/cloudflare/cloudflared.md).
+- **`cloudflare/instanceconnector` (new): cloudflared as a tunnel connector on a Linux instance.** `Bootstrap(Args) (Fragment, error)` renders, in separate pieces so a caller can start late, an idempotent checksum-verified install of the pinned binary, the systemd unit, a step that loads the tunnel token from SSM into a 0600 env file under `/run` without printing it, and the start. Validates architecture, paths, parameter name and region. Standard library plus `cloudflare/cloudflared`. See [docs/cloudflare/cloudflared.md](docs/cloudflare/cloudflared.md).
 - **`cloudflare/zone` assembles its rulesets from `cloudflare/rules` contributions, and gains Authenticated Origin Pulls.** `zone.Args` (that is, `zonespec.Args`) gains `Contributions []rules.Contribution`, `AuthenticatedOriginPulls *bool` (zone setting `tls_client_auth`, child `tls-client-auth-<name>`), `ImportRulesets map[rules.Phase]string` (adopt a phase's existing entry point ruleset by id) and `Compat{TopLevelAliases}` (aliases `firewall-custom-`, `tls-client-auth-` and `ssl-mode-` children to a no-parent URN). The `cache`, `trustedClients`, `managedWaf` and `rateLimits` blocks are now contributions too, and every ruleset is registered from `rules.Assemble` under the existing child names (`ssl-mode-<name>` for the config phase). Additive: no exported symbol is removed or changed and a zone without the new fields registers byte-identical inputs. The rule shapes move to the new standard-library-only package `cloudflare/rulespec` and `rules` aliases them (`rules.Rule` is `rulespec.Rule`). See [docs/cloudflare/rules.md](docs/cloudflare/rules.md).
+
+### Changed
+
+- **The `cloudflared` chart runs cloudflared 2026.10.0 (was 2026.8.3).** `image.tag` moves from `2026.8.3` to `2026.10.0`; the rendered Deployment's `image:` line is the only change in every golden render. One version now serves the whole estate, pinned in `cloudflare/cloudflared` (below) and kept equal to the chart value by `hack/cloudflared-pin.sh check` in `just lint` and a Go test. A consumer sees the new image tag in its zero-diff gate when it moves to the next chart version, and rolls its pods once; a consumer that sets `image.tag` itself is unaffected.
 
 ## v3.0.1
 

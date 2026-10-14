@@ -1,0 +1,22 @@
+# Source: truvity/observability, pkg/statusbox/ec2/setup.sh, write_units(),
+# the cloudflared.service heredoc, as of origin/HEAD on 2026-10-14. Copied
+# verbatim below the "---" line; the test compares it with the rendered unit
+# after dropping what is statusbox's own: the Description wording and the
+# EnvironmentFile=/etc/statusbox/common.env line (a statusbox-wide non-secret
+# environment this package has no notion of).
+---
+[Unit]
+Description=statusbox cloudflared tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=statusbox
+Group=statusbox
+EnvironmentFile=/etc/statusbox/common.env
+EnvironmentFile=/run/statusbox/tunnel.env
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel run
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes

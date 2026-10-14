@@ -19,6 +19,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     hack/sync-gateway-projects.sh check
+    hack/cloudflared-pin.sh check
     for chart in {{ charts }}; do
       helm lint "charts/$chart"
       # An unknown top-level key must fail the render. Not `! helm
