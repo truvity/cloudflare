@@ -1,0 +1,124 @@
+# A fixture shaped like an estate's real cloudflare.yaml: two accounts (one
+# with the legacy names), four zones with the settings an estate decides, the
+# fleet Service and the root block. Every account id, zone id and name is a
+# placeholder.
+accounts:
+  main:
+    account_id: "aaaa1111bbbb2222cccc3333dddd4444"
+    legacy_names: true
+    breakglass_item: cloudflare-root-main
+    company: example
+
+  partner:
+    account_id: "aaaa5555bbbb6666cccc7777dddd8888"
+    breakglass_item: cloudflare-root-partner
+    company: partner-co
+
+zones:
+  example.com:
+    account: main
+    zone_id: "1111aaaa2222bbbb3333cccc4444dddd"
+    ssl_mode: full
+    min_tls_version: "1.2"
+    always_use_https: true
+
+    managed_waf:
+      hosts:
+        - "*.devel.example.com"
+        - gemaal.example.com
+
+    security_txt:
+      contact: ["mailto:security@example.com"]
+      expires: "2027-10-13T00:00:00Z"
+
+    cache:
+      respect_origin_browser_ttl: true
+
+    public_cache:
+      host: access.example.com
+      ttl: 5m
+
+    total_tls:
+      enabled: true
+      certificate_authority: lets_encrypt
+
+    trusted_clients:
+      hosts: ["mcp.example.com", "access.example.com"]
+      ranges: ["192.0.2.0/24"]
+
+    origin_cnames:
+      access.example.com: "d-abcdef1234.execute-api.eu-central-1.amazonaws.com"
+
+    ssl_mode_rules:
+      access.example.com: strict
+    ssl_mode_rule_refs:
+      access.example.com: "feed0001feed0002feed0003feed0004"
+
+    rate_limits:
+      plan: pro
+      rules:
+        - name: Browser telemetry ingest
+          endpoints:
+            - {host: url-shortener.devel.example.com, path: /faro/collect}
+            - {host: url-shortener.stage.example.com, path: /faro/collect}
+            - {host: url-shortener.prod.example.com, path: /faro/collect}
+            - {host: access.example.com, path: /login/recovery}
+          characteristics: [ip.src]
+          period: 10
+          requests: 20
+          mitigation_timeout: 10
+          action: block
+
+        - name: Machine ingest
+          endpoints:
+            - {host: otlp.devel.example.com, path_prefix: /v1/}
+            - {host: otlp.example.com, path_prefix: /v1/}
+            - {host: alert-ingress.example.com, path: /}
+            - {host: access.example.com, path: /token}
+          characteristics: [ip.src]
+          period: 60
+          requests: 600
+          mitigation_timeout: 60
+          action: block
+
+  example.org:
+    account: main
+    zone_id: "2222aaaa3333bbbb4444cccc5555dddd"
+    ssl_mode: strict
+    min_tls_version: "1.3"
+    always_use_https: true
+    security_txt:
+      contact: ["mailto:security@example.com"]
+      expires: "2027-10-13T00:00:00Z"
+    total_tls:
+      enabled: true
+      certificate_authority: lets_encrypt
+    records:
+      - {name: docs.example.org, type: CNAME, content: docs-origin.cdn.example.net, ttl: 300, comment: CDN}
+      - {name: openapi.example.org, type: CNAME, content: openapi-origin.cdn.example.net, ttl: 300, comment: CDN}
+
+  example.net:
+    account: partner
+    zone_id: "3333aaaa4444bbbb5555cccc6666dddd"
+    ssl_mode: full
+    min_tls_version: "1.2"
+    total_tls:
+      enabled: true
+      certificate_authority: lets_encrypt
+
+fleets:
+  internal:
+    service: gateway-internal
+    namespace: envoy-gateway-system
+
+r2: {}
+
+root:
+  edge:
+    rotation: "1"
+  status:
+    rotation: "1"
+  r2_admin:
+    rotation: "1"
+  r2_parent:
+    rotation: "1"
