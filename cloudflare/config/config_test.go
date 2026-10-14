@@ -1272,3 +1272,20 @@ func TestLibraryConvertersAreNilSafe(t *testing.T) {
 	assert.Nil(t, w.Library("example.com"))
 	assert.Nil(t, tc.Library("example.com"))
 }
+
+func TestCompanyGroupsAccounts(t *testing.T) {
+	c := fixture(t)
+
+	assert.Equal(t, "example", c.CompanyOf("main"))
+	assert.Equal(t, "partner-co", c.CompanyOf("partner"))
+	assert.Equal(t, []string{"main"}, c.AccountsOf("example"))
+	assert.Equal(t, []string{"partner"}, c.AccountsOf("partner-co"))
+	assert.Empty(t, c.AccountsOf("nobody"))
+
+	// An account that sets no company is its own.
+	a := c.Accounts["partner"]
+	a.Company = ""
+	c.Accounts["partner"] = a
+	assert.Equal(t, "partner", c.CompanyOf("partner"))
+	assert.Equal(t, []string{"partner"}, c.AccountsOf("partner"))
+}

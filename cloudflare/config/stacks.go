@@ -45,6 +45,30 @@ func (c *Config) LegacyAccount() (string, bool) {
 	return "", false
 }
 
+// CompanyOf is the company an account belongs to: accounts.<name>.company,
+// else the account's own name. Stacks that are per company
+// (cloudflare/zonestack and cloudflare/services) group accounts by it.
+func (c *Config) CompanyOf(account string) string {
+	if co := c.Accounts[account].Company; co != "" {
+		return co
+	}
+
+	return account
+}
+
+// AccountsOf is the accounts of one company (CompanyOf), sorted.
+func (c *Config) AccountsOf(company string) []string {
+	var out []string
+
+	for _, name := range sortedKeys(c.Accounts) {
+		if c.CompanyOf(name) == company {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
 // StackName is the Pulumi stack of one kind (StackRoot, StackEdge,
 // StackR2) for one account.
 func (c *Config) StackName(kind, account string) string {
