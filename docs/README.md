@@ -14,6 +14,8 @@ documents. Read the half you adopt.
   it prevents; the traps
 - [cloudflare/reference.md](cloudflare/reference.md): every chart value, every
   Go input and output, and the child names that are a contract
+- [cloudflare/rules.md](cloudflare/rules.md): `cloudflare/rules`, rule
+  contributions and the one-ruleset-per-phase assembler
 - [cloudflare/doctrine.md](cloudflare/doctrine.md): what this repository owns
   and what the consuming estate owns
 
