@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	cf "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
@@ -29,9 +30,9 @@ import (
 // type, logical name, parent, provider and inputs for every resource. This
 // file proves it on the config fixture. The "before" is cloudflare/edge.Deploy
 // plus the glue an estate wrote around it (legacyProgram below, which
-// reproduces that glue: the zone mapping by blocks, the origin-pull and
-// SSL-mode resources under their own provider, the public-documents cache
-// rule appended to the library's cache ruleset, the origin CNAME rewrite);
+// reproduces that glue as it is live: the zone mapping by blocks, the
+// public-documents cache rule as a contribution, the origin-pull and
+// SSL-mode resources under their own provider, the origin CNAME rewrite);
 // the "after" is zonestack.Deploy and services.Deploy once per company.
 
 var fixtureProjects = []catalog.Project{{Name: "dms"}, {Name: "eudi"}, {Name: "url-shortener"}, {Name: "landing"}}
@@ -60,7 +61,15 @@ func tokens(cfg *config.Config) map[string]string {
 func nopSink(*pulumi.Context, services.Tunnel, pulumi.StringOutput) error { return nil }
 
 func TestSplitStacksRegisterWhatTheSingleStackRegisters(t *testing.T) {
-	assertSplitEquivalent(t, fixture(t))
+	assertSplitEquivalent(t, fixture(t), []string{
+		`firewall-custom-example-com rule 0: enabled: <absent> -> true`,
+		`firewall-custom-example-com rule 0: ref: <absent> -> "trusted-clients"`,
+		`firewall-managed-example-com rule 0: ref: <absent> -> "managed-waf"`,
+		`ratelimit-example-com rule 0: ref: <absent> -> "ratelimit-Browser telemetry ingest"`,
+		`ratelimit-example-com rule 1: ref: <absent> -> "ratelimit-Machine ingest"`,
+		`ssl-mode-example-com rule 0: description: "access.example.com SSL strict" -> "access.example.com: SSL mode strict"`,
+		`ssl-mode-example-com rule 0: expression: "(http.host eq \"access.example.com\")" -> "http.host eq \"access.example.com\""`,
+	})
 }
 
 // A configuration rule whose ref nobody pinned: Cloudflare assigns the ref,
@@ -72,10 +81,10 @@ func TestSplitStacksEquivalentWithAnUnpinnedSSLModeRef(t *testing.T) {
 	z.SSLModeRules = map[string]string{"access.example.com": "strict", "gemaal.example.com": "full"}
 	cfg.Zones["example.com"] = z
 
-	assertSplitEquivalent(t, cfg)
+	assertSplitEquivalent(t, cfg, nil)
 }
 
-func assertSplitEquivalent(t *testing.T, cfg *config.Config) {
+func assertSplitEquivalent(t *testing.T, cfg *config.Config, wantCosmetic []string) {
 	t.Helper()
 
 	before, err := stacktest.Run(legacyProgram(cfg, tokens(cfg)))
@@ -136,8 +145,27 @@ func assertSplitEquivalent(t *testing.T, cfg *config.Config) {
 
 	assert.Equal(t, keys(want), keys(got), "the split registers the same resources")
 
+	var cosmetic []string
+
 	for _, key := range keys(want) {
-		assert.Equal(t, want[key], got[key], key)
+		if assert.ObjectsAreEqual(want[key], got[key]) {
+			continue
+		}
+
+		diffs, ok := cosmeticRulesetDiff(want[key], got[key])
+		if !assert.True(t, ok, "%s differs beyond the allow-list: %v != %v", key, want[key], got[key]) {
+			continue
+		}
+
+		cosmetic = append(cosmetic, diffs...)
+	}
+
+	for _, d := range cosmetic {
+		t.Log("allow-listed ruleset-rule diff (D499 a): " + d)
+	}
+
+	if wantCosmetic != nil {
+		assert.Equal(t, wantCosmetic, cosmetic)
 	}
 
 	// The fixture reaches the corners the split could lose.
@@ -181,19 +209,6 @@ func keys(m map[string]stacktest.Resource) []string {
 // registry plus the estate glue around it.
 func legacyProgram(cfg *config.Config, toks map[string]string) func(*pulumi.Context) error {
 	return func(ctx *pulumi.Context) error {
-		cacheRules := map[string]rules.CacheRule{}
-
-		for name := range cfg.Zones {
-			if p := cfg.Zones[name].PublicCache; p != nil {
-				rule, err := rules.PublicPathsCache(p.Host, rules.PublicPathsArgs{TTL: p.EdgeTTL()})
-				if err != nil {
-					return err
-				}
-
-				cacheRules[tunnel.Slug(name)] = rule
-			}
-		}
-
 		var accounts []edge.Account
 		for name, a := range cfg.Accounts {
 			accounts = append(accounts, edge.Account{Name: name, AccountID: a.AccountID, Token: toks[name]})
@@ -223,14 +238,6 @@ func legacyProgram(cfg *config.Config, toks map[string]string) func(*pulumi.Cont
 			Accounts: accounts, Zones: zones, Tunnels: tunnels,
 			Origin: edge.Origin{Service: cfg.Fleets.Internal.Service, Namespace: cfg.Fleets.Internal.Namespace},
 			Sink:   func(*pulumi.Context, edge.Tunnel, pulumi.StringOutput) error { return nil },
-			ZoneOptions: func(z edge.Zone) []pulumi.ResourceOption {
-				slug := tunnel.Slug(z.Name)
-				if rule, ok := cacheRules[slug]; ok {
-					return []pulumi.ResourceOption{pulumi.Transformations([]pulumi.ResourceTransformation{legacyPublicCache(slug, rule)})}
-				}
-
-				return nil
-			},
 			TunnelOptions: func(t edge.Tunnel) []pulumi.ResourceOption {
 				origins := map[string]string{}
 
@@ -276,6 +283,17 @@ func legacyZoneArgs(name string, z config.Zone) zone.Args {
 	out.AlwaysUseHTTPS = z.AlwaysUseHTTPS
 	out.HSTS = z.HSTS.Library()
 	out.ManagedWAF = z.ManagedWAF.Library(name)
+
+	// The public documents' cache rule, a contribution with its ref, as the
+	// estate passes it since the library took the rule over.
+	if p := z.PublicCache; p != nil {
+		rule, err := rules.PublicPathsCache(p.Host, rules.PublicPathsArgs{TTL: p.EdgeTTL()})
+		if err != nil {
+			panic(err)
+		}
+
+		out.Contributions = []rules.Contribution{rule.Contribution()}
+	}
 
 	return out
 }
@@ -351,78 +369,6 @@ func legacyZoneEdge(ctx *pulumi.Context, cfg *config.Config, toks map[string]str
 	return nil
 }
 
-// legacyPublicCache appends the public-documents rule to the library's cache
-// ruleset and narrows that ruleset's bypass, as the estate's transformation
-// does.
-func legacyPublicCache(slug string, rule rules.CacheRule) pulumi.ResourceTransformation {
-	return func(ta *pulumi.ResourceTransformationArgs) *pulumi.ResourceTransformationResult {
-		if ta.Type != "cloudflare:index/ruleset:Ruleset" || ta.Name != "cache-rules-"+slug {
-			return nil
-		}
-
-		args, ok := ta.Props.(*cf.RulesetArgs)
-		if !ok {
-			return nil
-		}
-
-		existing, ok := args.Rules.(cf.RulesetRuleArray)
-		if !ok {
-			return nil
-		}
-
-		out := make(cf.RulesetRuleArray, 0, len(existing)+1)
-
-		for _, r := range existing {
-			out = append(out, legacyNarrow(r, rule.Expression))
-		}
-
-		out = append(out, &cf.RulesetRuleArgs{
-			Action:      pulumi.String("set_cache_settings"),
-			Expression:  pulumi.String(rule.Expression),
-			Description: pulumi.String(rule.Description),
-			Enabled:     pulumi.Bool(true),
-			ActionParameters: &cf.RulesetRuleActionParametersArgs{
-				Cache: pulumi.Bool(true),
-				EdgeTtl: &cf.RulesetRuleActionParametersEdgeTtlArgs{
-					Mode: pulumi.String("override_origin"), Default: pulumi.Int(rule.EdgeTTLSeconds),
-				},
-				BrowserTtl: &cf.RulesetRuleActionParametersBrowserTtlArgs{Mode: pulumi.String("respect_origin")},
-			},
-		})
-
-		next := *args
-		next.Rules = out
-
-		return &pulumi.ResourceTransformationResult{Props: &next, Opts: ta.Opts}
-	}
-}
-
-func legacyNarrow(r cf.RulesetRuleInput, expr string) cf.RulesetRuleInput {
-	var args cf.RulesetRuleArgs
-
-	switch v := r.(type) {
-	case cf.RulesetRuleArgs:
-		args = v
-	case *cf.RulesetRuleArgs:
-		args = *v
-	default:
-		return r
-	}
-
-	if d, ok := args.Description.(pulumi.String); !ok || string(d) != "Not a cacheable hostname" {
-		return r
-	}
-
-	old, ok := args.Expression.(pulumi.String)
-	if !ok {
-		return r
-	}
-
-	args.Expression = pulumi.String(fmt.Sprintf("(%s) and not %s", string(old), expr))
-
-	return args
-}
-
 func legacyOriginCNAMEs(tunnelName string, origins map[string]string) pulumi.ResourceTransformation {
 	byRecord := map[string]string{}
 	for host, origin := range origins {
@@ -444,4 +390,109 @@ func legacyOriginCNAMEs(tunnelName string, origins map[string]string) pulumi.Res
 
 		return &pulumi.ResourceTransformationResult{Props: args, Opts: ta.Opts}
 	}
+}
+
+// cosmeticRulesetDiff reports the difference between a ruleset as the single
+// stack registered it and as the split registers it, when it is only the
+// allow-listed kind: per rule, the ref and enabled inputs (the builders set
+// them, the zone's blocks did not), the description of an SSL-mode rule and
+// the outer parentheses of an expression. Everything else, the ruleset's own
+// inputs, its parent and provider, the number of rules and every other rule
+// field, must be equal, or ok is false.
+func cosmeticRulesetDiff(want, got stacktest.Resource) (diffs []string, ok bool) {
+	if want.Type != "cloudflare:index/ruleset:Ruleset" || want.Parent != got.Parent || want.Provider != got.Provider {
+		return nil, false
+	}
+
+	wi, gi := cloneWithout(want.Inputs, "rules"), cloneWithout(got.Inputs, "rules")
+	if !assert.ObjectsAreEqual(wi, gi) {
+		return nil, false
+	}
+
+	wr, _ := want.Inputs["rules"].([]any)
+	gr, _ := got.Inputs["rules"].([]any)
+
+	if len(wr) != len(gr) {
+		return nil, false
+	}
+
+	for i := range wr {
+		a, _ := wr[i].(map[string]any)
+		b, _ := gr[i].(map[string]any)
+
+		for _, k := range unionKeys(a, b) {
+			av, aok := a[k]
+			bv, bok := b[k]
+
+			if aok == bok && assert.ObjectsAreEqual(av, bv) {
+				continue
+			}
+
+			allowed := k == "ref" || k == "enabled" ||
+				(k == "description" && strings.HasPrefix(want.Name, "ssl-mode-")) ||
+				(k == "expression" && aok && bok && unparen(fmt.Sprint(av)) == unparen(fmt.Sprint(bv)))
+			if !allowed {
+				return nil, false
+			}
+
+			diffs = append(diffs, fmt.Sprintf("%s rule %d: %s: %s -> %s", want.Name, i, k, show(av, aok), show(bv, bok)))
+		}
+	}
+
+	return diffs, true
+}
+
+func show(v any, present bool) string {
+	if !present {
+		return "<absent>"
+	}
+
+	return quote(v)
+}
+
+func quote(v any) string {
+	if s, ok := v.(string); ok {
+		return fmt.Sprintf("%q", s)
+	}
+
+	return fmt.Sprint(v)
+}
+
+func unparen(s string) string {
+	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
+		return s[1 : len(s)-1]
+	}
+
+	return s
+}
+
+func cloneWithout(m map[string]any, key string) map[string]any {
+	out := make(map[string]any, len(m))
+
+	for k, v := range m {
+		if k != key {
+			out[k] = v
+		}
+	}
+
+	return out
+}
+
+func unionKeys(a, b map[string]any) []string {
+	seen := map[string]bool{}
+
+	var out []string
+
+	for _, m := range []map[string]any{a, b} {
+		for k := range m {
+			if !seen[k] {
+				seen[k] = true
+				out = append(out, k)
+			}
+		}
+	}
+
+	sort.Strings(out)
+
+	return out
 }

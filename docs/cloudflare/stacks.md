@@ -100,14 +100,25 @@ which `zonestack` sets), so the first preview after the move updates a URN and
 replaces nothing. `firewall-custom-<slug>` is a child in both and carries the
 same alias. The test asserts this one difference by name.
 
-### Inputs that stay as they were
+### One-time in-place ruleset updates (owner decision D499 a)
 
-Two rule shapes are registered the way the single stack registered them, not the
-way the `cloudflare/rules` builders render them by default, so adopting them
-changes no ruleset: the public documents' cache rule and the per-host SSL mode
-rules carry no `ref` input (Cloudflare assigned it) unless `ssl_mode_rule_refs`
-pins one, and the SSL mode rule is described `<host> SSL <mode>` with the
-expression `(http.host eq "<host>")`. `zonespec.Compat.OmitRefs` is the
-mechanism for the first; `zonestack.ZoneArgs` does the second. The trusted
-clients, rate limit and managed WAF blocks travel as the zone component's blocks
-(not as contributions) for the same reason.
+The zone stack registers every rule the registry's blocks ask for in the form
+the `cloudflare/rules` builders give it (`config.Zone.Contributions`): with its
+`ref`, enabled, and the builder's description and expression. The single stack
+registers some of them in an older form, so the first preview of the zone stack
+after the split shows these in-place updates of rulesets, and nothing else (no
+replacement, no create, no delete). On the fixture, the test lists them:
+
+- `firewall-custom-<slug>` (trusted clients): `ref` `trusted-clients` and
+  `enabled` true added.
+- `firewall-managed-<slug>` (managed WAF): `ref` `managed-waf` added.
+- `ratelimit-<slug>`: `ref` `ratelimit-<rule name>` added to each rule.
+- `ssl-mode-<slug>`: per rule, the description `<host> SSL <mode>` becomes
+  `<host>: SSL mode <mode>`, the expression loses its outer parentheses, and a
+  `ref` is added where `ssl_mode_rule_refs` pins none (`ssl-mode-<host>`).
+
+The public documents' cache rule already has its `ref` (it is a builder
+contribution in the single stack too) and does not appear. The test fails on any
+other difference: it compares every resource's type, name, parent, provider and
+inputs, and allows only these rule fields, on rulesets, with the rule count and
+every other input equal.
