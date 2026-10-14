@@ -5,9 +5,10 @@ go 1.27.0
 toolchain go1.27.2
 
 require (
+	github.com/pulumi/pulumi-aws/sdk/v7 v7.50.0
 	github.com/pulumi/pulumi-cloudflare/sdk/v6 v6.19.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.2
-	github.com/pulumi/pulumi/sdk/v3 v3.260.0
+	github.com/pulumi/pulumi/sdk/v3 v3.263.0
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v3 v3.0.5
 )
