@@ -183,14 +183,6 @@ type (
 		// ssl-mode children to the same name with no parent, the URN a
 		// resource at the stack root has.
 		TopLevelAliases bool `json:"topLevelAliases,omitempty" yaml:"topLevelAliases,omitempty"`
-		// OmitRefs lists refs of contributed rules (Args.Contributions) to
-		// register WITHOUT the ref input, for rules an estate created before
-		// refs were inputs: Cloudflare assigned the ref, and sending a new
-		// one would rewrite the live rule. The rule is still registered
-		// enabled. Each entry must be the ref of a contributed rule that is
-		// not Disabled; the ref still identifies the rule inside the
-		// library (Assemble), it only stays out of the ruleset's inputs.
-		OmitRefs []string `json:"omitRefs,omitempty" yaml:"omitRefs,omitempty"`
 	}
 
 	// Records is a set of DNS records the estate owns inside one zone.

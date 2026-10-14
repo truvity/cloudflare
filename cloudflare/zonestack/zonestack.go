@@ -182,14 +182,14 @@ func aopProvider(slug string, p *account.Account) pulumi.ResourceTransformation 
 
 // ZoneArgs maps one zone of the registry onto the zone component's input:
 // SSL mode, browser TLS floor, Total TLS, the cache policy with its derived
-// hosts, trusted clients, rate limits, the zone's own records, the HTTPS
-// redirect, HSTS, the managed WAF, Authenticated Origin Pulls while some host
-// has left its tunnel for another origin, and the adopted configuration
-// ruleset. The public documents' cache rule and the per-host SSL modes are
-// contributions, registered with the inputs the single edge stack's glue gave
-// them (see the golden test), so that adopting them changes no ruleset.
-// Compat.TopLevelAliases is on: the resources that live at a stack's root
-// today keep their URNs.
+// hosts, the zone's own records, the HTTPS redirect, HSTS, Authenticated
+// Origin Pulls while some host has left its tunnel for another origin, the
+// adopted configuration ruleset, and the rules of the registry's blocks as
+// the library builds them (config.Zone.Contributions: public cache, SSL
+// mode, rate limits, trusted clients, managed WAF), with their refs. A
+// ruleset an estate registered in another form takes one in-place update
+// when it adopts these (docs/cloudflare/stacks.md). Compat.TopLevelAliases is
+// on: the resources that live at a stack's root today keep their URNs.
 func ZoneArgs(name string, z config.Zone) (zone.Args, error) {
 	z.Name = name
 
@@ -200,13 +200,7 @@ func ZoneArgs(name string, z config.Zone) (zone.Args, error) {
 		AlwaysUseHTTPS: z.AlwaysUseHTTPS,
 		HSTS:           z.HSTS.Library(),
 		Records:        z.RecordsLibrary(name),
-		RateLimits:     z.RateLimits.Library(),
-		ManagedWAF:     z.ManagedWAF.Library(name),
 		Compat:         zone.Compat{TopLevelAliases: true},
-	}
-
-	if z.TrustedClients != nil {
-		out.TrustedClients = z.TrustedClients.Library(name)
 	}
 
 	if z.TotalTLS != nil {
@@ -231,45 +225,12 @@ func ZoneArgs(name string, z config.Zone) (zone.Args, error) {
 		out.ImportRulesets = map[rules.Phase]string{rules.PhaseConfigSettings: z.ConfigRulesImportID}
 	}
 
-	if p := z.PublicCache; p != nil {
-		rule, err := rules.PublicPathsCache(p.Host, rules.PublicPathsArgs{TTL: p.EdgeTTL()})
-		if err != nil {
-			return zone.Args{}, fmt.Errorf("public_cache: %w", err)
-		}
-
-		c := rule.Contribution()
-		out.Contributions = append(out.Contributions, c)
-		out.Compat.OmitRefs = append(out.Compat.OmitRefs, c.Rules[0].Ref)
+	contributions, err := z.Contributions()
+	if err != nil {
+		return zone.Args{}, err
 	}
 
-	hosts := make([]string, 0, len(z.SSLModeRules))
-	for host := range z.SSLModeRules {
-		hosts = append(hosts, host)
-	}
-
-	sort.Strings(hosts)
-
-	for _, host := range hosts {
-		mode := z.SSLModeRules[host]
-
-		c, err := rules.SSLMode(host, mode, z.SSLModeRef(host))
-		if err != nil {
-			return zone.Args{}, fmt.Errorf("ssl_mode_rules[%s]: %w", host, err)
-		}
-
-		// The rule as the dashboard writes it, which the adopted rulesets hold:
-		// described "<host> SSL <mode>", the host in parentheses. Ordered by
-		// host, whatever the pinned refs sort like.
-		c.Source = "ssl-mode:" + host
-		c.Rules[0].Description = fmt.Sprintf("%s SSL %s", host, mode)
-		c.Rules[0].Expression = fmt.Sprintf("(http.host eq %q)", host)
-		out.Contributions = append(out.Contributions, c)
-
-		// A ref nobody pinned is Cloudflare's to assign.
-		if z.SSLModeRuleRefs[host] == "" {
-			out.Compat.OmitRefs = append(out.Compat.OmitRefs, c.Rules[0].Ref)
-		}
-	}
+	out.Contributions = contributions
 
 	return out, nil
 }
