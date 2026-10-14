@@ -743,7 +743,7 @@ func TestValidate_DomainRouting(t *testing.T) {
 
 	t.Run("deeper wildcard shadowed by broader wildcard", func(t *testing.T) {
 		// cloudflared's `*` spans dots: *.example.com already catches
-		// every a.kernel.example.com (INF-522).
+		// every a.kernel.example.com.
 		c := validConfig("*.example.com", "*.kernel.example.com")
 		err := c.Validate()
 		require.Error(t, err)
