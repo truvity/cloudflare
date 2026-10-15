@@ -1,0 +1,8 @@
+# Placeholders from a Secret that an ExternalSecret fills, plus one inline value.
+placeholders:
+  apiBase: https://api.example.com
+  secretName: static-site-values
+  secretKeys:
+    - gtmId
+  optionalKeys:
+    - bannerText

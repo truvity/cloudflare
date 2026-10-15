@@ -133,6 +133,9 @@ func buildEntry(disk, key string, cfg *Config) (*entry, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := checkTokens(key, kind, raw, cfg); err != nil {
+			return nil, err
+		}
 		e.body = substitute(kind, raw, cfg.Placeholders)
 		e.size = int64(len(e.body))
 		h.Write(e.body)

@@ -1,3 +1,4 @@
+{{- include "static-site.validatePlaceholders" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -95,9 +96,23 @@ spec:
             - name: STATIC_SITE_HEADERS
               value: {{ toJson .Values.headers | quote }}
             {{- end }}
-            {{- if .Values.placeholders }}
+            {{- if (include "static-site.inlinePlaceholders" . | fromJson) }}
             - name: STATIC_SITE_PLACEHOLDERS_FILE
               value: /etc/static-site/placeholders.json
+            {{- end }}
+            {{- if .Values.placeholders.secretName }}
+            - name: STATIC_SITE_PLACEHOLDERS_DIR
+              value: /etc/static-site-secrets
+            {{- with .Values.placeholders.secretKeys }}
+            - name: STATIC_SITE_PLACEHOLDERS_KEYS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.placeholders.optionalKeys }}
+            - name: STATIC_SITE_PLACEHOLDERS_OPTIONAL_KEYS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            - name: STATIC_SITE_PLACEHOLDERS_STRICT
+              value: "true"
             {{- end }}
             - name: STATIC_SITE_LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
@@ -135,9 +150,14 @@ spec:
           volumeMounts:
             - name: content
               mountPath: /var/run/site
-            {{- if .Values.placeholders }}
+            {{- if (include "static-site.inlinePlaceholders" . | fromJson) }}
             - name: placeholders
               mountPath: /etc/static-site
+              readOnly: true
+            {{- end }}
+            {{- if .Values.placeholders.secretName }}
+            - name: placeholder-secret
+              mountPath: /etc/static-site-secrets
               readOnly: true
             {{- end }}
             {{- if .Values.site.pullSecretName }}
@@ -150,10 +170,15 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: {{ .Values.site.contentSizeLimit | quote }}
-        {{- if .Values.placeholders }}
+        {{- if (include "static-site.inlinePlaceholders" . | fromJson) }}
         - name: placeholders
           configMap:
             name: {{ include "static-site.fullname" . }}-placeholders
+        {{- end }}
+        {{- if .Values.placeholders.secretName }}
+        - name: placeholder-secret
+          secret:
+            secretName: {{ .Values.placeholders.secretName }}
         {{- end }}
         {{- if .Values.site.pullSecretName }}
         - name: registry-auth

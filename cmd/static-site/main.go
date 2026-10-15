@@ -29,6 +29,8 @@ func main() {
 		os.Exit(2)
 	}
 	log.Info("starting", "version", version, "addr", cfg.Addr, "ops_addr", cfg.OpsAddr)
+	// Names only: a value is never logged.
+	log.Info("placeholders", "names", cfg.PlaceholderNames(), "strict", cfg.PlaceholderStrict)
 	if err := staticsite.NewServer(&cfg, log).Run(context.Background()); err != nil {
 		log.Error("server stopped", "error", err)
 		os.Exit(1)

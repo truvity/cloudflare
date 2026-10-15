@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +61,13 @@ type Config struct {
 
 	// Placeholders is the allowlist: only these names are substituted.
 	Placeholders map[string]string
+	// PlaceholderKeys are the names a deployment declares as expected (they
+	// come from STATIC_SITE_PLACEHOLDERS_KEYS). With PlaceholderStrict, a
+	// token for one of them that has no value fails the load.
+	PlaceholderKeys []string
+	// PlaceholderStrict makes a token the content carries fail the load when
+	// its name is unknown or has no value, instead of staying as written.
+	PlaceholderStrict bool
 
 	ShutdownDelay time.Duration
 }
@@ -112,6 +122,12 @@ var safeValue = regexp.MustCompile(`^[A-Za-z0-9 ._:/@#+=,~-]{0,512}$`)
 //	STATIC_SITE_PLACEHOLDERS_FILE                JSON object, name -> value
 //	STATIC_SITE_PLACEHOLDER_NAMES                comma list; the value of NAME
 //	                                             is STATIC_SITE_PLACEHOLDER_<NAME>
+//	STATIC_SITE_PLACEHOLDERS_DIR                 a directory, one file per
+//	                                             name, as a mounted Secret is
+//	STATIC_SITE_PLACEHOLDERS_KEYS                comma list of expected names
+//	STATIC_SITE_PLACEHOLDERS_OPTIONAL_KEYS       comma list; absent means ""
+//	STATIC_SITE_PLACEHOLDERS_STRICT              unknown or valueless tokens
+//	                                             fail the load
 //	STATIC_SITE_SHUTDOWN_DELAY
 func FromEnv(getenv func(string) string) (Config, error) {
 	c := Defaults()
@@ -196,6 +212,24 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			errs = append(errs, fmt.Errorf("STATIC_SITE_PLACEHOLDERS_FILE: %w", err))
 		}
 	}
+	boolean("PLACEHOLDERS_STRICT", &c.PlaceholderStrict)
+	keys := splitList(getenv("STATIC_SITE_PLACEHOLDERS_KEYS"))
+	optional := splitList(getenv("STATIC_SITE_PLACEHOLDERS_OPTIONAL_KEYS"))
+	c.PlaceholderKeys = append(append([]string{}, keys...), optional...)
+	if d := getenv("STATIC_SITE_PLACEHOLDERS_DIR"); d != "" {
+		vals, err := readPlaceholderDir(d, c.PlaceholderKeys)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_PLACEHOLDERS_DIR: %w", err))
+		}
+		for k, v := range vals {
+			c.Placeholders[k] = v
+		}
+	}
+	for _, name := range optional {
+		if _, ok := c.Placeholders[name]; !ok {
+			c.Placeholders[name] = ""
+		}
+	}
 	for _, name := range strings.Split(getenv("STATIC_SITE_PLACEHOLDER_NAMES"), ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
@@ -213,6 +247,55 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		errs = append(errs, err)
 	}
 	return c, errors.Join(errs...)
+}
+
+// PlaceholderNames lists the names that have a value, sorted. For logs: it
+// returns names only.
+func (c *Config) PlaceholderNames() []string {
+	names := make([]string, 0, len(c.Placeholders))
+	for n := range c.Placeholders {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, n := range strings.Split(s, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// readPlaceholderDir reads one value per declared name from dir, a file named
+// as the placeholder (a mounted Secret). Only declared names are read, so a
+// stray key in the Secret is never served, and a name that is not a plain
+// placeholder name cannot reach outside dir. A missing file is not an error
+// here: a declared name without a value fails the load only if the content
+// uses it. One trailing newline is trimmed; the value is otherwise kept as
+// written. Errors name the file, never its contents.
+func readPlaceholderDir(dir string, names []string) (map[string]string, error) {
+	out := map[string]string{}
+	var errs []error
+	for _, name := range names {
+		if !placeholderName.MatchString(name) {
+			errs = append(errs, fmt.Errorf("placeholder name %q is not [A-Za-z][A-Za-z0-9_-]{0,63}", name))
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("placeholder %q: %w", name, err))
+			continue
+		}
+		out[name] = strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+	}
+	return out, errors.Join(errs...)
 }
 
 // lookup distinguishes an empty value from an unset variable through the

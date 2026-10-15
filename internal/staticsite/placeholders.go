@@ -3,6 +3,7 @@ package staticsite
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"path"
@@ -53,6 +54,33 @@ func substitute(kind textKind, data []byte, values map[string]string) []byte {
 		}
 		return []byte(escape(kind, v))
 	})
+}
+
+// checkTokens enforces strict mode: every token in a text file must name a
+// placeholder that has a value. It reports names only, never values.
+func checkTokens(file string, kind textKind, data []byte, cfg *Config) error {
+	if !cfg.PlaceholderStrict || kind == kindNone || !bytes.Contains(data, []byte("{{")) {
+		return nil
+	}
+	declared := map[string]bool{}
+	for _, k := range cfg.PlaceholderKeys {
+		declared[k] = true
+	}
+	var errs []error
+	seen := map[string]bool{}
+	for _, m := range token.FindAllSubmatch(data, -1) {
+		name := string(m[1])
+		if _, ok := cfg.Placeholders[name]; ok || seen[name] {
+			continue
+		}
+		seen[name] = true
+		if declared[name] {
+			errs = append(errs, fmt.Errorf("%s: placeholder %q has no value", file, name))
+		} else {
+			errs = append(errs, fmt.Errorf("%s: unknown placeholder %q", file, name))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func escape(kind textKind, v string) string {
