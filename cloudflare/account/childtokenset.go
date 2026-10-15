@@ -110,6 +110,17 @@ func EdgePolicies(zoneIDs ...string) []ChildTokenPolicy {
 		Scope:            WholeAccountScope{},
 	})
 
+	return append(policies, ZonePolicies(zoneIDs...)...)
+}
+
+// ZonePolicies is EdgePolicies without the account-wide Cloudflare Tunnel
+// Write: DNS, SSL and Certificates, Zone Settings, Cache Settings and Config
+// Settings Write on each zone in zoneIDs, in order. It is the grant of the
+// per-company zone stack; the services stack's tunnels need the tunnel write
+// (tokensplit.StatusPolicies). No zones returns nil.
+func ZonePolicies(zoneIDs ...string) []ChildTokenPolicy {
+	var policies []ChildTokenPolicy
+
 	for _, zoneID := range zoneIDs {
 		policies = append(policies, ChildTokenPolicy{
 			PermissionGroups: []string{"DNS Write", "SSL and Certificates Write", "Zone Settings Write", "Cache Settings Write", "Config Settings Write"},
