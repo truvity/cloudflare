@@ -124,6 +124,8 @@ func TestValidateRefusesEveryProblem(t *testing.T) {
 		"zone twice":       {base(func(r *Row) { r.Zones = []string{"a.example", "a.example"} }), "listed twice"},
 		"zones on r2":      {base(func(r *Row) { r.Kind = KindR2Admin; r.Zones = []string{"a.example"} }), "Zones is for"},
 		"waf outside":      {base(func(r *Row) { r.Zones = []string{"a.example"}; r.WAFZones = []string{"b.example"} }), "not among the zones"},
+		"bot outside":      {base(func(r *Row) { r.Zones = []string{"a.example"}; r.BotManagementZones = []string{"b.example"} }), "not among the zones"},
+		"bot on status":    {base(func(r *Row) { r.Kind = KindStatus; r.BotManagementZones = []string{"a.example"} }), "for the edge kind"},
 		"waf on status":    {base(func(r *Row) { r.Kind = KindStatus; r.WAFZones = []string{"a.example"} }), "for the edge kind"},
 		"dns-only dup":     {base(func(r *Row) { r.Zones = []string{"a.example"}; r.DNSOnlyZones = []string{"a.example"} }), "already among"},
 		"no bucket":        {base(func(r *Row) { r.Kind = KindBucketRW }), "not an R2 bucket name"},
@@ -251,4 +253,26 @@ func TestInsightsAdminIsOnlyInsights(t *testing.T) {
 
 	_, err = Build(fixture(), []Row{{Name: "umbrella-insights-admin", Kind: KindInsightsAdmin, Account: "umbrella", DNSOnlyZones: []string{"a.example"}}})
 	require.ErrorContains(t, err, "for the edge kind")
+}
+
+// Bot Management Write is granted only on the zones a row lists, and a row
+// that lists none builds exactly what it built before.
+func TestBotManagementZonesGrant(t *testing.T) {
+	row := Row{Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella", Zones: []string{"a.example"}}
+
+	plain, err := Build(fixture(), []Row{row})
+	require.NoError(t, err)
+
+	row.BotManagementZones = []string{"a.example"}
+	with, err := Build(fixture(), []Row{row})
+	require.NoError(t, err)
+
+	p0, p1 := plain[0].Policies, with[0].Policies
+	require.Len(t, p1, len(p0)+1)
+	assert.Equal(t, p0, p1[:len(p0)], "the rest of the grant is untouched")
+	assert.Equal(t, []string{"Bot Management Write"}, p1[len(p0)].PermissionGroups)
+
+	for _, p := range p0 {
+		assert.NotContains(t, p.PermissionGroups, "Bot Management Write")
+	}
 }

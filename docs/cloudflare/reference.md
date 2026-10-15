@@ -277,6 +277,7 @@ above — nothing broader, nothing hidden:
 ```go
 func EdgePolicies(zoneIDs ...string) []ChildTokenPolicy
 func EdgePoliciesWithWAF(wafZoneIDs []string, zoneIDs ...string) []ChildTokenPolicy
+func BotManagementPolicies(zoneIDs ...string) []ChildTokenPolicy
 func R2AdminPolicies() []ChildTokenPolicy
 func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 ```
@@ -285,6 +286,7 @@ func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 | --- | --- |
 | `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write`, `Cache Settings Write` and `Config Settings Write` (the dashboard's "Config Rules: Edit") on each zone in `zoneIDs` — a stack that manages zones (`cloudflare/zone`) and runs a tunnel (`cloudflare/tunnel`) |
 | `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` | Everything `EdgePolicies(zoneIDs...)` grants, plus one policy per zone in `wafZoneIDs` granting only `Zone WAF Write` there — what `cloudflare/zone`'s `Args.TrustedClients` needs. Opt-in: an empty `wafZoneIDs` returns `EdgePolicies` unchanged. `wafZoneIDs` is independent of `zoneIDs`; list a zone in both when the token also manages it |
+| `BotManagementPolicies(zoneIDs...)` | one policy per zone granting only `Bot Management Write` (`PermBotManagementWrite`) there — what `cloudflare/zone`'s `Args.BotManagement` needs. Append it to `EdgePolicies` or `EdgePoliciesWithWAF`; the preset does so for `Row.BotManagementZones`. No zones returns nil |
 | `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`cloudflare/r2`, called with `Config.Token.Enabled: false`) |
 | `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `cloudflare/r2`'s deprecated `Config.Token` (see [cloudflare/r2](#cloudflarer2)) |
 
@@ -559,7 +561,7 @@ The setting is a singleton of the zone, so deleting the resource changes
 nothing in Cloudflare. To undo, set `aiBots: disabled` and
 `managedRobotsTxt: false`, apply, then remove the block. The token needs
 `Bot Management Write` on the zone; `EdgePolicies` does not grant it, so add
-it to the token policy of a zone that declares the block.
+it with `account.BotManagementPolicies` (the preset's `Row.BotManagementZones`).
 
 `ManagedWAF`:
 
