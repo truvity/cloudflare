@@ -88,4 +88,28 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if and (eq .Values.registry.auth "ecr") (not .Values.serviceAccount.create) (not .Values.serviceAccount.name) -}}
 {{- fail "registry.auth=ecr binds AWS credentials to the pod's ServiceAccount: set serviceAccount.create, or serviceAccount.name of an existing one that the cluster has bound" -}}
 {{- end -}}
+{{- with .Values.registry.ack -}}
+{{- if .enabled -}}
+{{- if ne $.Values.registry.auth "ecr" -}}
+{{- fail "registry.ack.enabled gives the pod AWS credentials for ECR: it needs registry.auth=ecr" -}}
+{{- end -}}
+{{- if not .clusterName -}}
+{{- fail "registry.ack.enabled needs registry.ack.clusterName: the EKS cluster of the PodIdentityAssociation" -}}
+{{- end -}}
+{{- if not .repositoryArns -}}
+{{- fail "registry.ack.enabled needs registry.ack.repositoryArns: the ECR repositories the role may pull from" -}}
+{{- end -}}
+{{- if ne (empty .accountId) (empty .region) -}}
+{{- fail "registry.ack.accountId and registry.ack.region pin the trust to the cluster: set both or neither" -}}
+{{- end -}}
+{{- if gt (len (include "static-site.ackName" $)) 64 -}}
+{{- fail (printf "the IAM name %q is longer than 64 characters: set registry.ack.rolePrefix" (include "static-site.ackName" $)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* The IAM Role and Policy name, and the name of their ACK objects. */}}
+{{- define "static-site.ackName" -}}
+{{- default (printf "%s-%s-%s" .Values.registry.ack.clusterName .Release.Namespace .Release.Name) .Values.registry.ack.rolePrefix -}}
 {{- end -}}

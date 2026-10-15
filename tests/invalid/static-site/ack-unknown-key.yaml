@@ -1,0 +1,4 @@
+registry:
+  auth: ecr
+  ack:
+    bogus: 1

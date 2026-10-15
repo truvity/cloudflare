@@ -1,0 +1,7 @@
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - not-an-arn

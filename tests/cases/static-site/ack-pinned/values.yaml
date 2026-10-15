@@ -1,0 +1,16 @@
+# Trust pinned to the cluster, a boundary, a name of its own, two repositories.
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    accountId: "123456789012"
+    region: eu-central-1
+    rolePrefix: example-static-www
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+      - arn:aws:ecr:eu-central-1:210987654321:repository/other
+    permissionsBoundary: arn:aws:iam::123456789012:policy/example-boundary
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main

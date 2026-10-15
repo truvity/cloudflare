@@ -1,0 +1,109 @@
+{{- /*
+ACK-managed AWS identity of the static-site server (EKS Pod Identity), in the
+shape of truvity/dms charts/dms-infra/templates/ack.yaml:
+  - Policy: the ECR actions the server calls, from internal/staticsite
+    (ecrpermissions.go); a Go test compares them with this render
+  - Role: trusts pods.eks.amazonaws.com for this namespace and ServiceAccount
+  - PodIdentityAssociation: binds the ServiceAccount to the Role
+The IAM objects sync before the Deployment.
+*/}}
+{{- if .Values.registry.ack.enabled }}
+{{- include "static-site.validateRegistry" . }}
+{{- $ack := .Values.registry.ack }}
+{{- $name := include "static-site.ackName" . }}
+---
+apiVersion: iam.services.k8s.aws/v1alpha1
+kind: Policy
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "static-site.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-30"
+spec:
+  name: {{ $name }}
+  description: "static-site {{ .Release.Namespace }}/{{ .Release.Name }}: ECR pull access"
+  policyDocument: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": ["ecr:GetAuthorizationToken"],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ecr:BatchGetImage",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:BatchCheckLayerAvailability"
+          ],
+          "Resource": {{ $ack.repositoryArns | toJson }}
+        }
+      ]
+    }
+---
+apiVersion: iam.services.k8s.aws/v1alpha1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "static-site.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-25"
+spec:
+  name: {{ $name }}
+  description: "static-site {{ .Release.Namespace }}/{{ .Release.Name }}: workload role"
+  {{- with $ack.permissionsBoundary }}
+  permissionsBoundary: {{ . }}
+  {{- end }}
+  tags:
+    - key: cluster
+      value: {{ $ack.clusterName | quote }}
+    {{- range $k, $v := omit (default dict $ack.tags) "cluster" }}
+    - key: {{ $k | quote }}
+      value: {{ $v | quote }}
+    {{- end }}
+  assumeRolePolicyDocument: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": {"Service": "pods.eks.amazonaws.com"},
+        "Action": ["sts:AssumeRole", "sts:TagSession"],
+        "Condition": {
+          "StringEquals": {
+            {{- if $ack.accountId }}
+            "aws:SourceAccount": {{ $ack.accountId | quote }},
+            "aws:SourceArn": {{ printf "arn:aws:eks:%s:%s:cluster/%s" $ack.region $ack.accountId $ack.clusterName | quote }},
+            {{- end }}
+            "aws:RequestTag/kubernetes-namespace": {{ .Release.Namespace | quote }},
+            "aws:RequestTag/kubernetes-service-account": {{ include "static-site.serviceAccountName" . | quote }}
+          }
+        }
+      }]
+    }
+  policyRefs:
+    - from:
+        name: {{ $name }}
+---
+apiVersion: eks.services.k8s.aws/v1alpha1
+kind: PodIdentityAssociation
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "static-site.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  clusterName: {{ $ack.clusterName }}
+  namespace: {{ .Release.Namespace }}
+  serviceAccount: {{ include "static-site.serviceAccountName" . }}
+  roleRef:
+    from:
+      name: {{ $name }}
+{{- end }}
