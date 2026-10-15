@@ -1,0 +1,12 @@
+{{- if .Values.placeholders }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "static-site.fullname" . }}-placeholders
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "static-site.labels" . | nindent 4 }}
+data:
+  placeholders.json: |
+    {{- include "static-site.placeholders" . | nindent 4 }}
+{{- end }}

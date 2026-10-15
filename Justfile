@@ -1,7 +1,7 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-charts := "cloudflared gateway-fleet gateway-groups gateway-policies gateway-projects"
+charts := "cloudflared gateway-fleet gateway-groups gateway-policies gateway-projects static-site"
 
 # Library charts: they render nothing by themselves, so every check that
 # needs a render goes through tests/harness/<chart>, the consumer chart

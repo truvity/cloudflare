@@ -50,3 +50,8 @@ documents. Read the half you adopt.
 
 - [../CHANGELOG.md](../CHANGELOG.md): what changed for a consumer, per version
 - [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../SECURITY.md](../SECURITY.md)
+
+## Static sites (`cmd/static-site`, chart `static-site`)
+
+- [static-site.md](static-site.md): the generic static-site server, its OCI artifact
+  format, caching and placeholder rules, the chart, and the release

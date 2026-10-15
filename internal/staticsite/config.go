@@ -1,0 +1,252 @@
+// Package staticsite is the engine of cmd/static-site: it fetches one OCI
+// artifact holding a built static site, unpacks it, and serves it with the
+// caching, placeholder and safety rules a CDN in front of it relies on.
+package staticsite
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// DefaultHashedPattern matches a file name that carries a content hash
+// (app.3f9a1c2b.js, chunk-0123abcd.css): a dot, dash or underscore, eight or
+// more hex digits, then the extension. Such a name changes whenever its
+// content does, so it may be cached for ever.
+const DefaultHashedPattern = `[.\-_][0-9a-fA-F]{8,}(\.[A-Za-z0-9]+)+$`
+
+// Config is everything the server reads. FromEnv fills it from STATIC_SITE_*
+// variables; tests build it directly.
+type Config struct {
+	// Addr is the listen address of the site, OpsAddr of /healthz, /readyz and
+	// /metrics.
+	Addr    string
+	OpsAddr string
+
+	// Dir serves a local directory and skips the registry (tests, local use).
+	Dir string
+	// ContentDir is where the artifact is unpacked; a fresh sub-directory per
+	// load. Put it on a memory-backed emptyDir.
+	ContentDir string
+
+	// ArtifactRef is registry/repository[:tag]; ArtifactDigest, when set, wins
+	// over any tag in ArtifactRef and pins the pull.
+	ArtifactRef    string
+	ArtifactDigest string
+	PlainHTTP      bool
+	PullTimeout    time.Duration
+	MaxBytes       int64
+	MaxFiles       int
+
+	// HashedPattern selects the file names cached as immutable.
+	HashedPattern *regexp.Regexp
+	// HTMLMaxAge and StaleWhileRevalidate are the TTLs of everything that is
+	// not hashed.
+	HTMLMaxAge           time.Duration
+	StaleWhileRevalidate time.Duration
+
+	SPAFallback  bool
+	NotFoundPage string // path inside the site, "" for a plain 404
+
+	// Headers are added to every response; a value of "" removes a default.
+	Headers map[string]string
+
+	// Placeholders is the allowlist: only these names are substituted.
+	Placeholders map[string]string
+
+	ShutdownDelay time.Duration
+}
+
+// DefaultHeaders are the security headers every response carries unless the
+// configuration overrides them.
+func DefaultHeaders() map[string]string {
+	return map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "strict-origin-when-cross-origin",
+	}
+}
+
+// Defaults returns the configuration with no environment applied.
+func Defaults() Config {
+	return Config{
+		Addr:                 ":8080",
+		OpsAddr:              ":8081",
+		ContentDir:           "/var/run/site",
+		PullTimeout:          2 * time.Minute,
+		MaxBytes:             512 << 20,
+		MaxFiles:             50000,
+		HashedPattern:        regexp.MustCompile(DefaultHashedPattern),
+		HTMLMaxAge:           60 * time.Second,
+		StaleWhileRevalidate: 300 * time.Second,
+		NotFoundPage:         "404.html",
+		Headers:              DefaultHeaders(),
+		ShutdownDelay:        5 * time.Second,
+	}
+}
+
+var placeholderName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+
+// safeValue is the character set a placeholder value may use. It is the
+// reason a value cannot break out of an attribute, a string or a stylesheet;
+// the per-type escaping is a second line behind it.
+var safeValue = regexp.MustCompile(`^[A-Za-z0-9 ._:/@#+=,~-]{0,512}$`)
+
+// FromEnv reads the configuration from getenv (os.Getenv in main).
+//
+//	STATIC_SITE_ADDR, STATIC_SITE_OPS_ADDR       listen addresses
+//	STATIC_SITE_DIR                              serve this directory, no pull
+//	STATIC_SITE_CONTENT_DIR                      unpack target
+//	STATIC_SITE_ARTIFACT_REF, _ARTIFACT_DIGEST   what to pull
+//	STATIC_SITE_PLAIN_HTTP                       registry without TLS
+//	STATIC_SITE_PULL_TIMEOUT, _MAX_BYTES, _MAX_FILES
+//	STATIC_SITE_HASHED_PATTERN                   regexp, immutable file names
+//	STATIC_SITE_HTML_MAX_AGE, _STALE_WHILE_REVALIDATE   durations
+//	STATIC_SITE_SPA_FALLBACK, _NOT_FOUND_PAGE
+//	STATIC_SITE_HEADERS                          JSON object, name -> value
+//	STATIC_SITE_PLACEHOLDERS_FILE                JSON object, name -> value
+//	STATIC_SITE_PLACEHOLDER_NAMES                comma list; the value of NAME
+//	                                             is STATIC_SITE_PLACEHOLDER_<NAME>
+//	STATIC_SITE_SHUTDOWN_DELAY
+func FromEnv(getenv func(string) string) (Config, error) {
+	c := Defaults()
+	var errs []error
+	str := func(key string, dst *string) {
+		if v := getenv("STATIC_SITE_" + key); v != "" {
+			*dst = v
+		}
+	}
+	dur := func(key string, dst *time.Duration) {
+		if v := getenv("STATIC_SITE_" + key); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d < 0 {
+				errs = append(errs, fmt.Errorf("STATIC_SITE_%s: %q is not a duration", key, v))
+				return
+			}
+			*dst = d
+		}
+	}
+	boolean := func(key string, dst *bool) {
+		if v := getenv("STATIC_SITE_" + key); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("STATIC_SITE_%s: %q is not a boolean", key, v))
+				return
+			}
+			*dst = b
+		}
+	}
+	str("ADDR", &c.Addr)
+	str("OPS_ADDR", &c.OpsAddr)
+	str("DIR", &c.Dir)
+	str("CONTENT_DIR", &c.ContentDir)
+	str("ARTIFACT_REF", &c.ArtifactRef)
+	str("ARTIFACT_DIGEST", &c.ArtifactDigest)
+	str("NOT_FOUND_PAGE", &c.NotFoundPage)
+	boolean("PLAIN_HTTP", &c.PlainHTTP)
+	boolean("SPA_FALLBACK", &c.SPAFallback)
+	dur("PULL_TIMEOUT", &c.PullTimeout)
+	dur("HTML_MAX_AGE", &c.HTMLMaxAge)
+	dur("STALE_WHILE_REVALIDATE", &c.StaleWhileRevalidate)
+	dur("SHUTDOWN_DELAY", &c.ShutdownDelay)
+	if v := getenv("STATIC_SITE_MAX_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_MAX_BYTES: %q is not a positive integer", v))
+		} else {
+			c.MaxBytes = n
+		}
+	}
+	if v := getenv("STATIC_SITE_MAX_FILES"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_MAX_FILES: %q is not a positive integer", v))
+		} else {
+			c.MaxFiles = n
+		}
+	}
+	if v := getenv("STATIC_SITE_HASHED_PATTERN"); v != "" {
+		re, err := regexp.Compile(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_HASHED_PATTERN: %w", err))
+		} else {
+			c.HashedPattern = re
+		}
+	}
+	if v := getenv("STATIC_SITE_HEADERS"); v != "" {
+		var h map[string]string
+		if err := json.Unmarshal([]byte(v), &h); err != nil {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_HEADERS: %w", err))
+		}
+		for k, val := range h {
+			c.Headers[k] = val
+		}
+	}
+	c.Placeholders = map[string]string{}
+	if f := getenv("STATIC_SITE_PLACEHOLDERS_FILE"); f != "" {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_PLACEHOLDERS_FILE: %w", err))
+		} else if err := json.Unmarshal(data, &c.Placeholders); err != nil {
+			errs = append(errs, fmt.Errorf("STATIC_SITE_PLACEHOLDERS_FILE: %w", err))
+		}
+	}
+	for _, name := range strings.Split(getenv("STATIC_SITE_PLACEHOLDER_NAMES"), ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		key := "STATIC_SITE_PLACEHOLDER_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+		v, ok := lookup(getenv, key)
+		if !ok {
+			errs = append(errs, fmt.Errorf("placeholder %q is allowlisted but %s is not set", name, key))
+			continue
+		}
+		c.Placeholders[name] = v
+	}
+	if err := c.Validate(); err != nil {
+		errs = append(errs, err)
+	}
+	return c, errors.Join(errs...)
+}
+
+// lookup distinguishes an empty value from an unset variable through the
+// getenv seam: an unset variable is the only "" it cannot tell apart, so an
+// allowlisted name must carry a non-empty value or be given in the file.
+func lookup(getenv func(string) string, key string) (string, bool) {
+	v := getenv(key)
+	return v, v != ""
+}
+
+// Validate reports every problem with the configuration.
+func (c *Config) Validate() error {
+	var errs []error
+	if c.Dir == "" && c.ArtifactRef == "" {
+		errs = append(errs, errors.New("one of STATIC_SITE_DIR and STATIC_SITE_ARTIFACT_REF is required"))
+	}
+	if c.Dir != "" && c.ArtifactRef != "" {
+		errs = append(errs, errors.New("STATIC_SITE_DIR and STATIC_SITE_ARTIFACT_REF are exclusive"))
+	}
+	if c.ArtifactDigest != "" && !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(c.ArtifactDigest) {
+		errs = append(errs, fmt.Errorf("artifact digest %q is not sha256:<64 hex>", c.ArtifactDigest))
+	}
+	for name, v := range c.Placeholders {
+		if !placeholderName.MatchString(name) {
+			errs = append(errs, fmt.Errorf("placeholder name %q is not [A-Za-z][A-Za-z0-9_-]{0,63}", name))
+		}
+		if !safeValue.MatchString(v) {
+			errs = append(errs, fmt.Errorf("placeholder %q: value has characters outside the safe set [A-Za-z0-9 ._:/@#+=,~-] or is longer than 512", name))
+		}
+	}
+	for k := range c.Headers {
+		if k == "" || strings.ContainsAny(k, " \t\r\n:") {
+			errs = append(errs, fmt.Errorf("header name %q is invalid", k))
+		}
+	}
+	return errors.Join(errs...)
+}
