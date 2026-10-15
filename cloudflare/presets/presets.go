@@ -17,8 +17,9 @@
 //	          Row.CloudConnectorZones, and DNS Write on Row.DNSOnlyZones. No R2.
 //	status    tunnel write on the account; DNS write on each zone.
 //	dns       DNS write on each zone, nothing else.
-//	insights  read only: Account Security Center Insights on the account; Bot
-//	          Management Read, Analytics Read and Zone WAF Read on each zone.
+//	insights  read only: Account Security Center Insights Read on the account;
+//	          Zone Security Center Insights Read, Bot Management Read, Analytics
+//	          Read and Zone WAF Read on each zone.
 //	r2-admin  Workers R2 Storage Write on the account (every bucket).
 //	bucket-rw     R2 object read and write on ONE bucket (an R2 credential).
 //	bucket-write  R2 object write on ONE bucket (an R2 credential).
@@ -63,13 +64,13 @@ const (
 // The permission groups a kind adds to tokensplit's own.
 const (
 	permCloudConnectorWrite = "Cloud Connector Write"
-	// The insights kind's read-only groups, by the names of Cloudflare's
-	// permission reference (developers.cloudflare.com/fundamentals/api/reference/permissions,
-	// read 2026-10-15). The account-scope group is listed there as "Account
-	// Security Center Insights" (read), not "... Read".
-	// TODO verify the account group's name against the account's own list
-	// (the permission-group lookup at apply time resolves by exact name).
-	permAccountSecurityInsights = "Account Security Center Insights"
+	// The insights kind's read-only groups, by the exact names an account's own
+	// permission-group list returns (GET /accounts/{id}/tokens/permission_groups,
+	// read 2026-10-15). The public permission reference spells the account group
+	// "Account Security Center Insights", without "Read"; the API does not, and
+	// the apply-time lookup resolves by exact name.
+	permAccountSecurityInsights = "Account Security Center Insights Read"
+	permZoneSecurityInsights    = "Zone Security Center Insights Read"
 	permBotManagementRead       = "Bot Management Read"
 	permAnalyticsRead           = "Analytics Read"
 	permZoneWAFRead             = "Zone WAF Read"
@@ -586,7 +587,7 @@ func build(reg Registry, row *Row) (Preset, error) {
 		p.Policies = []account.ChildTokenPolicy{{PermissionGroups: []string{permAccountSecurityInsights}, Scope: account.WholeAccountScope{}}}
 		for _, id := range ids {
 			p.Policies = append(p.Policies, account.ChildTokenPolicy{
-				PermissionGroups: []string{permBotManagementRead, permAnalyticsRead, permZoneWAFRead}, Scope: account.ZoneScope{ZoneID: id},
+				PermissionGroups: []string{permZoneSecurityInsights, permBotManagementRead, permAnalyticsRead, permZoneWAFRead}, Scope: account.ZoneScope{ZoneID: id},
 			})
 		}
 	case KindR2Admin:

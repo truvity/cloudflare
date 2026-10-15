@@ -180,13 +180,13 @@ func TestInsightsIsReadOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	const zoneGroups = "Bot Management Read,Analytics Read,Zone WAF Read"
+	const zoneGroups = "Zone Security Center Insights Read,Bot Management Read,Analytics Read,Zone WAF Read"
 
 	assert.Equal(t, []string{
-		"Account Security Center Insights@" + acct1,
+		"Account Security Center Insights Read@" + acct1,
 		zoneGroups + "@zone." + zoneA, zoneGroups + "@zone." + zoneB, zoneGroups + "@zone." + zoneC,
 	}, flat(t, table[0]))
-	assert.Equal(t, []string{"Account Security Center Insights@" + acct1, zoneGroups + "@zone." + zoneB}, flat(t, table[1]))
+	assert.Equal(t, []string{"Account Security Center Insights Read@" + acct1, zoneGroups + "@zone." + zoneB}, flat(t, table[1]))
 
 	for _, p := range table {
 		assert.False(t, p.R2)

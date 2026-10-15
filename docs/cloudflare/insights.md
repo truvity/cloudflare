@@ -7,8 +7,8 @@ writes.
 ## Credential
 
 The preset kind `insights` (see [presets](presets.md)): Account Security
-Center Insights on the account, Analytics Read, Zone WAF Read and Bot
-Management Read on each zone. It is read only; the `edge` kind is not needed.
+Center Insights Read on the account; Zone Security Center Insights Read,
+Analytics Read, Zone WAF Read and Bot Management Read on each zone. It is read only; the `edge` kind is not needed.
 
 ## Security Center insights
 
