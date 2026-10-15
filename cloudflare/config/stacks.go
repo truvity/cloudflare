@@ -184,3 +184,33 @@ func (c *Config) ForAccount(account string) (*Config, error) {
 
 	return out, nil
 }
+
+// The kinds of the per-company stacks (see CompanyOf). Unlike the per-account
+// kinds above they are named after the company, never an account, and have no
+// legacy spelling.
+const (
+	// StackKindZone owns a company's zones: zone settings, rulesets, cache,
+	// WAF, bot management and the zone's own records (cloudflare/zonestack).
+	StackKindZone = "zone"
+	// StackKindServices owns a company's tunnels and their DNS records
+	// (cloudflare/services).
+	StackKindServices = "services"
+	// StackKindSTS is a company's token-minting (sluis) stack.
+	StackKindSTS = "sts"
+)
+
+// StackName is the Pulumi stack of one per-company kind for one company:
+// cloudflare-<company>-<kind>. This is the function; the method of the same
+// name on Config names the per-account stacks (cloudflare-<kind>-<account>).
+func StackName(kind, company string) string {
+	return stackPrefix + company + "-" + kind
+}
+
+// StackZone is a company's zone stack, cloudflare-<company>-zone.
+func StackZone(company string) string { return StackName(StackKindZone, company) }
+
+// StackServices is a company's services stack, cloudflare-<company>-services.
+func StackServices(company string) string { return StackName(StackKindServices, company) }
+
+// StackSTS is a company's sts stack, cloudflare-<company>-sts.
+func StackSTS(company string) string { return StackName(StackKindSTS, company) }
