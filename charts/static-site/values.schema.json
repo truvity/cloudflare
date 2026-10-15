@@ -41,6 +41,13 @@
         "contentSizeLimit": { "type": "string", "minLength": 1 }
       }
     },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auth": { "enum": ["dockerconfig", "ecr", "none"], "description": "dockerconfig: the Docker config of site.pullSecretName (default); ecr: the server authenticates to Amazon ECR through the AWS SDK default credential chain; none: anonymous" }
+      }
+    },
     "placeholders": {
       "type": "object",
       "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" },

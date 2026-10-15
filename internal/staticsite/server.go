@@ -21,12 +21,13 @@ type Server struct {
 	handler  *Handler
 	draining atomic.Bool
 	prevDir  string
+	regAuth  *registryAuth
 }
 
 // NewServer returns a server with no content loaded yet.
 func NewServer(cfg *Config, log *slog.Logger) *Server {
 	m := NewMetrics()
-	return &Server{cfg: cfg, log: log, metrics: m, handler: NewHandler(cfg, m)}
+	return &Server{cfg: cfg, log: log, metrics: m, handler: NewHandler(cfg, m), regAuth: newRegistryAuth(cfg, log)}
 }
 
 // Load fetches (or indexes) the content and swaps it in. On failure the
@@ -54,7 +55,7 @@ func (s *Server) Load(ctx context.Context) (err error) {
 		fresh = true
 		pctx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
 		defer cancel()
-		d, perr := Pull(pctx, s.cfg, root)
+		d, perr := pullWith(pctx, s.cfg, root, s.regAuth)
 		if perr != nil {
 			_ = os.RemoveAll(root)
 			return fmt.Errorf("pull: %w", perr)

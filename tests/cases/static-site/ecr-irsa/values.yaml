@@ -1,0 +1,10 @@
+# Amazon ECR through IRSA: the role is bound by the ServiceAccount annotation.
+registry:
+  auth: ecr
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main
+serviceAccount:
+  name: static-site
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/example-static-site

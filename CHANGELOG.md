@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`static-site`: the server authenticates to Amazon ECR itself.** For a registry host `<account>.dkr.ecr.<region>.amazonaws.com` (also `ecr-fips` and `.amazonaws.com.cn`) with no Docker config file configured, the server calls `ecr:GetAuthorizationToken` through the AWS SDK default credential chain (EKS Pod Identity, IRSA, environment), uses the `AWS:<password>` token as basic auth, caches it, replaces it at half of its 12 hours and on a 401. A configured Docker config file keeps precedence; otherwise the pull is anonymous. `STATIC_SITE_REGISTRY_AUTH` (`auto`, `dockerconfig`, `ecr`, `none`) forces one; the log names the method (`registry auth: ecr-sdk`), never a credential. The chart gains `registry.auth` (`dockerconfig`, the default and the previous behaviour, `ecr`, `none`): with `ecr` there is no pull-secret volume, the ServiceAccount token stays mounted for IRSA, and `serviceAccount.name`/`annotations` bind Pod Identity or IRSA (`site.pullSecretName` is refused). The Go module now depends on `aws-sdk-go-v2/config` and `service/ecr`. Additive: nothing changes for an existing install except that an ECR host with no pull secret now authenticates instead of failing anonymous. See [docs/static-site.md](docs/static-site.md).
+
 ## v3.9.0
 
 ### Added

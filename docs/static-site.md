@@ -36,8 +36,110 @@ their digests while they are read. Only regular files and directories are
 accepted: a link, device, absolute path or `..` in an archive fails the load.
 Size and file count are capped (`site.maxBytes`, `site.maxFiles`).
 
-Credentials come from a `kubernetes.io/dockerconfigjson` Secret named by
-`site.pullSecretName`, mounted as the Docker config file.
+Registry credentials: see [Registry authentication](#registry-authentication).
+
+## Registry authentication
+
+The server picks one method per pull and logs only its name
+(`registry auth: dockerconfig`, `registry auth: ecr-sdk` or
+`registry auth: anonymous`), never a credential. With
+`STATIC_SITE_REGISTRY_AUTH` unset (`auto`) the order is:
+
+1. a **Docker config file**, when one is configured (`DOCKER_CONFIG` is set, or
+   `~/.docker/config.json` exists). The chart mounts the
+   `kubernetes.io/dockerconfigjson` Secret named by `site.pullSecretName`
+   there. Nothing changes for existing users.
+2. **Amazon ECR through the AWS SDK default credential chain**, when the
+   registry host is `<account>.dkr.ecr.<region>.amazonaws.com` (the
+   `ecr-fips` and `.amazonaws.com.cn` variants too). The server calls
+   `ecr:GetAuthorizationToken` itself, decodes the `AWS:<password>` token and
+   uses it as basic auth for the registry. It keeps the token, replaces it
+   once half of its 12 hours have passed (so a pod that runs for weeks and
+   re-pulls on `SIGHUP` keeps working), and replaces it and retries once when
+   the registry answers 401. The token goes only to the artifact's registry.
+3. **anonymous**.
+
+`STATIC_SITE_REGISTRY_AUTH` can force one: `dockerconfig`, `ecr` (an error for
+a host that is not ECR) or `none`. In the chart:
+
+```yaml
+registry:
+  auth: dockerconfig   # default; site.pullSecretName, or none when it is empty
+  # auth: ecr          # the section below
+  # auth: none
+```
+
+`ecr` renders no pull-secret volume and no `DOCKER_CONFIG`, leaves the
+ServiceAccount token mounted (IRSA and Pod Identity need it; the chart
+otherwise sets `automountServiceAccountToken: false`), and refuses
+`site.pullSecretName`. The chart's `dockerconfig` default sets no
+`STATIC_SITE_REGISTRY_AUTH`, so the render is the same as before the key
+existed.
+
+### ECR with Pod Identity or IRSA
+
+The pod's own ServiceAccount gets the AWS credentials; nothing borrows another
+workload's identity. The SDK chain finds them either way, so the server does
+not know which one is in use.
+
+**EKS Pod Identity.** Create a pod identity association for the namespace and
+a stable ServiceAccount name; the chart needs no annotation:
+
+```yaml
+registry:
+  auth: ecr
+serviceAccount:
+  name: static-site
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main
+```
+
+**IRSA** (a self-managed cluster with an OIDC provider; also EKS). Annotate the
+ServiceAccount with the role. The webhook injects `AWS_ROLE_ARN` and
+`AWS_WEB_IDENTITY_TOKEN_FILE`:
+
+```yaml
+serviceAccount:
+  name: static-site
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/example-static-site
+```
+
+The role needs this and nothing else (the repository ARN is the one the
+artifact lives in):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchCheckLayerAvailability"
+      ],
+      "Resource": "arn:aws:ecr:eu-central-1:123456789012:repository/example"
+    }
+  ]
+}
+```
+
+`ecr:GetAuthorizationToken` does not support resource-level permissions, hence
+`*`. Egress to the ECR API (`api.ecr.<region>.amazonaws.com`) and to STS (IRSA)
+or the Pod Identity agent must be allowed next to the registry: the chart's
+`networkPolicy` allows HTTPS egress, and the Pod Identity agent address
+(`169.254.170.23`) needs an `extraEgress` rule where egress is restricted.
+
+If the server cannot get a token (no identity bound, a missing permission) the
+pull fails with the `GetAuthorizationToken` error and the pod stays not ready;
+the log line names the call, not a credential.
 
 ## Serving
 

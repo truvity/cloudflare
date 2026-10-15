@@ -25,8 +25,9 @@ site:
     # sha256:<64 hex>. When set it wins over any tag in ref and pins the pull.
     # An independent value so that a promotion tool can write it alone.
     digest: ""
-  # Name of a kubernetes.io/dockerconfigjson Secret holding the registry
-  # credentials for the artifact. Empty for an anonymous registry.
+  # registry.auth=dockerconfig only: name of a kubernetes.io/dockerconfigjson
+  # Secret holding the registry credentials for the artifact. Empty for an
+  # anonymous registry.
   pullSecretName: ""
   # Talk plain HTTP to the registry (an in-cluster dev registry only).
   plainHTTP: false
@@ -40,6 +41,17 @@ site:
   # Size of the memory-backed volume the artifact is unpacked into. Reloading
   # holds the old and the new copy at once, so allow for two.
   contentSizeLimit: 1Gi
+
+# How the server authenticates to the registry of the artifact.
+#  dockerconfig  the Docker config file of site.pullSecretName; none when that
+#                is empty. The default, and the behaviour before this key.
+#  ecr           the server calls ecr:GetAuthorizationToken itself with the AWS
+#                SDK default credential chain: EKS Pod Identity, or IRSA
+#                through serviceAccount.annotations["eks.amazonaws.com/role-arn"].
+#                No pull-secret volume; the ServiceAccount token is mounted.
+#  none          anonymous. See docs/static-site.md.
+registry:
+  auth: dockerconfig
 
 # Serve-time placeholders: {{ name }} in html, js, css and json files is
 # replaced by the value, for the names provided here and no others. Static
@@ -94,6 +106,9 @@ resources:
 
 terminationGracePeriodSeconds: 40
 
+# With registry.auth=ecr this is the identity the cluster binds AWS
+# credentials to. Pod Identity needs a stable name and no annotation; IRSA
+# needs annotations: {eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/example}.
 serviceAccount:
   create: true
   name: ""

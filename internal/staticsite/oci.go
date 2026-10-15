@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
@@ -12,9 +13,6 @@ import (
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
-	"oras.land/oras-go/v2/registry/remote/auth"
-	"oras.land/oras-go/v2/registry/remote/credentials"
-	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
 const (
@@ -30,29 +28,57 @@ const (
 // a tar (optionally gzip) archive of the site, unpacked at the root, or single
 // files named by their title annotation. Layers are verified against their
 // digests while they are read. Credentials come from the Docker config file
-// found through DOCKER_CONFIG (a mounted image pull secret).
+// found through DOCKER_CONFIG (a mounted image pull secret); failing that, an
+// ECR registry is authenticated through the AWS SDK default credential chain
+// (see registryAuth). Pull builds a fresh authenticator; a Server keeps one,
+// and with it the ECR token, between pulls.
 func Pull(ctx context.Context, cfg *Config, dest string) (digest.Digest, error) {
+	return pullWith(ctx, cfg, dest, newRegistryAuth(cfg, nil))
+}
+
+// pullWith pulls with ra. When an ECR registry refuses the cached token (401)
+// it drops the token and tries once more with a new one.
+func pullWith(ctx context.Context, cfg *Config, dest string, ra *registryAuth) (digest.Digest, error) {
+	d, method, err := pullOnce(ctx, cfg, dest, ra)
+	if err != nil && ra.refused(err, method) {
+		ra.log.Info("registry refused the ecr token, fetching a new one")
+		_ = os.RemoveAll(dest)
+		if merr := os.MkdirAll(dest, 0o755); merr != nil {
+			return "", merr
+		}
+		d, _, err = pullOnce(ctx, cfg, dest, ra)
+	}
+	return d, err
+}
+
+func pullOnce(ctx context.Context, cfg *Config, dest string, ra *registryAuth) (digest.Digest, string, error) {
 	ref, err := registry.ParseReference(cfg.ArtifactRef)
 	if err != nil {
-		return "", fmt.Errorf("artifact ref: %w", err)
+		return "", "", fmt.Errorf("artifact ref: %w", err)
 	}
 	if cfg.ArtifactDigest != "" {
 		ref.Reference = cfg.ArtifactDigest
 	}
 	if ref.Reference == "" {
-		return "", fmt.Errorf("artifact ref %q has no tag and no digest was given", cfg.ArtifactRef)
+		return "", "", fmt.Errorf("artifact ref %q has no tag and no digest was given", cfg.ArtifactRef)
 	}
 	repo, err := remote.NewRepository(ref.Registry + "/" + ref.Repository)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	repo.PlainHTTP = cfg.PlainHTTP
-	client := &auth.Client{Client: retry.DefaultClient, Cache: auth.NewCache()}
-	if store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{}); err == nil {
-		client.Credential = credentials.Credential(store)
+	client, method, err := ra.client(ctx, ref.Registry)
+	if err != nil {
+		return "", "", fmt.Errorf("registry auth: %w", err)
 	}
+	// The method only; never a credential.
+	ra.log.Info("registry auth: "+method, "method", method, "registry", ref.Registry)
 	repo.Client = client
+	d, err := pullArtifact(ctx, cfg, dest, repo, ref)
+	return d, method, err
+}
 
+func pullArtifact(ctx context.Context, cfg *Config, dest string, repo *remote.Repository, ref registry.Reference) (digest.Digest, error) {
 	desc, rc, err := repo.FetchReference(ctx, ref.Reference)
 	if err != nil {
 		return "", fmt.Errorf("fetch manifest %s: %w", ref, err)

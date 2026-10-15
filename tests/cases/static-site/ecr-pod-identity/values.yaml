@@ -1,0 +1,10 @@
+# Amazon ECR through EKS Pod Identity: no annotation, a stable ServiceAccount
+# name that the association names.
+registry:
+  auth: ecr
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example
+    digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+serviceAccount:
+  name: static-site
