@@ -3,12 +3,14 @@ package awsapigw_test
 import (
 	"encoding/json"
 	"go/build"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/acm"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -47,6 +49,9 @@ type recorder struct {
 	resources []declared
 	protected map[string]bool
 	aliased   map[string]bool
+	aliases   map[string][]pulumi.Alias
+	stack     string
+	project   string
 }
 
 func (r *recorder) NewResource(a pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
@@ -94,11 +99,15 @@ func (r *recorder) transform(ctx *pulumi.Context) error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if r.protected == nil {
-			r.protected, r.aliased = map[string]bool{}, map[string]bool{}
+			r.protected, r.aliased, r.aliases = map[string]bool{}, map[string]bool{}, map[string][]pulumi.Alias{}
 		}
+		r.stack, r.project = ctx.Stack(), ctx.Project()
 		ro, err := pulumi.NewResourceOptions(a.Opts...)
 		r.protected[a.Type+"/"+a.Name] = err == nil && ro.Protect
 		r.aliased[a.Type+"/"+a.Name] = err == nil && len(ro.Aliases) > 0
+		if err == nil {
+			r.aliases[a.Type+"/"+a.Name] = ro.Aliases
+		}
 		return nil
 	})
 }
@@ -558,6 +567,191 @@ func TestDoesNotImportSluis(t *testing.T) {
 	for _, imp := range pkg.Imports {
 		if strings.Contains(imp, "truvity/sluis") {
 			t.Errorf("imports %s", imp)
+		}
+	}
+}
+
+// oldURN resolves an alias of a resource of the given type to the URN it
+// names, the way the engine does for an alias with no parent: the stack and
+// project are the current ones unless the alias says otherwise, the type the
+// resource's own unless it says otherwise.
+func named(as []pulumi.Alias) []pulumi.Alias {
+	var out []pulumi.Alias
+	for i := range as { // the provider SDKs add type aliases of their own
+		a := as[i]
+		if a.Name != nil || a.ParentURN != nil || a.NoParent != nil {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func oldURN(t *testing.T, rec *recorder, typ string, a pulumi.Alias) string {
+	t.Helper()
+	if a.NoParent == nil {
+		t.Fatalf("alias %v keeps a parent", a)
+	}
+	noParent, _ := a.NoParent.(pulumi.Bool)
+	name, _ := a.Name.(pulumi.String)
+	if !bool(noParent) || name == "" {
+		t.Fatalf("alias %v is not a top-level one", a)
+	}
+	return "urn:pulumi:" + rec.stack + "::" + rec.project + "::" + typ + "::" + string(name)
+}
+
+// The resources another stack held at its top level (a certificate, its
+// validation and the validation record) are adopted by the names and aliases
+// given, with the very inputs they had. The shapes are those of the stack that
+// built them: a certificate of one domain, DNS-validated, its CNAME
+// DNS-only with an automatic TTL.
+func TestAdoptsAnExistingCertificate(t *testing.T) {
+	const (
+		oldCert   = "api-cert"
+		oldRecord = "api-cert-validation"
+		oldAccess = "cname-edge-access-example-test"
+		comment   = "ACM DNS validation of access.example.test"
+	)
+	const (
+		certT = "aws:acm/certificate:Certificate"
+		valT  = "aws:acm/certificateValidation:CertificateValidation"
+		dnsT  = "cloudflare:index/dnsRecord:DnsRecord"
+	)
+	tags := map[string]string{"env": "test"}
+
+	// the old stack's program
+	old, _, err := run(t, func(ctx *pulumi.Context, _ func(string, pulumi.StringInput)) error {
+		p, err := cloudflare.NewProvider(ctx, "acm-api", &cloudflare.ProviderArgs{ApiToken: pulumi.String("x")})
+		if err != nil {
+			return err
+		}
+		cert, err := acm.NewCertificate(ctx, oldCert, &acm.CertificateArgs{
+			DomainName: pulumi.String(domainName), ValidationMethod: pulumi.String("DNS"),
+			KeyAlgorithm: pulumi.String("EC_secp384r1"), Tags: pulumi.ToStringMap(tags),
+		})
+		if err != nil {
+			return err
+		}
+		field := func(pick func(acm.CertificateDomainValidationOption) *string) pulumi.StringOutput {
+			return cert.DomainValidationOptions.ApplyT(func(o []acm.CertificateDomainValidationOption) string {
+				return strings.TrimSuffix(*pick(o[0]), ".")
+			}).(pulumi.StringOutput)
+		}
+		rec, err := cloudflare.NewDnsRecord(ctx, oldRecord, &cloudflare.DnsRecordArgs{
+			ZoneId: pulumi.String("zone1"),
+			Name:   field(func(o acm.CertificateDomainValidationOption) *string { return o.ResourceRecordName }),
+			Type:   field(func(o acm.CertificateDomainValidationOption) *string { return o.ResourceRecordType }),
+			Content: field(func(o acm.CertificateDomainValidationOption) *string {
+				return o.ResourceRecordValue
+			}),
+			Ttl: pulumi.Float64(1), Proxied: pulumi.Bool(false), Comment: pulumi.String(comment),
+		}, pulumi.Provider(p))
+		if err != nil {
+			return err
+		}
+		_, err = acm.NewCertificateValidation(ctx, oldCert, &acm.CertificateValidationArgs{
+			CertificateArn: cert.Arn, ValidationRecordFqdns: pulumi.StringArray{rec.Name},
+		})
+		if err != nil {
+			return err
+		}
+		// the access CNAME, under a tunnel component
+		tun := &pulumi.ResourceState{}
+		if err := ctx.RegisterComponentResource("example:cloudflare:Tunnel", "tunnel", tun); err != nil {
+			return err
+		}
+		_, err = cloudflare.NewDnsRecord(ctx, oldAccess, &cloudflare.DnsRecordArgs{
+			ZoneId: pulumi.String("zone1"), Name: pulumi.String(domainName), Type: pulumi.String("CNAME"),
+			Content: pulumi.String("d-abc.execute-api.eu-west-1.amazonaws.com"), Proxied: pulumi.Bool(true), Ttl: pulumi.Float64(1),
+		}, pulumi.Parent(tun), pulumi.Provider(p))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tunnelURN := "urn:pulumi:test::awsapigw-test::example:cloudflare:Tunnel::tunnel"
+	rec, _, err := run(t, func(ctx *pulumi.Context, _ func(string, pulumi.StringInput)) error {
+		p, err := cloudflare.NewProvider(ctx, "cf", &cloudflare.ProviderArgs{ApiToken: pulumi.String("x")})
+		if err != nil {
+			return err
+		}
+		_, err = awsapigw.New(ctx, "edge", &awsapigw.Args{
+			FrontDoor: front(ctx), DomainName: domainName, TruststorePEM: truststore, Truststore: newBucket(),
+			Tags: tags,
+			Certificate: &awsapigw.CertificateArgs{
+				KeyAlgorithm: "EC_secp384r1",
+				Name:         oldCert, Aliases: awsapigw.NoParentAliases(oldCert),
+				ValidationName: oldCert, ValidationAliases: awsapigw.NoParentAliases(oldCert),
+				ValidationRecord: &awsapigw.ValidationRecordArgs{
+					Provider: p, ZoneID: pulumi.String("zone1"), ResourceName: oldRecord,
+					Aliases: awsapigw.NoParentAliases(oldRecord), Comment: comment,
+				},
+			},
+			DNS: &awsapigw.DNSArgs{Provider: p, ZoneID: pulumi.String("zone1"), ResourceName: oldAccess, Comment: "",
+				Aliases: []pulumi.Alias{{Name: pulumi.String(oldAccess), ParentURN: pulumi.URN(tunnelURN)}}},
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		typ, oldName, newName string
+		keys                  []string
+	}{
+		{certT, oldCert, oldCert, []string{"domainName", "validationMethod", "keyAlgorithm", "tags"}},
+		{valT, oldCert, oldCert, []string{"validationRecordFqdns"}},
+		{dnsT, oldRecord, oldRecord, []string{"zoneId", "name", "type", "content", "ttl", "proxied", "comment"}},
+	} {
+		o, n := old.one(t, c.typ, c.oldName), rec.one(t, c.typ, c.newName)
+		for _, k := range c.keys {
+			if !reflect.DeepEqual(prop(o, k), prop(n, k)) {
+				t.Errorf("%s %s input %s: old %v, new %v", c.typ, c.newName, k, prop(o, k), prop(n, k))
+			}
+		}
+		as := named(rec.aliases[c.typ+"/"+c.newName])
+		if len(as) != 1 {
+			t.Fatalf("%s %s: aliases %v", c.typ, c.newName, as)
+		}
+		want := "urn:pulumi:" + old.stack + "::" + old.project + "::" + c.typ + "::" + c.oldName
+		if got := oldURN(t, rec, c.typ, as[0]); got != want {
+			t.Errorf("%s alias resolves to %s, want %s", c.typ, got, want)
+		}
+	}
+
+	// the access CNAME: its parent was the tunnel component
+	o, n := old.one(t, dnsT, oldAccess), rec.one(t, dnsT, oldAccess)
+	for _, k := range []string{"zoneId", "name", "type", "content", "ttl", "proxied"} {
+		if !reflect.DeepEqual(prop(o, k), prop(n, k)) {
+			t.Errorf("access record input %s: old %v, new %v", k, prop(o, k), prop(n, k))
+		}
+	}
+	as := named(rec.aliases[dnsT+"/"+oldAccess])
+	if len(as) != 1 {
+		t.Fatalf("access record aliases %v", as)
+	}
+	if parent, _ := as[0].ParentURN.(pulumi.URN); string(parent) != tunnelURN {
+		t.Errorf("access record alias parent %v, want %q", as[0].ParentURN, tunnelURN)
+	}
+}
+
+func TestValidationRecordArgs(t *testing.T) {
+	cb := func(_ *pulumi.Context, r awsapigw.ValidationRecord) (pulumi.StringInput, error) { return r.Name, nil }
+	base := func() *awsapigw.Args {
+		return &awsapigw.Args{FrontDoor: awsapigw.FrontDoor{APIID: pulumi.String("a"), StageName: pulumi.String("s")},
+			DomainName: domainName, TruststorePEM: truststore, Truststore: newBucket()}
+	}
+	for name, c := range map[string]*awsapigw.CertificateArgs{
+		"neither":     {},
+		"both":        {CreateValidationRecord: cb, ValidationRecord: &awsapigw.ValidationRecordArgs{}},
+		"no provider": {ValidationRecord: &awsapigw.ValidationRecordArgs{ZoneID: pulumi.String("z")}},
+		"no zone":     {ValidationRecord: &awsapigw.ValidationRecordArgs{}},
+	} {
+		a := base()
+		a.Certificate = c
+		if err := a.Validate(); err == nil {
+			t.Errorf("%s: no error", name)
 		}
 	}
 }

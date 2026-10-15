@@ -68,9 +68,53 @@ type CertificateArgs struct {
 	// certificate the stack already has under another name. Default
 	// "<name>-certificate". The validation keeps "<name>-certificate-validation".
 	Name string
+	// ValidationName is the logical name of the acm.CertificateValidation.
+	// Default "<name>-certificate-validation". Set it, with Aliases, to adopt a
+	// validation the stack already has under another name.
+	ValidationName string
+	// Aliases are the certificate's old identities, to move an existing
+	// certificate here without replacing it. For one that sat at the top of
+	// another stack, NoParentAliases(oldName). Default none.
+	Aliases []pulumi.Alias
+	// ValidationAliases are the same for the acm.CertificateValidation.
+	ValidationAliases []pulumi.Alias
 	// CreateValidationRecord creates the record in the estate's DNS and returns
-	// its fully qualified name, which ACM is waited on to see. Required.
+	// its fully qualified name, which ACM is waited on to see. Exactly one of
+	// CreateValidationRecord and ValidationRecord.
 	CreateValidationRecord func(ctx *pulumi.Context, record ValidationRecord) (pulumi.StringInput, error)
+	// ValidationRecord has the package make the Cloudflare record itself, so
+	// that its logical name and aliases can be set to adopt an existing one.
+	ValidationRecord *ValidationRecordArgs
+}
+
+// ValidationRecordArgs is the Cloudflare record ACM validates the domain by:
+// DNS-only (a proxied record would answer ACM with Cloudflare's addresses),
+// automatic TTL, with the name, type and value ACM asks for (trailing dots
+// removed).
+type ValidationRecordArgs struct {
+	// Provider is the Cloudflare provider the record is made with. Required.
+	Provider pulumi.ProviderResource
+	// ZoneID is the zone of the domain. Required.
+	ZoneID pulumi.StringInput
+	// ResourceName is the record's logical name. Default
+	// "<name>-certificate-validation-record".
+	ResourceName string
+	// Aliases move an existing record here without replacing it.
+	Aliases []pulumi.Alias
+	// Comment is the record's comment. Default none.
+	Comment string
+}
+
+// NoParentAliases are aliases, one per old name, for a resource that was at the
+// top of another stack (it had no parent) and was moved here with `pulumi
+// state move`, where it is a child of the component. The old URN has the
+// resource's own type, so only the name is given.
+func NoParentAliases(oldNames ...string) []pulumi.Alias {
+	out := make([]pulumi.Alias, 0, len(oldNames))
+	for _, n := range oldNames {
+		out = append(out, pulumi.Alias{Name: pulumi.String(n), NoParent: pulumi.Bool(true)})
+	}
+	return out
 }
 
 // NewBucketArgs is a small S3 bucket of the pattern's own for the truststore.
@@ -126,8 +170,13 @@ type DNSArgs struct {
 	// ResourceName is the record's logical name. Default "<name>-dns". Set it
 	// to the name the stack already uses to adopt an existing record.
 	ResourceName string
-	// Aliases move an existing record here without replacing it.
+	// Aliases move an existing record here without replacing it: NoParentAliases
+	// for one that was at the top of another stack, or an Alias with ParentURN
+	// (the old parent's URN, which need not exist in this stack) for one that
+	// was under a component there.
 	Aliases []pulumi.Alias
+	// Comment is the record's comment. Default none.
+	Comment string
 }
 
 // Args is the front door.
@@ -175,8 +224,18 @@ func (a *Args) Validate() error {
 	if (a.CertificateArn == nil) == (a.Certificate == nil) {
 		add("Args: set exactly one of CertificateArn and Certificate")
 	}
-	if a.Certificate != nil && a.Certificate.CreateValidationRecord == nil {
-		add("Args.Certificate.CreateValidationRecord is required")
+	if c := a.Certificate; c != nil {
+		switch {
+		case (c.CreateValidationRecord == nil) == (c.ValidationRecord == nil):
+			add("Args.Certificate: set exactly one of CreateValidationRecord and ValidationRecord")
+		case c.ValidationRecord != nil:
+			if c.ValidationRecord.Provider == nil {
+				add("Args.Certificate.ValidationRecord.Provider is required")
+			}
+			if c.ValidationRecord.ZoneID == nil {
+				add("Args.Certificate.ValidationRecord.ZoneID is required")
+			}
+		}
 	}
 	ts := a.Truststore
 	switch {
@@ -282,7 +341,11 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		if c.KeyAlgorithm != "" {
 			cargs.KeyAlgorithm = pulumi.String(c.KeyAlgorithm)
 		}
-		cert, err := acm.NewCertificate(ctx, certName, cargs, child)
+		copts := []pulumi.ResourceOption{child}
+		if len(c.Aliases) > 0 {
+			copts = append(copts, pulumi.Aliases(c.Aliases))
+		}
+		cert, err := acm.NewCertificate(ctx, certName, cargs, copts...)
 		if err != nil {
 			return nil, fmt.Errorf("awsapigw certificate: %w", err)
 		}
@@ -293,14 +356,27 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 				return o.ResourceRecordValue
 			}),
 		}
-		fqdn, err := c.CreateValidationRecord(ctx, rec)
+		var fqdn pulumi.StringInput
+		if v := c.ValidationRecord; v != nil {
+			fqdn, err = newValidationRecord(ctx, name, v, rec, child)
+		} else {
+			fqdn, err = c.CreateValidationRecord(ctx, rec)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("awsapigw certificate validation record: %w", err)
 		}
-		valid, err := acm.NewCertificateValidation(ctx, name+"-certificate-validation", &acm.CertificateValidationArgs{
+		validationName := name + "-certificate-validation"
+		if c.ValidationName != "" {
+			validationName = c.ValidationName
+		}
+		vopts := []pulumi.ResourceOption{child}
+		if len(c.ValidationAliases) > 0 {
+			vopts = append(vopts, pulumi.Aliases(c.ValidationAliases))
+		}
+		valid, err := acm.NewCertificateValidation(ctx, validationName, &acm.CertificateValidationArgs{
 			CertificateArn:        cert.Arn,
 			ValidationRecordFqdns: pulumi.StringArray{fqdn},
-		}, child)
+		}, vopts...)
 		if err != nil {
 			return nil, fmt.Errorf("awsapigw certificate validation: %w", err)
 		}
@@ -387,7 +463,7 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		if len(d.Aliases) > 0 {
 			ropts = append(ropts, pulumi.Aliases(d.Aliases))
 		}
-		if _, err := cloudflare.NewDnsRecord(ctx, rname, &cloudflare.DnsRecordArgs{
+		rargs := &cloudflare.DnsRecordArgs{
 			ZoneId:  d.ZoneID,
 			Name:    pulumi.String(host),
 			Type:    pulumi.String("CNAME"),
@@ -395,7 +471,11 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 			Proxied: pulumi.Bool(true),
 			// 1 = automatic, required for a proxied record.
 			Ttl: pulumi.Float64(1),
-		}, ropts...); err != nil {
+		}
+		if d.Comment != "" {
+			rargs.Comment = pulumi.String(d.Comment)
+		}
+		if _, err := cloudflare.NewDnsRecord(ctx, rname, rargs, ropts...); err != nil {
 			return nil, fmt.Errorf("awsapigw dns record: %w", err)
 		}
 	}
@@ -410,6 +490,41 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		return nil, err
 	}
 	return out, nil
+}
+
+// newValidationRecord makes the DNS-only record ACM validates by and returns
+// its name, which the validation waits on.
+func newValidationRecord(
+	ctx *pulumi.Context, name string, v *ValidationRecordArgs, rec ValidationRecord, child pulumi.ResourceOption,
+) (pulumi.StringInput, error) {
+	rname := v.ResourceName
+	if rname == "" {
+		rname = name + "-certificate-validation-record"
+	}
+	trim := func(o pulumi.StringOutput) pulumi.StringOutput {
+		return o.ApplyT(func(s string) string { return strings.TrimSuffix(s, ".") }).(pulumi.StringOutput)
+	}
+	opts := []pulumi.ResourceOption{child, pulumi.Provider(v.Provider)}
+	if len(v.Aliases) > 0 {
+		opts = append(opts, pulumi.Aliases(v.Aliases))
+	}
+	args := &cloudflare.DnsRecordArgs{
+		ZoneId:  v.ZoneID,
+		Name:    trim(rec.Name),
+		Type:    rec.Type,
+		Content: trim(rec.Value),
+		Ttl:     pulumi.Float64(1),
+		// GREY: a proxied record answers ACM with Cloudflare's addresses.
+		Proxied: pulumi.Bool(false),
+	}
+	if v.Comment != "" {
+		args.Comment = pulumi.String(v.Comment)
+	}
+	r, err := cloudflare.NewDnsRecord(ctx, rname, args, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return r.Name, nil
 }
 
 // validationField is one field of the certificate's (single) DNS validation record.
