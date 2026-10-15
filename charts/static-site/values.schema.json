@@ -45,7 +45,22 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "auth": { "enum": ["dockerconfig", "ecr", "none"], "description": "dockerconfig: the Docker config of site.pullSecretName (default); ecr: the server authenticates to Amazon ECR through the AWS SDK default credential chain; none: anonymous" }
+        "auth": { "enum": ["dockerconfig", "ecr", "none"], "description": "dockerconfig: the Docker config of site.pullSecretName (default); ecr: the server authenticates to Amazon ECR through the AWS SDK default credential chain; none: anonymous" },
+        "ack": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ACK objects (IAM Policy and Role, EKS PodIdentityAssociation) that give the ServiceAccount read access to the ECR repositories; registry.auth=ecr only",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "clusterName": { "type": "string", "pattern": "^([a-zA-Z0-9][a-zA-Z0-9_-]{0,99})?$" },
+            "repositoryArns": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^arn:aws[a-z-]*:ecr:[a-z0-9-]+:[0-9]{12}:repository/[a-z0-9._/-]+$" } },
+            "rolePrefix": { "type": "string", "pattern": "^([a-zA-Z0-9+=,.@_-]{1,64})?$" },
+            "accountId": { "type": "string", "pattern": "^([0-9]{12})?$" },
+            "region": { "type": "string", "pattern": "^([a-z]{2}(-[a-z]+)+-[0-9]+)?$" },
+            "tags": { "type": "object", "additionalProperties": { "type": "string" } },
+            "permissionsBoundary": { "type": "string", "pattern": "^(arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)?$" }
+          }
+        }
       }
     },
     "placeholders": {

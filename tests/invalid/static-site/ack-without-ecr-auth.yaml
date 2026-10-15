@@ -1,0 +1,7 @@
+registry:
+  auth: dockerconfig
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example

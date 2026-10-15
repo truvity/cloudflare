@@ -137,6 +137,57 @@ or the Pod Identity agent must be allowed next to the registry: the chart's
 `networkPolicy` allows HTTPS egress, and the Pod Identity agent address
 (`169.254.170.23`) needs an `extraEgress` rule where egress is restricted.
 
+### ECR on EKS with ACK
+
+Where the cluster runs ACK (`roles.iam.services.k8s.aws`,
+`policies.iam.services.k8s.aws`, `podidentityassociations.eks.services.k8s.aws`),
+the chart creates the pod's AWS identity itself, in the shape of
+`dms-infra`'s `ack.yaml`:
+
+```yaml
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example                       # required
+    repositoryArns:                            # required
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+    # rolePrefix: example-default-static-site  # name of the Role and Policy;
+    #                                          # default <clusterName>-<namespace>-<release>
+    # tags: {project: example}                 # on the Role; `cluster` is always set
+    # permissionsBoundary: arn:aws:iam::123456789012:policy/example-boundary
+    # accountId: "123456789012"                # with region: pins the trust to
+    # region: eu-central-1                     # the cluster's account and ARN
+```
+
+It renders an IAM `Policy` with the actions of the server (`ecr:GetAuthorizationToken`
+on `*`; `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`,
+`ecr:BatchCheckLayerAvailability` on `repositoryArns`), an IAM `Role` that
+trusts `pods.eks.amazonaws.com` (`sts:AssumeRole`, `sts:TagSession`) for this
+namespace and the chart's ServiceAccount, with the Policy in `policyRefs`, and a
+`PodIdentityAssociation` of the cluster, namespace and ServiceAccount to the
+Role (`roleRef`). Sync waves `-30`, `-25` and `-20` put them before the
+Deployment. The actions are written in the template and a Go test compares them
+with `staticsite.ECRAccountActions` and `ECRRepositoryActions`, the lists the
+server's own guard tests check against what it calls.
+
+The namespace needs the estate's ACK project wiring: the ACK role that applies
+these objects is confined on the `project` tag (`aws:ResourceTag/project`), so
+put `project: <name>` in `ack.tags`. A refused apply reads as an ACK condition
+on the object, not as a failed pod.
+
+**IRSA** (hive, any cluster without EKS Pod Identity) stays values only: create
+the role and its trust outside the chart and set
+`serviceAccount.annotations["eks.amazonaws.com/role-arn"]`. `registry.ack`
+stays off.
+
+**A repository in another account** needs both sides: the Policy here (it
+grants on whatever ARNs it is given), and a repository policy in the registry's
+account that admits the role (or its account) to `ecr:BatchGetImage`,
+`ecr:GetDownloadUrlForLayer` and `ecr:BatchCheckLayerAvailability`. The chart
+cannot create that half. `ecr:GetAuthorizationToken` is always checked in the
+role's own account.
+
 If the server cannot get a token (no identity bound, a missing permission) the
 pull fails with the `GetAuthorizationToken` error and the pod stays not ready;
 the log line names the call, not a credential.

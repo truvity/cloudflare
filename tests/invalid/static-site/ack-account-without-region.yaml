@@ -1,0 +1,8 @@
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    accountId: "123456789012"
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example

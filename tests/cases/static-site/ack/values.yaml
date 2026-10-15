@@ -1,0 +1,15 @@
+# EKS with ACK: the Policy, Role and PodIdentityAssociation come with the chart.
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+    tags:
+      project: example
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main
+serviceAccount:
+  name: static-site

@@ -52,6 +52,28 @@ site:
 #  none          anonymous. See docs/static-site.md.
 registry:
   auth: dockerconfig
+  # ACK objects that give the ServiceAccount its AWS identity on EKS (needs
+  # registry.auth=ecr): an IAM Policy (the ECR pull actions of the server),
+  # an IAM Role trusting EKS Pod Identity for this namespace and ServiceAccount,
+  # and a PodIdentityAssociation. The namespace needs the estate's ACK wiring.
+  # Off by default; IRSA (non-EKS) stays serviceAccount.annotations.
+  ack:
+    enabled: false
+    # EKS cluster the association is in. Required when enabled.
+    clusterName: ""
+    # ECR repository ARNs the artifact is pulled from (may be in another
+    # account: the repository policy there must admit the role). Required.
+    repositoryArns: []
+    # Name of the IAM Role and Policy. Default <clusterName>-<namespace>-<release>.
+    rolePrefix: ""
+    # Optional: pin the trust to the cluster's account and ARN (both needed).
+    accountId: ""
+    region: ""
+    # Tags on the Role. `cluster` is always set; put `project: <name>` here:
+    # the ACK project role confines on aws:ResourceTag/project.
+    tags: {}
+    # ARN of the role's permissions boundary.
+    permissionsBoundary: ""
 
 # Serve-time placeholders: {{ name }} in html, js, css and json files is
 # replaced by the value, for the names provided here and no others. Static

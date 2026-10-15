@@ -1,0 +1,5 @@
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
