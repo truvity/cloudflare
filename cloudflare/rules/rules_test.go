@@ -409,8 +409,10 @@ func TestTrustedClientsAndManagedWAF(t *testing.T) {
 	assert.Equal(t, `(http.host in {"a.example.com" "b.example.com"}) and (ip.src in {192.0.2.0/24})`, c.Rules[0].Expression)
 	assert.Equal(t, "skip", c.Rules[0].Action)
 	assert.True(t, c.Rules[0].Logging)
-	assert.Equal(t, "current", c.Rules[0].Params.Skip.Ruleset)
-	assert.Equal(t, "Trusted clients: skip security features", c.Rules[0].Description)
+	assert.Empty(t, c.Rules[0].Params.Skip.Ruleset)
+	assert.Equal(t, []string{"http_ratelimit", "http_request_sbfm"}, c.Rules[0].Params.Skip.Phases)
+	assert.Equal(t, []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock"}, c.Rules[0].Params.Skip.Products)
+	assert.Equal(t, "Trusted clients: skip bot and rate-limit checks", c.Rules[0].Description)
 
 	none, err := rules.TrustedClients(nil)
 	require.NoError(t, err)
@@ -432,6 +434,42 @@ func TestTrustedClientsAndManagedWAF(t *testing.T) {
 
 	_, err = rules.ManagedWAF(&zonespec.ManagedWAF{})
 	assert.Error(t, err)
+}
+
+func TestTrustedClientsDefaultSkipLeavesTheManagedWAF(t *testing.T) {
+	base := zonespec.TrustedClients{Zone: "example.com", Hosts: []string{"a.example.com"}, Ranges: []string{"192.0.2.0/24"}}
+
+	c, err := rules.TrustedClients(&base)
+	require.NoError(t, err)
+
+	skip := c.Rules[0].Params.Skip
+	assert.NotContains(t, skip.Phases, "http_request_firewall_managed")
+	assert.NotContains(t, skip.Products, "waf")
+	assert.NotContains(t, skip.Products, "zoneLockdown")
+	assert.Empty(t, skip.Ruleset)
+
+	// The old behaviour is a named opt-in.
+	legacy := base
+	legacy.Skip = zonespec.LegacyTrustedSkip()
+	c, err = rules.TrustedClients(&legacy)
+	require.NoError(t, err)
+	assert.Equal(t, "current", c.Rules[0].Params.Skip.Ruleset)
+	assert.Equal(t, []string{"http_ratelimit", "http_request_firewall_managed", "http_request_sbfm"}, c.Rules[0].Params.Skip.Phases)
+	assert.Equal(t, []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock", "waf", "zoneLockdown"}, c.Rules[0].Params.Skip.Products)
+
+	// Only the managed phase added back.
+	managed := base
+	managed.Skip = append(zonespec.DefaultTrustedSkip(), "http_request_firewall_managed")
+	c, err = rules.TrustedClients(&managed)
+	require.NoError(t, err)
+	assert.Contains(t, c.Rules[0].Params.Skip.Phases, "http_request_firewall_managed")
+
+	for name, skip := range map[string][]string{"unknown": {"http_request_waf"}, "twice": {"bic", "bic"}} {
+		bad := base
+		bad.Skip = skip
+		_, err = rules.TrustedClients(&bad)
+		assert.Error(t, err, name)
+	}
 }
 
 func TestSSLMode(t *testing.T) {

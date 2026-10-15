@@ -13,6 +13,7 @@ package zonespec
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,7 +29,99 @@ const (
 
 // DefaultTrustedDescription describes the trusted-clients rule when
 // TrustedClients.Description is empty.
-const DefaultTrustedDescription = "Trusted clients: skip security features"
+const DefaultTrustedDescription = "Trusted clients: skip bot and rate-limit checks"
+
+// LegacyTrustedDescription describes the trusted-clients rule when Skip is
+// set and Description is empty.
+const LegacyTrustedDescription = "Trusted clients: skip selected security features"
+
+// What the trusted-clients rule can skip, by the name Cloudflare's skip
+// action takes. TrustedSkipCurrent is the rest of the zone's custom rules
+// (`ruleset: current`); the phases and products are the skip action's own.
+const (
+	TrustedSkipCurrent = "current"
+
+	TrustedSkipRateLimit = "http_ratelimit"
+	TrustedSkipManaged   = "http_request_firewall_managed"
+	TrustedSkipSBFM      = "http_request_sbfm"
+
+	TrustedSkipBIC           = "bic"
+	TrustedSkipHot           = "hot"
+	TrustedSkipLegacyRate    = "rateLimit"
+	TrustedSkipSecurityLevel = "securityLevel"
+	TrustedSkipUABlock       = "uaBlock"
+	TrustedSkipLegacyWAF     = "waf"
+	TrustedSkipZoneLockdown  = "zoneLockdown"
+)
+
+// trustedSkipPhases and trustedSkipProducts are every name Skip accepts.
+var (
+	trustedSkipPhases   = []string{TrustedSkipRateLimit, TrustedSkipManaged, TrustedSkipSBFM}
+	trustedSkipProducts = []string{
+		TrustedSkipBIC, TrustedSkipHot, TrustedSkipLegacyRate, TrustedSkipSecurityLevel,
+		TrustedSkipUABlock, TrustedSkipLegacyWAF, TrustedSkipZoneLockdown,
+	}
+)
+
+// DefaultTrustedSkip is what a trusted client skips when Skip is empty: the
+// bot and rate-limit checks only. The managed rules, the legacy WAF, the
+// zone lockdown and the rest of the custom rules still apply to it.
+func DefaultTrustedSkip() []string {
+	return []string{
+		TrustedSkipRateLimit, TrustedSkipSBFM,
+		TrustedSkipBIC, TrustedSkipHot, TrustedSkipLegacyRate, TrustedSkipSecurityLevel, TrustedSkipUABlock,
+	}
+}
+
+// LegacyTrustedSkip is what a trusted client skipped before Skip existed:
+// everything. Set Skip to it to keep that behaviour.
+func LegacyTrustedSkip() []string {
+	out := []string{TrustedSkipCurrent}
+	out = append(out, trustedSkipPhases...)
+
+	return append(out, trustedSkipProducts...)
+}
+
+// TrustedSkipSplit sorts Skip (empty means DefaultTrustedSkip) into the skip
+// action's ruleset, phases and products, each in a fixed order. It reports
+// the first name that is none of them.
+func TrustedSkipSplit(skip []string) (ruleset string, phases, products []string, err error) {
+	if len(skip) == 0 {
+		skip = DefaultTrustedSkip()
+	}
+
+	set := map[string]bool{}
+	for _, name := range skip {
+		if name != TrustedSkipCurrent && !slices.Contains(trustedSkipPhases, name) && !slices.Contains(trustedSkipProducts, name) {
+			return "", nil, nil, fmt.Errorf("skip %q is not a phase (%s), a product (%s) or %q",
+				name, strings.Join(trustedSkipPhases, ", "), strings.Join(trustedSkipProducts, ", "), TrustedSkipCurrent)
+		}
+
+		if set[name] {
+			return "", nil, nil, fmt.Errorf("skip %q is listed twice", name)
+		}
+
+		set[name] = true
+	}
+
+	if set[TrustedSkipCurrent] {
+		ruleset = TrustedSkipCurrent
+	}
+
+	for _, name := range trustedSkipPhases {
+		if set[name] {
+			phases = append(phases, name)
+		}
+	}
+
+	for _, name := range trustedSkipProducts {
+		if set[name] {
+			products = append(products, name)
+		}
+	}
+
+	return ruleset, phases, products, nil
+}
 
 var (
 	validSSL           = []string{"off", "flexible", "full", "strict"}
@@ -90,8 +183,10 @@ type (
 	// TrustedClients exempts client address ranges from the zone's
 	// Cloudflare security features on named hosts: ONE zone custom-firewall
 	// rule with action `skip`. A request to one of Hosts from an address in
-	// Ranges skips the remaining custom rules, managed rules, rate
-	// limiting, Super Bot Fight Mode and the legacy security products.
+	// Ranges skips the bot and rate-limit checks: rate limiting, Super Bot
+	// Fight Mode and the legacy bic, hot, rateLimit, securityLevel and
+	// uaBlock products (see Skip). It still meets the managed rules, the
+	// legacy WAF, the zone lockdown and the rest of the custom rules.
 	//
 	// For a known machine-to-machine caller whose egress is published (a
 	// connector platform's address range): it keeps that caller from ever
@@ -111,8 +206,19 @@ type (
 		// Shorter than /8 (IPv4) or /16 (IPv6) is refused as too broad.
 		Ranges []string `json:"ranges" yaml:"ranges"`
 		// Description of the rule, shown in the dashboard and in security
-		// events. Empty uses "Trusted clients: skip security features".
+		// events. Empty uses "Trusted clients: skip bot and rate-limit
+		// checks" (or "...skip selected security features" when Skip is
+		// set).
 		Description string `json:"description,omitempty" yaml:"description,omitempty"`
+		// Skip names what a trusted client skips, from the skip action's
+		// vocabulary: the phases http_ratelimit, http_request_sbfm and
+		// http_request_firewall_managed, the products bic, hot, rateLimit,
+		// securityLevel, uaBlock, waf and zoneLockdown, and "current" (the
+		// rest of the custom rules). Empty is DefaultTrustedSkip: bot and
+		// rate-limit checks only. A non-empty list replaces the default;
+		// LegacyTrustedSkip() is the old everything. An unknown or repeated
+		// name is refused.
+		Skip []string `json:"skip,omitempty" yaml:"skip,omitempty"`
 	}
 
 	// Args is one zone's settings. Every field is optional: an unset
@@ -445,6 +551,10 @@ func (t *TrustedClients) validate(zoneID string) error {
 
 	if t.Zone == "" || t.Zone != strings.ToLower(t.Zone) {
 		return fmt.Errorf("zone %q: trustedClients.zone must be the zone's lower-case domain", zoneID)
+	}
+
+	if _, _, _, err := TrustedSkipSplit(t.Skip); err != nil {
+		return fmt.Errorf("zone %q: trustedClients.%w", zoneID, err)
 	}
 
 	seen := map[string]struct{}{}

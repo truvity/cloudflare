@@ -316,8 +316,10 @@ type (
 
 	// TrustedClientsCfg is ONE zone custom-firewall rule with action
 	// `skip`: a request to one of Hosts from an address in Ranges skips
-	// the remaining custom rules, managed rules, rate limiting, Super Bot
-	// Fight Mode and the legacy security products. Insurance, not a
+	// the bot and rate-limit checks (rate limiting, Super Bot Fight Mode,
+	// the legacy bic, hot, rateLimit, securityLevel and uaBlock products)
+	// and nothing else: the managed rules and the rest of the custom rules
+	// still apply. Skip changes that. Insurance, not a
 	// workaround: it keeps a known machine-to-machine caller (a
 	// connector platform's published egress range) from ever meeting a
 	// challenge a later rule might introduce. The zone owns the whole
@@ -328,6 +330,12 @@ type (
 		Hosts []string `yaml:"hosts"`
 		// Ranges are CIDR blocks (IPv4 or IPv6).
 		Ranges []string `yaml:"ranges"`
+		// Skip names what is skipped, replacing the default (bot and
+		// rate-limit checks): phases http_ratelimit, http_request_sbfm,
+		// http_request_firewall_managed; products bic, hot, rateLimit,
+		// securityLevel, uaBlock, waf, zoneLockdown; and "current" (the
+		// rest of the custom rules). The pre-Skip behaviour is all of them.
+		Skip []string `yaml:"skip,omitempty"`
 	}
 
 	// CacheCfg turns a zone's caching into a policy. It carries no host
@@ -1020,7 +1028,7 @@ func (t *TrustedClientsCfg) Library(zoneName string) *cfzone.TrustedClients {
 		return nil
 	}
 
-	return &cfzone.TrustedClients{Zone: zoneName, Hosts: t.Hosts, Ranges: t.Ranges}
+	return &cfzone.TrustedClients{Zone: zoneName, Hosts: t.Hosts, Ranges: t.Ranges, Skip: t.Skip}
 }
 
 // Library is the block as cloudflare/zonespec's input.

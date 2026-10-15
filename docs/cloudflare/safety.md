@@ -90,6 +90,7 @@ exception.
 | a `minTlsVersion` other than `1.0`, `1.1`, `1.2`, `1.3` | the same |
 | a `totalTls.certificateAuthority` other than `google`, `lets_encrypt`, `ssl_com` | the same |
 | `trustedClients` with only one of `hosts` and `ranges` | a skip rule that matches nothing |
+| a `trustedClients.skip` entry that is not a skip phase, product or `current`, or is listed twice | a skip that Cloudflare rejects at apply, or that skips more than intended |
 | a `trustedClients.hosts` entry that is upper-case, a wildcard, outside `zone`, or listed twice | a rule that is applied, reported healthy and matches nothing, or exempts a host the zone does not own |
 | a `trustedClients.ranges` entry that is not a CIDR, has host bits, or is shorter than /8 (IPv4) / /16 (IPv6) | a range that is not what was meant, or that trusts a large part of the internet |
 | a `records.entries` name that is upper-case, has a trailing dot, a wildcard past its first label, or lies outside `records.zone` | a record Cloudflare files under another name, or one in a zone the estate does not mean |

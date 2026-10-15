@@ -477,16 +477,28 @@ it.
 | `Zone` | `zone` | the zone's lower-case domain (`example.com`); required when hosts are set |
 | `Hosts` | `hosts` | exact lower-case hostnames, the zone itself or a name inside it. No wildcards |
 | `Ranges` | `ranges` | CIDR blocks, IPv4 or IPv6, no host bits set; shorter than /8 (IPv4) or /16 (IPv6) is refused as too broad |
-| `Description` | `description` | the rule's description; empty uses `Trusted clients: skip security features` |
+| `Description` | `description` | the rule's description; empty uses `Trusted clients: skip bot and rate-limit checks` (`Trusted clients: skip selected security features` when `Skip` is set) |
+| `Skip` | `skip` | what the rule skips, by name; empty is the default below, a list replaces it. Unknown or repeated names are refused |
 
 One zone custom-firewall rule with action `skip`, logging on, and the
 expression `(http.host in {...}) and (ip.src in {...})` (both sets sorted,
 so authoring order never changes the plan). A matching request skips the
-remaining custom rules (`ruleset: current`), the phases
-`http_ratelimit`, `http_request_firewall_managed` and
-`http_request_sbfm` (rate limiting, managed rules, Super Bot Fight Mode),
-and the legacy products `bic`, `hot`, `rateLimit`, `securityLevel`,
-`uaBlock`, `waf` and `zoneLockdown`.
+bot and rate-limit checks and nothing else: the phases `http_ratelimit` and
+`http_request_sbfm` (rate limiting, Super Bot Fight Mode) and the legacy
+products `bic`, `hot`, `rateLimit`, `securityLevel` and `uaBlock`. The
+managed rules (`http_request_firewall_managed`), the legacy `waf` product,
+`zoneLockdown` and the rest of the custom rules (`ruleset: current`) still
+apply to a trusted client. A skip that includes them is what Cloudflare
+Security Center reports as `skip_above_threshold`.
+
+`Skip` takes any of `current`, `http_ratelimit`, `http_request_sbfm`,
+`http_request_firewall_managed`, `bic`, `hot`, `rateLimit`, `securityLevel`,
+`uaBlock`, `waf`, `zoneLockdown`. `zonespec.DefaultTrustedSkip()` is the
+default; `zonespec.LegacyTrustedSkip()` is all of them, the behaviour before
+`Skip` existed (v3.4.0 and earlier). To add back only the managed rules, list
+the default plus `http_request_firewall_managed`. Which products and phases a
+plan honours is Cloudflare's: on Pro the legacy `waf` and `rateLimit` products
+may be inert, and the API, not this library, decides.
 
 It exists for a machine-to-machine caller whose egress is known and
 published (for example the address range a connector platform calls from):

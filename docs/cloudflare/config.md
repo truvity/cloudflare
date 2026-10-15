@@ -52,7 +52,7 @@ zones:
     hsts: {enabled, max_age, include_subdomains, nosniff}   # preload is refused; needs always_use_https
     cache: {respect_origin_browser_ttl: true}               # hosts are derived, never written
     public_cache: {host: <name>, ttl: 5m}                   # needs cache
-    trusted_clients: {hosts: [...], ranges: [...]}
+    trusted_clients: {hosts: [...], ranges: [...], skip: [...]}   # skip default: bot and rate-limit checks only
     rate_limits: {plan: pro, rules: [{name, endpoints: [{host, path | path_prefix, methods}], characteristics, period, requests, mitigation_timeout, action}]}
     managed_waf: {hosts: [...]} | {whole_zone: true}
     ssl_mode_rules: {<host>: full | strict}

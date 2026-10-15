@@ -543,6 +543,10 @@ func TestRegistryValidation(t *testing.T) {
 			zone: "trusted_clients: {hosts: [a.example.com], ranges: [0.0.0.0/0]}",
 			want: "too broad",
 		},
+		"trusted skip unknown": {
+			zone: "trusted_clients: {hosts: [a.example.com], ranges: [10.0.0.0/24], skip: [http_request_waf]}",
+			want: "is not a phase",
+		},
 		"trusted clients without ranges": {
 			zone: "trusted_clients: {hosts: [a.example.com]}",
 			want: "non-empty",
