@@ -676,6 +676,18 @@ func TestRegistryValidation(t *testing.T) {
 			zone: "always_use_https: true, hsts: {enabled: true, max_age: 63072000}",
 			want: "hsts.maxAge",
 		},
+		"bot management unknown ai_bots": {
+			zone: "bot_management: {ai_bots: challenge}",
+			want: "botManagement.aiBots",
+		},
+		"bot management empty": {
+			zone: "bot_management: {}",
+			want: "sets nothing",
+		},
+		"bot management unknown field": {
+			zone: "bot_management: {ai_bots: block, fight_mode: true}",
+			want: "field fight_mode not found",
+		},
 		"managed waf empty": {
 			zone: "managed_waf: {hosts: []}",
 			want: "empty host list",
@@ -1267,12 +1279,14 @@ func TestLibraryConvertersAreNilSafe(t *testing.T) {
 	var (
 		rl *config.RateLimitsCfg
 		h  *config.HSTSCfg
+		bm *config.BotManagementCfg
 		w  *config.ManagedWAFCfg
 		tc *config.TrustedClientsCfg
 	)
 
 	assert.Nil(t, rl.Library())
 	assert.Nil(t, h.Library())
+	assert.Nil(t, bm.Library())
 	assert.Nil(t, w.Library("example.com"))
 	assert.Nil(t, tc.Library("example.com"))
 }

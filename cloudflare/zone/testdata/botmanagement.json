@@ -1,0 +1,8 @@
+{
+  "cloudflare:index/botManagement:BotManagement/bot-management-example": {
+    "aiBotsProtection": "block",
+    "isRobotsTxtManaged": true,
+    "zoneId": "023e105f4ecef8ad9ca31a8372d0c353"
+  },
+  "truvity:cloudflare:Zone/example": {}
+}

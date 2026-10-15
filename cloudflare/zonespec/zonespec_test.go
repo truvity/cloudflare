@@ -55,6 +55,14 @@ func TestExpressions(t *testing.T) {
 	assert.False(t, none.Managed())
 }
 
+func TestBotManagementStandsAlone(t *testing.T) {
+	on := true
+	require.NoError(t, (&zonespec.Args{ZoneID: "z", BotManagement: &zonespec.BotManagement{AIBots: zonespec.AIBotsBlock}}).Validate())
+	require.NoError(t, (&zonespec.Args{ZoneID: "z", BotManagement: &zonespec.BotManagement{ManagedRobotsTxt: &on}}).Validate())
+	require.Error(t, (&zonespec.Args{ZoneID: "z", BotManagement: &zonespec.BotManagement{AIBots: "on"}}).Validate())
+	require.Error(t, (&zonespec.Args{ZoneID: "z", BotManagement: &zonespec.BotManagement{}}).Validate())
+}
+
 func TestHardeningStandsAlone(t *testing.T) {
 	on := true
 	require.NoError(t, (&zonespec.Args{ZoneID: "z", AlwaysUseHTTPS: &on}).Validate())

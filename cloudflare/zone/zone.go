@@ -95,6 +95,10 @@ type (
 	// HSTS is the zone's Strict-Transport-Security header. See
 	// zonespec.HSTS.
 	HSTS = zonespec.HSTS
+
+	// BotManagement is the zone's AI bots rule and managed robots.txt. See
+	// zonespec.BotManagement.
+	BotManagement = zonespec.BotManagement
 	// ManagedWAF deploys the Cloudflare Managed Ruleset on named hosts.
 	// See zonespec.ManagedWAF.
 	ManagedWAF = zonespec.ManagedWAF
@@ -186,6 +190,23 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 			Value:     hstsValue(args.HSTS),
 		}, child...); err != nil {
 			return nil, fmt.Errorf("zone %q: hsts: %w", name, err)
+		}
+	}
+
+	if b := args.BotManagement; b != nil {
+		// Only the managed fields are sent; the rest of the object (Bot
+		// Fight Mode, SBFM, JS detections) is left unset.
+		bArgs := &cloudflare.BotManagementArgs{ZoneId: zoneID}
+		if b.AIBots != "" {
+			bArgs.AiBotsProtection = pulumi.String(b.AIBots)
+		}
+
+		if b.ManagedRobotsTxt != nil {
+			bArgs.IsRobotsTxtManaged = pulumi.Bool(*b.ManagedRobotsTxt)
+		}
+
+		if _, err := cloudflare.NewBotManagement(ctx, "bot-management-"+name, bArgs, child...); err != nil {
+			return nil, fmt.Errorf("zone %q: botManagement: %w", name, err)
 		}
 	}
 

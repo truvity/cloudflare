@@ -211,6 +211,10 @@ type (
 		// HSTS is the zone's Strict-Transport-Security header (the zone
 		// setting security_header). Nil leaves it unmanaged.
 		HSTS *HSTSCfg `yaml:"hsts,omitempty"`
+		// BotManagement is the zone's AI bots rule and managed robots.txt
+		// (the bot_management setting; only those two fields). Nil leaves
+		// it unmanaged.
+		BotManagement *BotManagementCfg `yaml:"bot_management,omitempty"`
 		// ManagedWAF deploys the Cloudflare Managed Ruleset on the listed
 		// hosts: the zone's WHOLE http_request_firewall_managed phase. Nil
 		// leaves the phase unmanaged.
@@ -242,6 +246,13 @@ type (
 		IncludeSubdomains bool `yaml:"include_subdomains,omitempty"`
 		Nosniff           bool `yaml:"nosniff,omitempty"`
 		Preload           bool `yaml:"preload,omitempty"`
+	}
+
+	// BotManagementCfg mirrors cloudflare/zonespec BotManagement in this
+	// file's snake_case. AIBots is block, disabled or only_on_ad_pages.
+	BotManagementCfg struct {
+		AIBots           string `yaml:"ai_bots,omitempty"`
+		ManagedRobotsTxt *bool  `yaml:"managed_robots_txt,omitempty"`
 	}
 
 	// ManagedWAFCfg mirrors cloudflare/zonespec ManagedWAF in this
@@ -1321,6 +1332,15 @@ func (h *HSTSCfg) Library() *cfzone.HSTS {
 	}
 }
 
+// Library is the block as cloudflare/zonespec's input, or nil.
+func (b *BotManagementCfg) Library() *cfzone.BotManagement {
+	if b == nil {
+		return nil
+	}
+
+	return &cfzone.BotManagement{AIBots: b.AIBots, ManagedRobotsTxt: b.ManagedRobotsTxt}
+}
+
 // Library is the block as cloudflare/zonespec's input for zone zoneName, or nil.
 func (m *ManagedWAFCfg) Library(zoneName string) *cfzone.ManagedWAF {
 	if m == nil {
@@ -1339,9 +1359,10 @@ var securityTxtContact = regexp.MustCompile(`^(mailto:[^@\s]+@[a-z0-9.-]+\.[a-z]
 // never preloaded, and is never sent by a zone that does not
 // redirect plain HTTP first.
 func (z Zone) validateHardening(where, zone string) error {
-	if z.AlwaysUseHTTPS != nil || z.HSTS != nil || z.ManagedWAF != nil {
+	if z.AlwaysUseHTTPS != nil || z.HSTS != nil || z.ManagedWAF != nil || z.BotManagement != nil {
 		if err := (&cfzone.Args{
 			ZoneID: zone, AlwaysUseHTTPS: z.AlwaysUseHTTPS, HSTS: z.HSTS.Library(), ManagedWAF: z.ManagedWAF.Library(zone),
+			BotManagement: z.BotManagement.Library(),
 		}).Validate(); err != nil {
 			return fmt.Errorf("%s: %w", where, err)
 		}

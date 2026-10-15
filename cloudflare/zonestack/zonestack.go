@@ -199,6 +199,7 @@ func ZoneArgs(name string, z config.Zone) (zone.Args, error) {
 		MinTLSVersion:  z.MinTLSVersion,
 		AlwaysUseHTTPS: z.AlwaysUseHTTPS,
 		HSTS:           z.HSTS.Library(),
+		BotManagement:  z.BotManagement.Library(),
 		Records:        z.RecordsLibrary(name),
 		Compat:         zone.Compat{TopLevelAliases: true},
 	}
