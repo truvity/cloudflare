@@ -168,11 +168,29 @@ func TestDismissSendsPutWithBody(t *testing.T) {
 func TestDismissRejectsUnsafeIDs(t *testing.T) {
 	c := insights.NewClient("t")
 
-	for _, id := range []string{"", "a/b", "../x", "a b", "a?b=1", "a.b", "a\n"} {
+	for _, id := range []string{"", "a/b", "../x", "a b", "a?b=1", ".", "..", "a\n"} {
 		require.Error(t, c.Dismiss(context.Background(), insights.Scope{AccountID: "a"}, id, true), "%q", id)
 	}
 
 	require.Error(t, c.Dismiss(context.Background(), insights.Scope{}, "ok", true))
+}
+
+// Cloudflare's DNS insight ids embed the host name, so they carry dots.
+func TestDismissAcceptsHostNameIDs(t *testing.T) {
+	var gotPath string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{}}`)
+	}))
+	defer srv.Close()
+
+	c := insights.NewClient("t")
+	c.API.Base = srv.URL
+
+	id := "0123456789abcdef0123456789abcdef-www.example.com-123-cname_record_not_proxied"
+	require.NoError(t, c.Dismiss(context.Background(), insights.Scope{ZoneID: "zone1"}, id, true))
+	assert.Equal(t, "/zones/zone1/security-center/insights/"+id+"/dismiss", gotPath)
 }
 
 func TestDismissMatchingIsDryRunUnlessApplied(t *testing.T) {

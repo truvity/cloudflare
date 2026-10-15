@@ -9,15 +9,18 @@ import (
 	"strings"
 )
 
-// issueIDPattern is a safe insight id: letters, digits, dash and underscore.
+// issueIDPattern is a safe insight id: letters, digits, dot, dash and
+// underscore. Cloudflare's ids embed the subject, a host name for the DNS
+// insights (<zone tag>-www.example.com-<n>-cname_record_not_proxied), so
+// they carry dots; "." and ".." alone are refused as path segments.
 // Cloudflare's ids are UUIDs; the pattern keeps anything that could change the
 // path (slash, dot, query, whitespace) out of the request.
-var issueIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+var issueIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,512}$`)
 
 // ValidID reports whether id is a safe insight id.
 func ValidID(id string) error {
-	if !issueIDPattern.MatchString(id) {
-		return fmt.Errorf("insight id %q: want a non-empty token of letters, digits, '-' and '_'", id)
+	if !issueIDPattern.MatchString(id) || id == "." || id == ".." {
+		return fmt.Errorf("insight id %q: want a non-empty token of letters, digits, '.', '-' and '_'", id)
 	}
 
 	return nil
