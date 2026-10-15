@@ -60,6 +60,25 @@ aliases through them: the legacy provider names for the `legacy_names` account
 (`cloudflare`, a former account key) belong in `AccountOptions`, the moves of a
 record between a zone and a tunnel in `TunnelOptions` and `ZoneOptions`.
 
+### Stack names
+
+The per-company stacks are named `cloudflare-<company>-<kind>`, with the company
+from `Config.CompanyOf`. The helpers in `cloudflare/config` build them, so no
+estate spells the pattern by hand:
+
+| Stack | Helper | Name for company `acme` |
+|---|---|---|
+| zone | `config.StackZone(company)` | `cloudflare-acme-zone` |
+| services | `config.StackServices(company)` | `cloudflare-acme-services` |
+| sts (token minting) | `config.StackSTS(company)` | `cloudflare-acme-sts` |
+| any | `config.StackName(kind, company)` | kinds `config.StackKindZone`, `StackKindServices`, `StackKindSTS` |
+
+These are not the per-account names of the stacks above (`cloudflare-<kind>`,
+`cloudflare-<kind>-<account>`, method `(*Config).StackName(kind, account)`): the
+company comes first and the kind last. The tokens of the zone and services
+stacks are the `zone` and `services` preset kinds of
+[presets.md](presets.md#kinds).
+
 ## The names contract
 
 Splitting a live stack into a zone stack and a services stack with

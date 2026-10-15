@@ -5,6 +5,17 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/presets`, `cloudflare/account`: the `zone` and `services` kinds for the per-company stack split.** `presets.KindZone` holds everything `edge` holds except Cloudflare Tunnel Write: zone, SSL, cache and config settings and DNS Write on each zone (new `account.ZonePolicies`, which `EdgePolicies` now builds on with an identical result), then `WAFZones`, `BotManagementZones`, `CloudConnectorZones`, `DNSOnlyZones` and Zone Settings Write on `SecurityTxtOnly` zones as `edge` does. `presets.KindServices` holds the rights of `status` (account tunnel write, DNS Write on each managed zone) under its own name and description. A test pins that `zone` and `services` together hold exactly `edge`'s groups, and that `services` equals `status`. `presets.SplitRows(account, grants, wafZones, botZones)` returns the rows of `StandardRows` plus `<account>-zone` and `<account>-services`; `StandardRows` and every existing preset output are unchanged. Additive. See [docs/cloudflare/presets.md](docs/cloudflare/presets.md).
+- **`cloudflare/config`: per-company stack names.** `StackZone(company)`, `StackServices(company)`, `StackSTS(company)` and `StackName(kind, company)` return `cloudflare-<company>-zone|services|sts`, with the kinds `StackKindZone`, `StackKindServices` and `StackKindSTS`. The existing `(*Config).StackName(kind, account)` for per-account stacks is unchanged. See [docs/cloudflare/stacks.md](docs/cloudflare/stacks.md).
+
+### Deprecated
+
+- **`cloudflare/presets`: the `edge` and `r2-admin` kinds** are kept for one release and then removed. Use `zone` and `services` for the edge token; `r2-admin` has no replacement named yet. Nothing changes for a caller that keeps them.
+
 ## v3.7.0
 
 ### Added
