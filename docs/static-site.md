@@ -60,20 +60,86 @@ not compress; let the CDN do it.
 
 ## Placeholders
 
-`{{ name }}` (spaces optional) in `.html`, `.htm`, `.js`, `.mjs`, `.css`,
-`.json` and `.webmanifest` files is replaced at load time by the value of the
-allowlisted name; the chart value `placeholders` is that allowlist.
+A static site is built once and the same bytes run in every environment, so a
+value that differs per environment (a Google Tag Manager id, an API base URL)
+is filled in at serve time. `{{ name }}` (spaces optional) in `.html`, `.htm`,
+`.js`, `.mjs`, `.css`, `.json` and `.webmanifest` files is replaced when the
+content loads (startup, `SIGHUP` reload), not per request, by the value of the
+named placeholder.
 
-- A name that is not in the allowlist is left exactly as written.
-- Other file types are never touched.
+- Other file types (images, fonts, `.txt`, `.xml`) are never touched.
 - A value may use only `A-Za-z0-9 ._:/@#+=,~-` (at most 512 characters); the
   server refuses to start on anything else, and the chart's schema refuses it
-  at render. These values land in public pages: do not put secrets in them.
+  at render. These values land in public pages: they are configuration, not
+  credentials.
 - Values are also escaped for the file type (HTML entities; JS `\xNN`; CSS
   `\hex `; JSON string escapes). In JS and JSON the token has to sit inside a
   string literal: `var id = '{{ gtmId }}'`.
-- The ETag is computed after substitution, so changing a value changes the
-  ETag and the pods roll (the chart checksums the placeholder file).
+- The ETag and Content-Length are computed after substitution.
+- Values are never logged. The server logs the placeholder names at start; an
+  error names the file and the placeholder, never a value.
+
+### Sources
+
+| Source | Variable | Notes |
+| --- | --- | --- |
+| Directory, one file per name | `STATIC_SITE_PLACEHOLDERS_DIR` | A mounted Secret. The safer default: a value in a file is not in the process environment, `kubectl describe` or a crash dump. Only the names declared in `_KEYS` and `_OPTIONAL_KEYS` are read, so an extra key is never served. One trailing newline is trimmed. |
+| Environment | `STATIC_SITE_PLACEHOLDER_NAMES`, `STATIC_SITE_PLACEHOLDER_<NAME>` | Value in the environment of the container. |
+| JSON file | `STATIC_SITE_PLACEHOLDERS_FILE` | `{"name": "value"}`; what the chart's inline values use. |
+
+### Strict mode
+
+Without `STATIC_SITE_PLACEHOLDERS_STRICT=true` a token that is not a known
+name is left exactly as written, so a site that happens to carry `{{ x }}` (a
+template engine's own syntax) still serves. In strict mode the load fails
+(the server does not start; a reload keeps the previous content) when:
+
+- a token names something that is not a declared placeholder (unknown), or
+- a token names a declared placeholder that has no value, unless it is
+  listed in `STATIC_SITE_PLACEHOLDERS_OPTIONAL_KEYS`, in which case it is
+  replaced by the empty string.
+
+A declared name with no value that no file uses is not an error.
+
+### In the chart
+
+`placeholders` keeps its inline `name: value` form. Three reserved keys add a
+Secret source, and nothing is rendered for it while `secretName` is empty:
+
+```yaml
+placeholders:
+  secretName: static-site-values   # mounted read-only at /etc/static-site-secrets
+  secretKeys: [gtmId]                    # expected names, one key each
+  optionalKeys: [bannerText]             # may be absent; served as empty
+```
+
+The chart sets strict mode when `secretName` is set. It does not create the
+Secret. The values are read when the pod starts, so a changed Secret takes a
+restart: roll the Deployment (for example with a reloader annotation in
+`podAnnotations`). The inline values roll the pods by themselves.
+
+An example ExternalSecret that fills the Secret from a secret store (the
+store, key paths and namespace are yours):
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: static-site-values
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: example-store
+  target:
+    name: static-site-values
+    creationPolicy: Owner
+  data:
+    - secretKey: gtmId
+      remoteRef:
+        key: static-sites/docs.example/placeholders
+        property: gtmId   # the value is e.g. GTM-XXXXXXX
+```
 
 ## Operations
 

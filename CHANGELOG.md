@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`static-site`: placeholder values from a Secret.** `STATIC_SITE_PLACEHOLDERS_DIR` reads one file per name (a mounted Secret), declared by `STATIC_SITE_PLACEHOLDERS_KEYS` and `_OPTIONAL_KEYS`; `STATIC_SITE_PLACEHOLDERS_STRICT=true` makes a `{{ token }}` that is unknown, or declared without a value, fail the load instead of staying as written. The chart gains `placeholders.secretName`, `secretKeys` and `optionalKeys` (reserved keys of `placeholders`): the Secret is mounted read-only, the server runs strict, and the chart creates nothing. Names are logged, values never. Additive: without `secretName` the render is unchanged. See [docs/static-site.md](docs/static-site.md).
+
 ## v3.8.0
 
 ### Added

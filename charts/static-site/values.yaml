@@ -42,10 +42,26 @@ site:
   contentSizeLimit: 1Gi
 
 # Serve-time placeholders: {{ name }} in html, js, css and json files is
-# replaced by the value, for the names listed here and no others. Values are
-# NOT secret (they land in public pages) and may use only A-Za-z0-9 ._:/@#+=,~-
+# replaced by the value, for the names provided here and no others. Static
+# sites are built once and the same bytes run in every environment; the
+# per-environment values arrive here.
+#
+# Two sources, which may be combined:
+#  - inline: every key except the three below is a name and its value. These
+#    values are NOT secret (they land in public pages) and may use only
+#    A-Za-z0-9 ._:/@#+=,~-
+#  - a Secret: `secretName` is mounted read-only, one file per key. The chart
+#    never creates it (an ExternalSecret does; see
+#    docs/static-site.md). `secretKeys` lists the names the server expects
+#    from it, `optionalKeys` the names that may be absent (served as empty).
+#    With a Secret the server runs strict: a {{ token }} in the content that
+#    is unknown, or declared but without a value, fails the load.
+#    Nothing is rendered for the Secret while secretName is empty.
 placeholders: {}
   # gtmId: GTM-XXXXXXX
+  # secretName: static-site-values
+  # secretKeys: [gtmId]
+  # optionalKeys: []
 
 cache:
   # File names matching this regexp are served immutable for a year. Empty

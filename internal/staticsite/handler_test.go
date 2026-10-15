@@ -1,6 +1,7 @@
 package staticsite
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -292,4 +293,104 @@ func TestReadyz(t *testing.T) {
 	assert.Contains(t, get(ops, "GET", "/metrics").Body.String(), "static_site_content_files 1")
 	s.draining.Store(true)
 	assert.Equal(t, 503, get(ops, "GET", "/readyz").Code)
+}
+
+func envOf(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+
+func secretDir(t *testing.T, files map[string]string) string {
+	t.Helper()
+	return writeTree(t, files)
+}
+
+func strictEnv(dir string) map[string]string {
+	return map[string]string{
+		"STATIC_SITE_DIR":                        "/x",
+		"STATIC_SITE_PLACEHOLDERS_DIR":           dir,
+		"STATIC_SITE_PLACEHOLDERS_KEYS":          "gtmId",
+		"STATIC_SITE_PLACEHOLDERS_STRICT":        "true",
+		"STATIC_SITE_PLACEHOLDERS_OPTIONAL_KEYS": "extra",
+	}
+}
+
+func TestPlaceholdersFromDir(t *testing.T) {
+	dir := secretDir(t, map[string]string{"gtmId": "GTM-XXXXXXX\n", "stray": "never-served"})
+	cfg, err := FromEnv(envOf(strictEnv(dir)))
+	require.NoError(t, err)
+	assert.Equal(t, "GTM-XXXXXXX", cfg.Placeholders["gtmId"], "one trailing newline trimmed")
+	assert.NotContains(t, cfg.Placeholders, "stray", "only declared names are read")
+	assert.Equal(t, "", cfg.Placeholders["extra"], "an absent optional name is empty")
+	assert.Equal(t, []string{"extra", "gtmId"}, cfg.PlaceholderNames())
+
+	files := map[string]string{
+		"index.html": `<p>{{ gtmId }}{{extra}}</p>`,
+		"a.txt":      `{{gtmId}}`,
+		"logo.png":   "\x89PNG{{gtmId}}",
+		"app.js":     `var g='{{gtmId}}'`,
+	}
+	cfg.Dir = ""
+	site, err := Build(writeTree(t, files), &cfg)
+	require.NoError(t, err)
+	h := NewHandler(&cfg, NewMetrics())
+	h.Set(site)
+	assert.Equal(t, "<p>GTM-XXXXXXX</p>", get(h, "GET", "/").Body.String())
+	assert.Equal(t, `var g='GTM-XXXXXXX'`, get(h, "GET", "/app.js").Body.String())
+	assert.Equal(t, "{{gtmId}}", get(h, "GET", "/a.txt").Body.String(), "txt is not a placeholder type")
+	assert.Equal(t, "\x89PNG{{gtmId}}", get(h, "GET", "/logo.png").Body.String(), "binary untouched")
+	w := get(h, "GET", "/")
+	assert.Equal(t, "18", w.Header().Get("Content-Length"))
+}
+
+func TestStrictMissingValueFails(t *testing.T) {
+	cfg, err := FromEnv(envOf(strictEnv(secretDir(t, map[string]string{}))))
+	require.NoError(t, err, "a missing value is only an error if the content uses it")
+	cfg.Dir = ""
+	_, err = Build(writeTree(t, map[string]string{"logo.png": "x"}), &cfg)
+	require.NoError(t, err)
+	_, err = Build(writeTree(t, map[string]string{"index.html": "{{gtmId}}"}), &cfg)
+	require.ErrorContains(t, err, `placeholder "gtmId" has no value`)
+}
+
+func TestStrictUnknownPlaceholderFails(t *testing.T) {
+	cfg, err := FromEnv(envOf(strictEnv(secretDir(t, map[string]string{"gtmId": "GTM-XXXXXXX"}))))
+	require.NoError(t, err)
+	cfg.Dir = ""
+	_, err = Build(writeTree(t, map[string]string{"index.html": "{{gtmId}} {{nope}}"}), &cfg)
+	require.ErrorContains(t, err, `unknown placeholder "nope"`)
+	// Not strict: left as written, as before.
+	cfg.PlaceholderStrict = false
+	site, err := Build(writeTree(t, map[string]string{"index.html": "{{nope}}"}), &cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, site)
+}
+
+func TestPlaceholderValuesNeverInErrorsOrLogs(t *testing.T) {
+	const secret = "GTM-SECRETVALUE"
+	dir := secretDir(t, map[string]string{"gtmId": secret, "bad": secret + "<"})
+	env := strictEnv(dir)
+	env["STATIC_SITE_PLACEHOLDERS_KEYS"] = "gtmId,bad"
+	cfg, err := FromEnv(envOf(env))
+	require.Error(t, err, "a value outside the safe set is refused")
+	assert.NotContains(t, err.Error(), secret)
+	assert.NotContains(t, strings.Join(cfg.PlaceholderNames(), ","), secret)
+
+	env["STATIC_SITE_PLACEHOLDERS_KEYS"] = "gtmId"
+	cfg, err = FromEnv(envOf(env))
+	require.NoError(t, err)
+	cfg.Dir = ""
+	_, err = Build(writeTree(t, map[string]string{"index.html": "{{gtmId}} {{nope}}"}), &cfg)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), secret)
+
+	var buf strings.Builder
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	log.Info("placeholders", "names", cfg.PlaceholderNames(), "strict", cfg.PlaceholderStrict)
+	assert.Contains(t, buf.String(), "gtmId")
+	assert.NotContains(t, buf.String(), secret)
+}
+
+func TestPlaceholderDirRefusesBadName(t *testing.T) {
+	env := strictEnv(secretDir(t, nil))
+	env["STATIC_SITE_PLACEHOLDERS_KEYS"] = "../escape"
+	_, err := FromEnv(envOf(env))
+	assert.Error(t, err)
 }
