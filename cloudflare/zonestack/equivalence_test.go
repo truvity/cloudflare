@@ -274,7 +274,7 @@ func legacyZoneArgs(name string, z config.Zone) zone.Args {
 	if z.TrustedClients != nil {
 		out.TrustedClients = &zone.TrustedClients{
 			Zone: name, Hosts: z.TrustedClients.Hosts, Ranges: z.TrustedClients.Ranges,
-			Description: "Trusted clients: skip security features",
+			Description: "Trusted clients: skip bot and rate-limit checks",
 		}
 	}
 

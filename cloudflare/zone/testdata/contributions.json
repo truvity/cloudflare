@@ -56,7 +56,6 @@
         "actionParameters": {
           "phases": [
             "http_ratelimit",
-            "http_request_firewall_managed",
             "http_request_sbfm"
           ],
           "products": [
@@ -64,13 +63,10 @@
             "hot",
             "rateLimit",
             "securityLevel",
-            "uaBlock",
-            "waf",
-            "zoneLockdown"
-          ],
-          "ruleset": "current"
+            "uaBlock"
+          ]
         },
-        "description": "Trusted clients: skip security features",
+        "description": "Trusted clients: skip bot and rate-limit checks",
         "expression": "(http.host in {\"api.example.com\"}) and (ip.src in {192.0.2.0/24})",
         "logging": {
           "enabled": true

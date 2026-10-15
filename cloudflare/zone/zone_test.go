@@ -8,6 +8,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/truvity/edge/v3/cloudflare/zonespec"
 )
 
 // mocks records every registered resource so tests can assert on the exact
@@ -307,14 +309,14 @@ func TestTrustedClientsIsOneSkipRule(t *testing.T) {
 
 	rule := rules[0].ObjectValue()
 	assert.Equal(t, "skip", rule["action"].StringValue())
-	assert.Equal(t, "Trusted clients: skip security features", rule["description"].StringValue())
+	assert.Equal(t, "Trusted clients: skip bot and rate-limit checks", rule["description"].StringValue())
 	assert.Equal(t,
 		`(http.host in {"a.example.com" "b.example.com"}) and (ip.src in {192.0.2.0/24 198.51.100.0/24 2001:db8::/32})`,
 		rule["expression"].StringValue())
 	assert.True(t, rule["logging"].ObjectValue()["enabled"].BoolValue())
 
 	params := rule["actionParameters"].ObjectValue()
-	assert.Equal(t, "current", params["ruleset"].StringValue())
+	assert.NotContains(t, params, "ruleset", "the rest of the custom rules still apply")
 
 	var phases, products []string
 	for _, v := range params["phases"].ArrayValue() {
@@ -325,8 +327,20 @@ func TestTrustedClientsIsOneSkipRule(t *testing.T) {
 		products = append(products, v.StringValue())
 	}
 
-	assert.Equal(t, []string{"http_ratelimit", "http_request_firewall_managed", "http_request_sbfm"}, phases)
-	assert.Equal(t, []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock", "waf", "zoneLockdown"}, products)
+	assert.Equal(t, []string{"http_ratelimit", "http_request_sbfm"}, phases)
+	assert.Equal(t, []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock"}, products)
+	assert.NotContains(t, phases, "http_request_firewall_managed")
+}
+
+func TestTrustedClientsSkipOptsBackIn(t *testing.T) {
+	m := run(t, Args{ZoneID: "z", TrustedClients: trusted(func(c *TrustedClients) { c.Skip = zonespec.LegacyTrustedSkip() })})
+	rule := m.res[firewallName]["rules"].ArrayValue()[0].ObjectValue()
+	assert.Equal(t, "Trusted clients: skip selected security features", rule["description"].StringValue())
+
+	params := rule["actionParameters"].ObjectValue()
+	assert.Equal(t, "current", params["ruleset"].StringValue())
+	assert.Len(t, params["phases"].ArrayValue(), 3)
+	assert.Len(t, params["products"].ArrayValue(), 7)
 }
 
 func TestTrustedClientsDescription(t *testing.T) {

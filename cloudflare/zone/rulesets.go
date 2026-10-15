@@ -233,11 +233,22 @@ func actionParameters(p *cfrules.Params) *cloudflare.RulesetRuleActionParameters
 	case p.Config != nil:
 		return &cloudflare.RulesetRuleActionParametersArgs{Ssl: pulumi.String(p.Config.SSL)}
 	case p.Skip != nil:
-		return &cloudflare.RulesetRuleActionParametersArgs{
-			Ruleset:  pulumi.String(p.Skip.Ruleset),
-			Phases:   pulumi.ToStringArray(p.Skip.Phases),
-			Products: pulumi.ToStringArray(p.Skip.Products),
+		// A part that is empty is left out: the skip action takes each one
+		// optionally, and an empty ruleset string is not "current".
+		out := &cloudflare.RulesetRuleActionParametersArgs{}
+		if p.Skip.Ruleset != "" {
+			out.Ruleset = pulumi.String(p.Skip.Ruleset)
 		}
+
+		if len(p.Skip.Phases) > 0 {
+			out.Phases = pulumi.ToStringArray(p.Skip.Phases)
+		}
+
+		if len(p.Skip.Products) > 0 {
+			out.Products = pulumi.ToStringArray(p.Skip.Products)
+		}
+
+		return out
 	case p.Execute != nil:
 		return &cloudflare.RulesetRuleActionParametersArgs{Id: pulumi.String(p.Execute.ID)}
 	}

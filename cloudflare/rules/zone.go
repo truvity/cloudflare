@@ -12,14 +12,6 @@ import (
 // package knows no zone.
 const validationZone = "rules"
 
-// What a trusted client is exempted from, besides the rest of the custom
-// rules: rate limiting, managed rules, Super Bot Fight Mode, and the legacy
-// security products.
-var (
-	skipPhases   = []string{"http_ratelimit", "http_request_firewall_managed", "http_request_sbfm"}
-	skipProducts = []string{"bic", "hot", "rateLimit", "securityLevel", "uaBlock", "waf", "zoneLockdown"}
-)
-
 // RateLimits is the zone's whole http_ratelimit ruleset, one rule per row in
 // the order given, checked against the plan by zonespec's validation (rule
 // count, periods, mitigation timeouts, characteristics, actions). An error
@@ -75,7 +67,9 @@ func refSlug(name string) string {
 }
 
 // TrustedClients is the zone's one skip rule for known client address ranges
-// on named hosts. An unmanaged block (nil, or no hosts and no ranges) is a
+// on named hosts. It skips the bot and rate-limit checks (zonespec's
+// DefaultTrustedSkip) unless t.Skip says otherwise; the managed rules and the
+// rest of the custom rules still apply by default. An unmanaged block (nil, or no hosts and no ranges) is a
 // contribution with no rules.
 func TrustedClients(t *zonespec.TrustedClients) (Contribution, error) {
 	c := Contribution{Source: "trusted-clients", Phase: PhaseFirewallCustom, Order: OrderHostsCache}
@@ -90,6 +84,14 @@ func TrustedClients(t *zonespec.TrustedClients) (Contribution, error) {
 	description := t.Description
 	if description == "" {
 		description = zonespec.DefaultTrustedDescription
+		if len(t.Skip) > 0 {
+			description = zonespec.LegacyTrustedDescription
+		}
+	}
+
+	ruleset, phases, products, err := zonespec.TrustedSkipSplit(t.Skip)
+	if err != nil {
+		return Contribution{}, err
 	}
 
 	c.Rules = []Rule{{
@@ -98,9 +100,9 @@ func TrustedClients(t *zonespec.TrustedClients) (Contribution, error) {
 		Action:      ActionSkip,
 		Expression:  zonespec.TrustedExpression(t),
 		Params: Params{Skip: &SkipParams{
-			Ruleset:  "current",
-			Phases:   append([]string(nil), skipPhases...),
-			Products: append([]string(nil), skipProducts...),
+			Ruleset:  ruleset,
+			Phases:   phases,
+			Products: products,
 		}},
 		Logging: true,
 	}}
