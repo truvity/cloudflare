@@ -261,3 +261,15 @@ func TestPresetsMintThroughNewChildTokenSet(t *testing.T) {
 	}, pulumi.WithMocks("proj", "stack", m))
 	require.NoError(t, err)
 }
+
+func TestSecurityTxtPoliciesGrantOnlyZoneSettingsWrite(t *testing.T) {
+	assert.Nil(t, SecurityTxtPolicies())
+
+	got := SecurityTxtPolicies("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	require.Len(t, got, 2)
+
+	for i, id := range []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"} {
+		assert.Equal(t, []string{"Zone Settings Write"}, got[i].PermissionGroups)
+		assert.Equal(t, ZoneScope{ZoneID: id}, got[i].Scope)
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/truvity/edge/v3/cloudflare/config"
 	"github.com/truvity/edge/v3/cloudflare/securitytxt"
 )
 
@@ -148,4 +149,33 @@ func TestRefusesAZoneIDThatIsAPath(t *testing.T) {
 	_, err := securitytxt.NewClient("t").Get(context.Background(), "../x")
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "not an id"))
+}
+
+func TestTargetsIncludeASecurityTxtOnlyZone(t *testing.T) {
+	cfg, err := config.Parse([]byte(`accounts:
+  main: {account_id: a1}
+zones:
+  full.example.com:
+    account: main
+    zone_id: z1
+    ssl_mode: full
+    security_txt: {contact: ["mailto:security@example.com"], expires: "2027-01-01T00:00:00Z"}
+  held.example.net:
+    account: main
+    zone_id: z2
+    manage: security_txt
+    security_txt: {contact: ["https://example.com/contact"], expires: "2027-02-01T00:00:00Z"}
+fleets:
+  internal: {service: gateway-internal, namespace: envoy-gateway-system}
+`))
+	require.NoError(t, err)
+
+	got := securitytxt.Targets(cfg, "", "")
+	require.Len(t, got, 2)
+	assert.Equal(t, "held.example.net", got[1].Zone)
+	assert.Equal(t, "z2", got[1].ZoneID)
+	assert.Equal(t, []string{"https://example.com/contact"}, got[1].Want.Contact)
+
+	only := securitytxt.Targets(cfg, "held.example.net", "main")
+	require.Len(t, only, 1)
 }

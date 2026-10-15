@@ -15,6 +15,7 @@
 package zonestack
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -56,6 +57,11 @@ type Args struct {
 
 	Logger *slog.Logger
 }
+
+// ErrSecurityTxtOnly is what ZoneArgs returns for a zone with manage:
+// security_txt: such a zone is managed for its security.txt alone, by
+// cloudflare/securitytxt, and registers no resource.
+var ErrSecurityTxtOnly = errors.New("manage: security_txt zone registers no resource")
 
 // Deploy registers the stack.
 func Deploy(ctx *pulumi.Context, args Args) error {
@@ -101,6 +107,12 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 
 		acct, ok := providers[z.Account]
 		if !ok {
+			continue
+		}
+
+		// manage: security_txt: the zone is only named so that the
+		// security.txt tool reaches it; nothing is registered for it.
+		if z.SecurityTxtOnly() {
 			continue
 		}
 
@@ -190,7 +202,15 @@ func aopProvider(slug string, p *account.Account) pulumi.ResourceTransformation 
 // ruleset an estate registered in another form takes one in-place update
 // when it adopts these (docs/cloudflare/stacks.md). Compat.TopLevelAliases is
 // on: the resources that live at a stack's root today keep their URNs.
+//
+// A zone managed for its security.txt only (manage: security_txt) has no zone
+// component: ZoneArgs returns ErrSecurityTxtOnly for it, and a caller that
+// loops over the registry skips it (Deploy does).
 func ZoneArgs(name string, z config.Zone) (zone.Args, error) {
+	if z.SecurityTxtOnly() {
+		return zone.Args{}, fmt.Errorf("zone %s: %w", name, ErrSecurityTxtOnly)
+	}
+
 	z.Name = name
 
 	out := zone.Args{

@@ -130,6 +130,14 @@ type (
 		Name    string `yaml:"-"`
 		Account string `yaml:"account"`
 		ZoneID  string `yaml:"zone_id"`
+		// Manage says how much of the zone this registry manages: ManageFull
+		// (the default, empty) is everything the other fields declare;
+		// ManageSecurityTxt brings a hand-managed zone in for its
+		// security.txt ONLY. Such a zone must carry zone_id, account and
+		// security_txt and nothing else (validateSecurityTxtOnly); every
+		// builder skips it, and the edge preset grants its token one group,
+		// Zone Settings Write.
+		Manage string `yaml:"manage,omitempty"`
 		// ZoneIDPending declares a zone whose id nobody has looked up yet
 		// (an owner TODO: no credential for its account exists). It
 		// stands in for zone_id, never beside it, and only on an account
@@ -658,8 +666,25 @@ func (c *Config) Clusters() []string {
 }
 
 // ZoneOf returns the zone a hostname lies in (edgespec.ZoneOf), or "".
+//
+// A zone managed for its security.txt only (Zone.SecurityTxtOnly) is not a
+// zone a host can lie in: the registry serves no name there.
 func (c *Config) ZoneOf(host string) string {
-	return edgespec.ZoneOf(sortedKeys(c.Zones), host)
+	return edgespec.ZoneOf(c.managedZoneNames(), host)
+}
+
+// managedZoneNames is the sorted names of the zones that are managed beyond
+// their security.txt.
+func (c *Config) managedZoneNames() []string {
+	names := make([]string, 0, len(c.Zones))
+
+	for _, name := range sortedKeys(c.Zones) {
+		if !c.Zones[name].SecurityTxtOnly() {
+			names = append(names, name)
+		}
+	}
+
+	return names
 }
 
 // derive hands the edge catalog, the zones and the accounts to
@@ -673,6 +698,10 @@ func (c *Config) derive(cat *catalog.Config, projects []catalog.Project) error {
 	}
 
 	for name := range c.Zones {
+		if c.Zones[name].SecurityTxtOnly() {
+			continue
+		}
+
 		in.Zones[name] = c.Zones[name].Account
 
 		if c.Zones[name].Cache != nil {
@@ -798,6 +827,18 @@ func (c *Config) validateRegistry() error {
 
 		if _, ok := c.Accounts[z.Account]; !ok {
 			return fmt.Errorf("%s.account: no account %q (known: %s)", where, z.Account, strings.Join(sortedKeys(c.Accounts), ", "))
+		}
+
+		if err := z.validateManage(where); err != nil {
+			return err
+		}
+
+		if z.SecurityTxtOnly() {
+			if err := z.validateHardening(where, name); err != nil {
+				return err
+			}
+
+			continue
 		}
 
 		switch {
@@ -1107,6 +1148,10 @@ var originTargetPattern = regexp.MustCompile(`^d-[a-z0-9]{6,}\.execute-api\.[a-z
 // ActiveOrigins is the zone's origin_cnames with the empty (tunnel) values
 // dropped: the hosts whose CNAME leaves the tunnel.
 func (z Zone) ActiveOrigins() map[string]string {
+	if z.SecurityTxtOnly() {
+		return nil
+	}
+
 	out := map[string]string{}
 
 	for host, origin := range z.OriginCNAMEs {
@@ -1244,6 +1289,10 @@ func (z Zone) validateSSLModeRules(where, zone string) error {
 // RecordsLibrary is the zone's records as the library takes them, or nil
 // when the zone declares none.
 func (z Zone) RecordsLibrary(zone string) *cfzone.Records {
+	if z.SecurityTxtOnly() {
+		return nil
+	}
+
 	if len(z.Records) == 0 {
 		return nil
 	}

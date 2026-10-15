@@ -34,6 +34,10 @@ func (z Zone) SSLModeRef(host string) string {
 // The zone's Name must be set (Parse and Validate do); an error is the
 // builders', unchanged, prefixed with the block.
 func (z Zone) Contributions() ([]rules.Contribution, error) {
+	if z.SecurityTxtOnly() {
+		return nil, nil
+	}
+
 	var out []rules.Contribution
 
 	if p := z.PublicCache; p != nil {

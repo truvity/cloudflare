@@ -124,6 +124,11 @@ type (
 		// ID is the zone id; empty while the zone is pending (zone_id_pending).
 		ID      string
 		Account string
+		// SecurityTxtOnly marks a zone managed for its security.txt alone
+		// (config manage: security_txt). The edge kind grants it Zone
+		// Settings Write and nothing else; the dns and status kinds never
+		// cover it; the insights kinds cover it as any zone.
+		SecurityTxtOnly bool
 	}
 
 	// Registry is the accounts and zones the rows refer to.
@@ -389,6 +394,27 @@ func validateRow(reg Registry, row *Row) []error {
 		}
 	}
 
+	if row.Kind == KindDNS || row.Kind == KindStatus {
+		// These kinds write DNS, which a security.txt-only zone does not manage.
+		managed := 0
+
+		for _, z := range reg.zonesOf(row.Account) {
+			if !z.SecurityTxtOnly {
+				managed++
+			}
+		}
+
+		for _, n := range row.Zones {
+			if zoneNamed(reg, n).SecurityTxtOnly {
+				bad("Zones: zone %q is managed for its security.txt only, and the %s kind writes DNS", n, row.Kind)
+			}
+		}
+
+		if len(row.Zones) == 0 && managed == 0 {
+			bad("account %s has no zone the %s kind may cover (every zone is managed for its security.txt only)", row.Account, row.Kind)
+		}
+	}
+
 	if row.Kind != KindEdge && (len(row.WAFZones) > 0 || len(row.BotManagementZones) > 0 || len(row.CloudConnectorZones) > 0 || len(row.DNSOnlyZones) > 0) {
 		bad("WAFZones, BotManagementZones, CloudConnectorZones and DNSOnlyZones are for the edge kind, not %s", row.Kind)
 	}
@@ -401,6 +427,19 @@ func validateRow(reg Registry, row *Row) []error {
 		checkList("BotManagementZones", row.BotManagementZones, covered, "is not among the zones of the row")
 		checkList("CloudConnectorZones", row.CloudConnectorZones, all, "")
 		checkList("DNSOnlyZones", row.DNSOnlyZones, notCovered, "is already among the zones of the row")
+
+		managedOnly := func(list string, names []string) {
+			for _, n := range names {
+				if zoneNamed(reg, n).SecurityTxtOnly {
+					bad("%s: zone %q is managed for its security.txt only, which needs Zone Settings Write and nothing else", list, n)
+				}
+			}
+		}
+
+		managedOnly("WAFZones", row.WAFZones)
+		managedOnly("BotManagementZones", row.BotManagementZones)
+		managedOnly("CloudConnectorZones", row.CloudConnectorZones)
+		managedOnly("DNSOnlyZones", row.DNSOnlyZones)
 	}
 
 	switch {
@@ -557,7 +596,21 @@ func build(reg Registry, row *Row) (Preset, error) {
 		}
 	}
 
+	// A zone managed for its security.txt only gets Zone Settings Write on the
+	// edge kind and no DNS, status or other zone grant; the insights kinds see
+	// it like any zone.
+	var managed, txtOnly []Zone
+
+	for _, z := range zones {
+		if z.SecurityTxtOnly {
+			txtOnly = append(txtOnly, z)
+		} else {
+			managed = append(managed, z)
+		}
+	}
+
 	ids := idsOf(zones)
+	managedIDs := idsOf(managed)
 
 	p := Preset{
 		Name: row.Name, Kind: row.Kind, Account: row.Account, AccountID: acct.ID,
@@ -580,7 +633,7 @@ func build(reg Registry, row *Row) (Preset, error) {
 			waf = append(waf, zoneNamed(reg, n).ID)
 		}
 
-		p.Policies = account.EdgePoliciesWithWAF(waf, ids...)
+		p.Policies = account.EdgePoliciesWithWAF(waf, managedIDs...)
 
 		var bots []string
 		for _, n := range row.BotManagementZones {
@@ -600,10 +653,12 @@ func build(reg Registry, row *Row) (Preset, error) {
 				PermissionGroups: []string{tokensplit.PermDNSWrite}, Scope: account.ZoneScope{ZoneID: zoneNamed(reg, n).ID},
 			})
 		}
+
+		p.Policies = append(p.Policies, account.SecurityTxtPolicies(idsOf(txtOnly)...)...)
 	case KindStatus:
-		p.Policies = tokensplit.StatusPolicies(ids)
+		p.Policies = tokensplit.StatusPolicies(managedIDs)
 	case KindDNS:
-		for _, id := range ids {
+		for _, id := range managedIDs {
 			p.Policies = append(p.Policies, account.ChildTokenPolicy{
 				PermissionGroups: []string{tokensplit.PermDNSWrite}, Scope: account.ZoneScope{ZoneID: id},
 			})

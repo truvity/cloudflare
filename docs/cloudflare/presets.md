@@ -32,7 +32,7 @@ read one `presets.Preset`.
 
 | Kind | Rights, in this order |
 |---|---|
-| `edge` | tunnel write on the account; DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone; Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`. No R2. |
+| `edge` | tunnel write on the account; DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone; Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`. A zone with `Zone.SecurityTxtOnly` (config `manage: security_txt`) gets none of these: one extra policy per such zone, last, granting only Zone Settings Write (`account.SecurityTxtPolicies`), which is what writing its security.txt takes. No R2. |
 | `status` | tunnel write on the account; DNS write on each zone |
 | `dns` | DNS write on each zone |
 | `insights` | read only: Account Security Center Insights Read on the account; Zone Security Center Insights Read, Bot Management Read, Analytics Read and Zone WAF Read on each zone. Nothing writable |
@@ -57,7 +57,7 @@ has no way to ask.
 | `Name` | the sluis preset name; `<account>-<kind>` by convention (`PresetName`) |
 | `Kind`, `Account` | a kind above; a registry account |
 | `Description` | empty: the kind's generic sentence (`Description(account, kind)`). It is listed wherever sluis lists the preset; it is not part of the prototype token |
-| `Zones`, `WAFZones`, `BotManagementZones`, `CloudConnectorZones`, `DNSOnlyZones` | zone names of `Account`; all but `Zones` are `edge` only. `BotManagementZones` is for the zones that set `bot_management`; `StandardRows` leaves it empty, so set it on the returned row |
+| `Zones`, `WAFZones`, `BotManagementZones`, `CloudConnectorZones`, `DNSOnlyZones` | zone names of `Account` (a `SecurityTxtOnly` zone may be in `Zones` only; the `dns` and `status` kinds never cover one, the insights kinds cover it like any zone); all but `Zones` are `edge` only. `BotManagementZones` is for the zones that set `bot_management`; `StandardRows` leaves it empty, so set it on the returned row |
 | `Bucket`, `Jurisdiction` | bucket kinds only |
 | `Grants` | the policy groups that may ask |
 | `Lifetime` | zero: one hour |

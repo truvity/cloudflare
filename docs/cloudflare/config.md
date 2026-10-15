@@ -45,6 +45,7 @@ zones:
   <domain>:                  # lowercase, no wildcard
     account: <name>
     zone_id: <id>            # or zone_id_pending: true, never both
+    manage: full | security_txt   # default full; security_txt manages the zone's security.txt ONLY (see below)
     ssl_mode: full | strict  # the zone's default toward its origins
     min_tls_version: "1.2"
     total_tls: {enabled: true, certificate_authority: lets_encrypt}
@@ -79,6 +80,33 @@ are held to the zone component's own checks, so a bad row fails at load and not
 at apply). Trusted-client ranges must have no host bits and may not be the
 whole address space; HSTS is never preloaded and is refused until
 `always_use_https` is on.
+
+## A zone managed for its security.txt only
+
+A hand-managed zone of an account can be brought into the registry so that
+`edge-securitytxt` renews its security.txt, with nothing else of it managed:
+
+```yaml
+zones:
+  example.org:
+    account: main
+    zone_id: <id>
+    manage: security_txt
+    security_txt: {contact: ["mailto:security@example.com"], expires: "2027-01-01T00:00:00Z"}
+```
+
+The zone must carry `account`, `zone_id` and `security_txt`; every other zone
+field (`ssl_mode`, `records`, `cache`, `hsts`, `bot_management`, `trusted_clients`,
+`zone_id_pending`, ...) is refused at load, and `manage` accepts only `full`
+(the default) and `security_txt`. `Zone.SecurityTxtOnly()` is the test.
+
+Such a zone creates nothing. `zonestack.Deploy` and `services.Deploy` skip it
+(`zonestack.ZoneArgs` returns `zonestack.ErrSecurityTxtOnly`), `Contributions`,
+`RecordsLibrary` and `ActiveOrigins` are empty, and the catalog derives no
+host, tunnel route or record in it: `ZoneOf` does not return it, so a catalog
+domain inside it is refused as in no zone. `securitytxt.Targets` includes it.
+The `edge` preset grants its token Zone Settings Write on the zone and no other
+group; see [presets](presets.md).
 
 ## Tunnels are derived
 
