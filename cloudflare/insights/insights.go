@@ -1,4 +1,4 @@
-// Package insights is the read-only view that judges a WAF rollout and shows
+// Package insights is the view that judges a WAF rollout and shows
 // Security Center warnings clearing. It has two halves:
 //
 //   - Security Center insights (the warnings the dashboard lists), over
@@ -10,10 +10,11 @@
 //     firewallEventsAdaptiveGroups, so the false positives per host are
 //     visible before the managed WAF widens.
 //
-// Nothing here writes. The preset kind `insights` is the credential: Account
-// Security Center Insights Read on the account, and Zone Security Center
-// Insights Read, Analytics Read, Zone WAF Read and Bot Management Read on each
-// zone.
+// Listing and events only read: the preset kind `insights` is the credential
+// (Account Security Center Insights Read on the account, and Zone Security
+// Center Insights Read, Analytics Read, Zone WAF Read and Bot Management Read
+// on each zone). The one write is Dismiss and DismissMatching, which archive
+// an insight; they need the preset kind `insights-admin`.
 package insights
 
 import (
@@ -123,6 +124,10 @@ type Client struct {
 	PerPage int
 	// MaxPages bounds a listing; zero means 50.
 	MaxPages int
+	// Apply lets DismissMatching write. The zero value is a dry run.
+	Apply bool
+	// Undo makes DismissMatching bring dismissed insights back instead.
+	Undo bool
 }
 
 // NewClient is a Client with the given token against the public API.

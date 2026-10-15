@@ -205,3 +205,50 @@ func TestInsightsIsReadOnly(t *testing.T) {
 	_, err = Build(fixture(), []Row{{Name: "umbrella-insights", Kind: KindInsights, Account: "umbrella", WAFZones: []string{"a.example"}}})
 	require.ErrorContains(t, err, "for the edge kind")
 }
+
+// The insights-admin kind holds exactly the Security Center Insights groups,
+// Write and Read, on the account and on each zone, and nothing else.
+func TestInsightsAdminIsOnlyInsights(t *testing.T) {
+	table, err := Build(fixture(), []Row{
+		{Name: "umbrella-insights-admin", Kind: KindInsightsAdmin, Account: "umbrella"},
+		{Name: "umbrella-insights-admin-one", Kind: KindInsightsAdmin, Account: "umbrella", Zones: []string{"b.example"}},
+	})
+	require.NoError(t, err)
+
+	const (
+		acctGroups = "Account Security Center Insights Write,Account Security Center Insights Read"
+		zoneGroups = "Zone Security Center Insights Write,Zone Security Center Insights Read"
+	)
+
+	assert.Equal(t, []string{
+		acctGroups + "@" + acct1,
+		zoneGroups + "@zone." + zoneA, zoneGroups + "@zone." + zoneB, zoneGroups + "@zone." + zoneC,
+	}, flat(t, table[0]))
+	assert.Equal(t, []string{acctGroups + "@" + acct1, zoneGroups + "@zone." + zoneB}, flat(t, table[1]))
+
+	for _, p := range table {
+		assert.False(t, p.R2)
+		assert.Equal(t, DefaultLifetime, p.Lifetime)
+		assert.Equal(t, StoreNone, p.Store)
+		assert.NotEmpty(t, p.Description)
+
+		for _, pol := range p.Policies {
+			for _, g := range pol.PermissionGroups {
+				assert.Regexp(t, `^(Account|Zone) Security Center Insights (Read|Write)$`, g)
+			}
+		}
+	}
+
+	// Only insights-admin writes insights; insights stays read-only.
+	ro, err := Build(fixture(), []Row{{Name: "umbrella-insights", Kind: KindInsights, Account: "umbrella"}})
+	require.NoError(t, err)
+
+	for _, pol := range ro[0].Policies {
+		for _, g := range pol.PermissionGroups {
+			assert.NotRegexp(t, `Write|Edit`, g)
+		}
+	}
+
+	_, err = Build(fixture(), []Row{{Name: "umbrella-insights-admin", Kind: KindInsightsAdmin, Account: "umbrella", DNSOnlyZones: []string{"a.example"}}})
+	require.ErrorContains(t, err, "for the edge kind")
+}

@@ -1,14 +1,20 @@
 # cloudflare/insights
 
-Read-only checks for a WAF rollout: are the Security Center warnings clearing,
-and which hosts would the managed WAF hurt before it widens. Nothing here
-writes.
+Checks for a WAF rollout: are the Security Center warnings clearing, and which
+hosts would the managed WAF hurt before it widens. Listing and events only
+read; the one write is dismissing an insight.
 
 ## Credential
 
 The preset kind `insights` (see [presets](presets.md)): Account Security
 Center Insights Read on the account; Zone Security Center Insights Read,
 Analytics Read, Zone WAF Read and Bot Management Read on each zone. It is read only; the `edge` kind is not needed.
+
+Dismissing needs the write-capable kind `insights-admin`: Account Security
+Center Insights Write and Read on the account, Zone Security Center Insights
+Write and Read on each zone, nothing else. The read-only kind is refused by
+Cloudflare when it tries to dismiss. Keep that credential short-lived (the
+kind defaults to one hour and no store).
 
 ## Security Center insights
 
@@ -26,6 +32,31 @@ items, err := c.List(ctx, insights.Scope{ZoneID: zoneID},
 Filters: severity (`Low`, `Moderate`, `Critical`), issue type, issue class and
 dismissed (`Active` by default, `OnlyDismissed`, `AnyState`). Pages are
 followed (100 per page, at most 50 pages).
+
+## Dismissing insights
+
+```
+PUT /accounts/{account_id}/security-center/insights/{issue_id}/dismiss
+PUT /zones/{zone_id}/security-center/insights/{issue_id}/dismiss     body {"dismiss": true|false}
+```
+
+Source: Cloudflare API reference, "Archives Security Center Insight"
+(`security_center` insights `dismiss`). `dismiss: false` brings an insight back.
+
+```go
+err := c.Dismiss(ctx, insights.Scope{ZoneID: zoneID}, issueID, true)
+
+c.Apply = true // the zero value is a dry run
+done, err := c.DismissMatching(ctx, insights.Scope{AccountID: acct},
+	insights.Filter{Class: []string{"always_use_https_not_enabled"}}, "accepted risk")
+```
+
+`Dismiss` checks the id (letters, digits, `-`, `_`). `DismissMatching` lists
+the insights that pass the filter (only active ones, or with `Client.Undo` only
+dismissed ones), then dismisses each; without `Client.Apply` it writes nothing
+and returns what it would dismiss. On a failure it returns those already done
+with the error. The endpoint takes no reason, so `reason` is checked and not
+sent.
 
 ## Security Events per host
 
@@ -56,8 +87,12 @@ the counts are then a lower bound, so narrow the window or the filter.
 ```
 edge-insights list   -account ID | -zone ID [-severity Critical,Moderate] [-type T] [-class C] [-dismissed no|yes|any]
 edge-insights events -zone ID [-since 24h | -from T -to T] [-host H] [-rule R] [-action A] [-source S]
+edge-insights dismiss -account ID | -zone ID (-id ID ... | -class C -type T -severity S) [-apply] [-undo]
 ```
 
-Both take `-format table|json`, `-token-env` (default `CLOUDFLARE_API_TOKEN`)
+`dismiss` is a dry run that prints what it would dismiss; `-apply` does it and
+`-undo` sends `dismiss: false`. Name insights with `-id` (repeat or comma
+separate) or with filters, not both. A filter that matches nothing says so and
+exits 0. It needs the `insights-admin` kind. All three take `-format table|json`, `-token-env` (default `CLOUDFLARE_API_TOKEN`)
 and `-token-cmd` (a command, no shell, whose output is the token). The token
 is never printed.
