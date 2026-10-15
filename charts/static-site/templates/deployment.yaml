@@ -1,0 +1,165 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "static-site.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "static-site.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "static-site.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "static-site.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/placeholders: {{ include "static-site.placeholders" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "static-site.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: static-site
+          image: {{ include "static-site.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: STATIC_SITE_ARTIFACT_REF
+              value: {{ .Values.site.artifact.ref | quote }}
+            {{- with .Values.site.artifact.digest }}
+            - name: STATIC_SITE_ARTIFACT_DIGEST
+              value: {{ . | quote }}
+            {{- end }}
+            - name: STATIC_SITE_CONTENT_DIR
+              value: /var/run/site
+            - name: STATIC_SITE_PLAIN_HTTP
+              value: {{ .Values.site.plainHTTP | quote }}
+            - name: STATIC_SITE_SPA_FALLBACK
+              value: {{ .Values.site.spaFallback | quote }}
+            - name: STATIC_SITE_NOT_FOUND_PAGE
+              value: {{ .Values.site.notFoundPage | quote }}
+            - name: STATIC_SITE_MAX_BYTES
+              value: {{ .Values.site.maxBytes | int64 | quote }}
+            - name: STATIC_SITE_MAX_FILES
+              value: {{ .Values.site.maxFiles | int | quote }}
+            - name: STATIC_SITE_HTML_MAX_AGE
+              value: {{ .Values.cache.htmlMaxAge | quote }}
+            - name: STATIC_SITE_STALE_WHILE_REVALIDATE
+              value: {{ .Values.cache.staleWhileRevalidate | quote }}
+            {{- with .Values.cache.hashedPattern }}
+            - name: STATIC_SITE_HASHED_PATTERN
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.headers }}
+            - name: STATIC_SITE_HEADERS
+              value: {{ toJson .Values.headers | quote }}
+            {{- end }}
+            {{- if .Values.placeholders }}
+            - name: STATIC_SITE_PLACEHOLDERS_FILE
+              value: /etc/static-site/placeholders.json
+            {{- end }}
+            - name: STATIC_SITE_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            {{- if .Values.site.pullSecretName }}
+            - name: DOCKER_CONFIG
+              value: /etc/registry-auth
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: ops
+              containerPort: 8081
+              protocol: TCP
+          # The artifact is pulled before the site port opens; startup
+          # allows for a slow registry without loosening liveness.
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: ops
+            periodSeconds: 2
+            failureThreshold: 90
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: ops
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: ops
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: content
+              mountPath: /var/run/site
+            {{- if .Values.placeholders }}
+            - name: placeholders
+              mountPath: /etc/static-site
+              readOnly: true
+            {{- end }}
+            {{- if .Values.site.pullSecretName }}
+            - name: registry-auth
+              mountPath: /etc/registry-auth
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: content
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.site.contentSizeLimit | quote }}
+        {{- if .Values.placeholders }}
+        - name: placeholders
+          configMap:
+            name: {{ include "static-site.fullname" . }}-placeholders
+        {{- end }}
+        {{- if .Values.site.pullSecretName }}
+        - name: registry-auth
+          secret:
+            secretName: {{ .Values.site.pullSecretName }}
+            items:
+              - key: .dockerconfigjson
+                path: config.json
+        {{- end }}

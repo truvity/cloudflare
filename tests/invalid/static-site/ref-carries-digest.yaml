@@ -1,0 +1,3 @@
+site:
+  artifact:
+    ref: registry.example.com/static/www@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

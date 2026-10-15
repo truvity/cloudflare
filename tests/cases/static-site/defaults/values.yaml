@@ -1,0 +1,5 @@
+# Only what a promotion tool sets: the artifact, by digest.
+site:
+  artifact:
+    ref: registry.example.com/static/www
+    digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

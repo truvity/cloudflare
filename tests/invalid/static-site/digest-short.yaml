@@ -1,0 +1,3 @@
+site:
+  artifact:
+    digest: "sha256:ABC"

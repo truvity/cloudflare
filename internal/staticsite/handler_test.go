@@ -1,0 +1,295 @@
+package staticsite
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func writeTree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for name, body := range files {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
+	}
+	return root
+}
+
+func newTestHandler(t *testing.T, files map[string]string, mod func(*Config)) *Handler {
+	t.Helper()
+	cfg := Defaults()
+	cfg.Placeholders = map[string]string{"gtm": "GTM-ABC123", "tricky": "a b"}
+	if mod != nil {
+		mod(&cfg)
+	}
+	site, err := Build(writeTree(t, files), &cfg)
+	require.NoError(t, err)
+	h := NewHandler(&cfg, NewMetrics())
+	h.Set(site)
+	return h
+}
+
+func get(h http.Handler, method, target string, hdr ...string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, target, nil)
+	for i := 0; i+1 < len(hdr); i += 2 {
+		r.Header.Set(hdr[i], hdr[i+1])
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+var site = map[string]string{
+	"index.html":           `<html><script>var g='{{ gtm }}';var u='{{unknown}}'</script>{{gtm}}</html>`,
+	"404.html":             "<p>gone</p>",
+	"app.0123abcd.js":      `console.log("{{gtm}}")`,
+	"logo.png":             "PNGDATA",
+	"docs/index.html":      "docs",
+	"docs/guide.html":      "guide",
+	"data.json":            `{"id":"{{gtm}}"}`,
+	"style.css":            `a{content:"{{tricky}}"}`,
+	"static/readme.txt":    "{{gtm}}",
+	"vendor/lib-abc.js":    "x",
+	"vendor/lib.deadbeef.": "x",
+}
+
+func TestContentTypeAndSecurityHeaders(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	for path, want := range map[string]string{
+		"/":                "text/html; charset=utf-8",
+		"/app.0123abcd.js": "text/javascript; charset=utf-8",
+		"/logo.png":        "image/png",
+		"/data.json":       "application/json",
+		"/style.css":       "text/css; charset=utf-8",
+	} {
+		w := get(h, "GET", path)
+		assert.Equal(t, 200, w.Code, path)
+		assert.Equal(t, want, w.Header().Get("Content-Type"), path)
+		assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"), path)
+		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"), path)
+		assert.NotEmpty(t, w.Header().Get("Referrer-Policy"), path)
+	}
+}
+
+func TestCacheControl(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	assert.Equal(t, "public, max-age=31536000, immutable", get(h, "GET", "/app.0123abcd.js").Header().Get("Cache-Control"))
+	assert.Equal(t, "public, max-age=60, stale-while-revalidate=300", get(h, "GET", "/").Header().Get("Cache-Control"))
+	assert.Equal(t, "public, max-age=60, stale-while-revalidate=300", get(h, "GET", "/logo.png").Header().Get("Cache-Control"))
+	assert.Equal(t, "public, max-age=60, stale-while-revalidate=300", get(h, "GET", "/vendor/lib-abc.js").Header().Get("Cache-Control"))
+
+	h = newTestHandler(t, site, func(c *Config) { c.HTMLMaxAge = 5e9; c.StaleWhileRevalidate = 0 })
+	assert.Equal(t, "public, max-age=5", get(h, "GET", "/").Header().Get("Cache-Control"))
+}
+
+func TestHTMLNeverImmutable(t *testing.T) {
+	h := newTestHandler(t, map[string]string{"index.html": "x", "page.0123abcd.html": "y"}, nil)
+	assert.NotContains(t, get(h, "GET", "/page.0123abcd.html").Header().Get("Cache-Control"), "immutable")
+}
+
+func TestETagAndNotModified(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	for _, path := range []string{"/", "/logo.png", "/app.0123abcd.js"} {
+		w := get(h, "GET", path)
+		etag := w.Header().Get("ETag")
+		require.NotEmpty(t, etag, path)
+		assert.True(t, strings.HasPrefix(etag, `"`), "strong ETag, not W/: %s", etag)
+		assert.Empty(t, w.Header().Get("Last-Modified"), path)
+
+		w2 := get(h, "GET", path, "If-None-Match", etag)
+		assert.Equal(t, 304, w2.Code, path)
+		assert.Empty(t, w2.Body.String(), path)
+		assert.Equal(t, etag, w2.Header().Get("ETag"))
+		assert.NotEmpty(t, w2.Header().Get("Cache-Control"))
+
+		assert.Equal(t, 200, get(h, "GET", path, "If-None-Match", `"other"`).Code)
+	}
+}
+
+func TestETagFollowsSubstitutedContent(t *testing.T) {
+	a := newTestHandler(t, site, func(c *Config) { c.Placeholders = map[string]string{"gtm": "GTM-AAAA"} })
+	b := newTestHandler(t, site, func(c *Config) { c.Placeholders = map[string]string{"gtm": "GTM-BBBB"} })
+	assert.NotEqual(t, get(a, "GET", "/").Header().Get("ETag"), get(b, "GET", "/").Header().Get("ETag"))
+	// A file with no token has the same ETag in both.
+	assert.Equal(t, get(a, "GET", "/logo.png").Header().Get("ETag"), get(b, "GET", "/logo.png").Header().Get("ETag"))
+}
+
+func TestPlaceholders(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	body := get(h, "GET", "/").Body.String()
+	assert.Contains(t, body, `var g='GTM-ABC123'`)
+	assert.Contains(t, body, "{{unknown}}", "a name outside the allowlist is left as it is")
+	assert.True(t, strings.HasSuffix(body, "GTM-ABC123</html>"))
+	assert.Contains(t, get(h, "GET", "/app.0123abcd.js").Body.String(), `"GTM-ABC123"`)
+	assert.JSONEq(t, `{"id":"GTM-ABC123"}`, get(h, "GET", "/data.json").Body.String())
+	assert.Contains(t, get(h, "GET", "/style.css").Body.String(), `a\20 b`)
+	// Not a placeholder type: served verbatim.
+	assert.Equal(t, "{{gtm}}", get(h, "GET", "/static/readme.txt").Body.String())
+}
+
+func TestNoAllowlistNoSubstitution(t *testing.T) {
+	h := newTestHandler(t, site, func(c *Config) { c.Placeholders = nil })
+	assert.Contains(t, get(h, "GET", "/").Body.String(), "{{gtm}}")
+}
+
+func TestEscaping(t *testing.T) {
+	assert.Equal(t, "a&amp;b&lt;c", escape(kindHTML, "a&b<c"))
+	assert.Equal(t, `a\x27b\x22c\x3cd\x5c\x24\x60`, escape(kindJS, "a'b\"c<d\\$`"))
+	assert.Equal(t, `a\"b\\`, escape(kindJSON, `a"b\`))
+	assert.Equal(t, `a\3c `, escape(kindCSS, "a<"))
+}
+
+func TestConfigRefusesUnsafePlaceholders(t *testing.T) {
+	for _, v := range []string{`a"b`, "a<b", "a\nb", "a'b", "a;b()", strings.Repeat("x", 513)} {
+		c := Defaults()
+		c.Dir = "/x"
+		c.Placeholders = map[string]string{"n": v}
+		assert.Error(t, c.Validate(), "%q", v)
+	}
+	c := Defaults()
+	c.Dir = "/x"
+	c.Placeholders = map[string]string{"bad name": "v"}
+	assert.Error(t, c.Validate())
+	c.Placeholders = map[string]string{"gtm": "GTM-ABC123"}
+	assert.NoError(t, c.Validate())
+}
+
+func TestTraversalRefused(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	for _, target := range []string{"/../etc/passwd", "/a/../../x", "/docs/../../x", "/%2e%2e/x", "/a%5cb", "/a%00b", "/..%2f..%2fx"} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.URL.Path = mustUnescape(t, target)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		assert.Equal(t, 400, w.Code, target)
+	}
+}
+
+func mustUnescape(t *testing.T, s string) string {
+	t.Helper()
+	p, err := url.PathUnescape(s)
+	require.NoError(t, err)
+	return p
+}
+
+func TestOnlyFilesInTheSiteAreServed(t *testing.T) {
+	root := writeTree(t, map[string]string{"index.html": "x"})
+	outside := filepath.Join(t.TempDir(), "secret")
+	require.NoError(t, os.WriteFile(outside, []byte("secret"), 0o644))
+	require.NoError(t, os.Symlink(outside, filepath.Join(root, "link")))
+	cfg := Defaults()
+	s, err := Build(root, &cfg)
+	require.NoError(t, err)
+	h := NewHandler(&cfg, NewMetrics())
+	h.Set(s)
+	assert.Equal(t, 404, get(h, "GET", "/link").Code)
+}
+
+func TestDirectoriesAndIndex(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	assert.Equal(t, "docs", get(h, "GET", "/docs/").Body.String())
+	w := get(h, "GET", "/docs")
+	assert.Equal(t, 301, w.Code)
+	assert.Equal(t, "/docs/", w.Header().Get("Location"))
+	// No listing: a directory with no index is a 404.
+	assert.Equal(t, 404, get(h, "GET", "/static/").Code)
+	assert.Equal(t, 404, get(h, "GET", "/vendor").Code)
+	// A protocol-relative path must not become an open redirect.
+	w = get(h, "GET", "//docs")
+	assert.Equal(t, 301, w.Code)
+	assert.Equal(t, "/docs/", w.Header().Get("Location"))
+}
+
+func TestNotFoundPageAndSPA(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	w := get(h, "GET", "/missing")
+	assert.Equal(t, 404, w.Code)
+	assert.Equal(t, "<p>gone</p>", w.Body.String())
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	assert.Empty(t, w.Header().Get("ETag"))
+	assert.Equal(t, 404, get(h, "GET", "/missing").Code)
+
+	h = newTestHandler(t, site, func(c *Config) { c.NotFoundPage = "" })
+	assert.Equal(t, 404, get(h, "GET", "/missing").Code)
+
+	h = newTestHandler(t, site, func(c *Config) { c.SPAFallback = true })
+	assert.Equal(t, 200, get(h, "GET", "/some/route").Code)
+	assert.Contains(t, get(h, "GET", "/some/route").Body.String(), "GTM-ABC123")
+	assert.Equal(t, 404, get(h, "GET", "/missing.png").Code, "a missing asset is not the app")
+}
+
+func TestMethods(t *testing.T) {
+	h := newTestHandler(t, site, nil)
+	for _, m := range []string{"POST", "PUT", "DELETE", "PATCH", "OPTIONS"} {
+		w := get(h, m, "/")
+		assert.Equal(t, 405, w.Code, m)
+		assert.Equal(t, "GET, HEAD", w.Header().Get("Allow"))
+	}
+	w := get(h, "HEAD", "/logo.png")
+	assert.Equal(t, 200, w.Code)
+	assert.Empty(t, w.Body.String())
+	assert.Equal(t, "7", w.Header().Get("Content-Length"))
+	assert.NotEmpty(t, w.Header().Get("ETag"))
+}
+
+func TestHeaderOverrides(t *testing.T) {
+	h := newTestHandler(t, site, func(c *Config) {
+		c.Headers["X-Frame-Options"] = ""
+		c.Headers["Content-Security-Policy"] = "default-src 'self'"
+	})
+	w := get(h, "GET", "/")
+	assert.Empty(t, w.Header().Get("X-Frame-Options"))
+	assert.Equal(t, "default-src 'self'", w.Header().Get("Content-Security-Policy"))
+	assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+}
+
+func TestNoContentIs503(t *testing.T) {
+	cfg := Defaults()
+	assert.Equal(t, 503, get(NewHandler(&cfg, NewMetrics()), "GET", "/").Code)
+}
+
+func TestFromEnv(t *testing.T) {
+	env := map[string]string{
+		"STATIC_SITE_ARTIFACT_REF":       "registry.example.com/static/www:1",
+		"STATIC_SITE_ARTIFACT_DIGEST":    "sha256:" + strings.Repeat("a", 64),
+		"STATIC_SITE_HTML_MAX_AGE":       "30s",
+		"STATIC_SITE_PLACEHOLDER_NAMES":  "gtm-id",
+		"STATIC_SITE_PLACEHOLDER_GTM_ID": "GTM-1",
+		"STATIC_SITE_HEADERS":            `{"X-Frame-Options":"SAMEORIGIN"}`,
+	}
+	c, err := FromEnv(func(k string) string { return env[k] })
+	require.NoError(t, err)
+	assert.Equal(t, "GTM-1", c.Placeholders["gtm-id"])
+	assert.Equal(t, "SAMEORIGIN", c.Headers["X-Frame-Options"])
+	assert.Equal(t, "nosniff", c.Headers["X-Content-Type-Options"])
+
+	env["STATIC_SITE_ARTIFACT_DIGEST"] = "latest"
+	_, err = FromEnv(func(k string) string { return env[k] })
+	assert.Error(t, err)
+
+	_, err = FromEnv(func(string) string { return "" })
+	assert.Error(t, err, "no source")
+}
+
+func TestReadyz(t *testing.T) {
+	cfg := Defaults()
+	cfg.Dir = writeTree(t, map[string]string{"index.html": "x"})
+	s := NewServer(&cfg, nopLogger())
+	ops := s.OpsHandler()
+	assert.Equal(t, 200, get(ops, "GET", "/healthz").Code)
+	assert.Equal(t, 503, get(ops, "GET", "/readyz").Code)
+	require.NoError(t, s.Load(t.Context()))
+	assert.Equal(t, 200, get(ops, "GET", "/readyz").Code)
+	assert.Contains(t, get(ops, "GET", "/metrics").Body.String(), "static_site_content_files 1")
+	s.draining.Store(true)
+	assert.Equal(t, 503, get(ops, "GET", "/readyz").Code)
+}

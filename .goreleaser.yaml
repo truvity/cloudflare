@@ -2,15 +2,47 @@
 # which runs goreleaser and then pushes every chart under charts/ to
 # ghcr.io/truvity/charts at the tag's version.
 #
-# No binaries: this repository ships Helm charts and a Go library, which
-# needs no build step — goreleaser's job here is the GitHub Release with
-# the changelog, nothing else. `skip: true` is its documented shape for
-# library projects. (v2.5.0 to v2.18.0 also built the r2broker binary,
-# archive and image; v2.19.0 removed the broker.)
+# One build: cmd/static-site, the generic static-site server, shipped as a
+# distroless image (ko, below) at the same version as the charts and the Go
+# module. The charts and the Go library need no build step.
 version: 2
 
 builds:
-  - skip: true
+  - id: static-site
+    main: ./cmd/static-site
+    binary: static-site
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+# The archive is a convenience for running the server outside a cluster; the
+# image is the product.
+archives:
+  - id: static-site
+    ids: [static-site]
+    formats: [tar.gz]
+
+# The caller's ko-docker-repo (ghcr.io/truvity/edge, release.yaml) plus
+# base_import_paths puts the image at ghcr.io/truvity/edge/static-site.
+kos:
+  - id: static-site
+    build: static-site
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: static-site
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/edge
 
 changelog:
   sort: asc
@@ -34,4 +66,6 @@ release:
     | gateway-policies chart | `oci://ghcr.io/truvity/charts/gateway-policies:{{ .Version }}` |
     | gateway-projects chart | `oci://ghcr.io/truvity/charts/gateway-projects:{{ .Version }}` |
     | gateway-routes chart (library) | `oci://ghcr.io/truvity/charts/gateway-routes:{{ .Version }}` |
+    | static-site chart | `oci://ghcr.io/truvity/charts/static-site:{{ .Version }}` |
+    | static-site image | `ghcr.io/truvity/edge/static-site:{{ .Version }}` |
     | Go | `go get github.com/truvity/edge/v3@{{ .Tag }}` |
