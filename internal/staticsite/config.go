@@ -42,9 +42,15 @@ type Config struct {
 	ArtifactRef    string
 	ArtifactDigest string
 	PlainHTTP      bool
-	PullTimeout    time.Duration
-	MaxBytes       int64
-	MaxFiles       int
+	// RegistryAuth is "" or auto (a Docker config file if one is configured,
+	// else ECR through the AWS SDK for an ECR host, else anonymous),
+	// dockerconfig, ecr or none. DockerConfigDir is DOCKER_CONFIG: when set,
+	// a Docker config file is configured.
+	RegistryAuth    string
+	DockerConfigDir string
+	PullTimeout     time.Duration
+	MaxBytes        int64
+	MaxFiles        int
 
 	// HashedPattern selects the file names cached as immutable.
 	HashedPattern *regexp.Regexp
@@ -114,6 +120,10 @@ var safeValue = regexp.MustCompile(`^[A-Za-z0-9 ._:/@#+=,~-]{0,512}$`)
 //	STATIC_SITE_CONTENT_DIR                      unpack target
 //	STATIC_SITE_ARTIFACT_REF, _ARTIFACT_DIGEST   what to pull
 //	STATIC_SITE_PLAIN_HTTP                       registry without TLS
+//	STATIC_SITE_REGISTRY_AUTH                    auto (default), dockerconfig,
+//	                                             ecr or none
+//	DOCKER_CONFIG                                directory of the Docker config
+//	                                             file (a mounted pull secret)
 //	STATIC_SITE_PULL_TIMEOUT, _MAX_BYTES, _MAX_FILES
 //	STATIC_SITE_HASHED_PATTERN                   regexp, immutable file names
 //	STATIC_SITE_HTML_MAX_AGE, _STALE_WHILE_REVALIDATE   durations
@@ -163,6 +173,8 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	str("CONTENT_DIR", &c.ContentDir)
 	str("ARTIFACT_REF", &c.ArtifactRef)
 	str("ARTIFACT_DIGEST", &c.ArtifactDigest)
+	str("REGISTRY_AUTH", &c.RegistryAuth)
+	c.DockerConfigDir = getenv("DOCKER_CONFIG")
 	str("NOT_FOUND_PAGE", &c.NotFoundPage)
 	boolean("PLAIN_HTTP", &c.PlainHTTP)
 	boolean("SPA_FALLBACK", &c.SPAFallback)
@@ -317,6 +329,11 @@ func (c *Config) Validate() error {
 	}
 	if c.ArtifactDigest != "" && !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(c.ArtifactDigest) {
 		errs = append(errs, fmt.Errorf("artifact digest %q is not sha256:<64 hex>", c.ArtifactDigest))
+	}
+	switch c.RegistryAuth {
+	case "", RegistryAuthAuto, RegistryAuthDockerConfig, RegistryAuthECR, RegistryAuthNone:
+	default:
+		errs = append(errs, fmt.Errorf("STATIC_SITE_REGISTRY_AUTH: %q is not auto, dockerconfig, ecr or none", c.RegistryAuth))
 	}
 	for name, v := range c.Placeholders {
 		if !placeholderName.MatchString(name) {

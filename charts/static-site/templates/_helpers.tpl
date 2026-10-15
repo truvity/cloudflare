@@ -65,3 +65,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Refuse registry settings that contradict each other. */}}
+{{- define "static-site.validateRegistry" -}}
+{{- if and (ne .Values.registry.auth "dockerconfig") .Values.site.pullSecretName -}}
+{{- fail (printf "site.pullSecretName is the Docker config of registry.auth=dockerconfig; registry.auth is %q" .Values.registry.auth) -}}
+{{- end -}}
+{{- if and (eq .Values.registry.auth "ecr") (not .Values.serviceAccount.create) (not .Values.serviceAccount.name) -}}
+{{- fail "registry.auth=ecr binds AWS credentials to the pod's ServiceAccount: set serviceAccount.create, or serviceAccount.name of an existing one that the cluster has bound" -}}
+{{- end -}}
+{{- end -}}
