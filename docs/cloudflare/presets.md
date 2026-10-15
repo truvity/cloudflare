@@ -36,6 +36,7 @@ read one `presets.Preset`.
 | `status` | tunnel write on the account; DNS write on each zone |
 | `dns` | DNS write on each zone |
 | `insights` | read only: Account Security Center Insights Read on the account; Zone Security Center Insights Read, Bot Management Read, Analytics Read and Zone WAF Read on each zone. Nothing writable |
+| `insights-admin` | Account Security Center Insights Write and Read on the account; Zone Security Center Insights Write and Read on each zone. The one kind that can dismiss insights (`edge-insights dismiss`); Read sits beside Write because dismissing starts from a listing and Write is not assumed to imply Read. Nothing else writable |
 | `r2-admin` | Workers R2 Storage Write on the account (every bucket) |
 | `bucket-rw` | R2 object read and write on one bucket (`Bucket`, `Jurisdiction`); an R2 credential |
 | `bucket-write` | R2 object write on one bucket; an R2 credential |

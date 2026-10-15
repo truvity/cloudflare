@@ -140,3 +140,136 @@ func TestSummariseMergesDuplicates(t *testing.T) {
 	assert.Equal(t, int64(5), s.Hosts[0].Rows[0].Count)
 	assert.Zero(t, s.Hosts[0].Blocking)
 }
+
+func TestDismissSendsPutWithBody(t *testing.T) {
+	var gotPath, gotMethod, gotBody string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotPath, gotMethod, gotBody = r.URL.Path, r.Method, string(b)
+		assert.Equal(t, "Bearer tok-secret", r.Header.Get("Authorization"))
+		_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{}}`)
+	}))
+	defer srv.Close()
+
+	c := insights.NewClient("tok-secret")
+	c.API.Base = srv.URL
+
+	require.NoError(t, c.Dismiss(context.Background(), insights.Scope{AccountID: "acct1"}, "ab12-cd34", true))
+	assert.Equal(t, "PUT", gotMethod)
+	assert.Equal(t, "/accounts/acct1/security-center/insights/ab12-cd34/dismiss", gotPath)
+	assert.JSONEq(t, `{"dismiss":true}`, gotBody)
+
+	require.NoError(t, c.Dismiss(context.Background(), insights.Scope{ZoneID: "zone1"}, "ab12-cd34", false))
+	assert.Equal(t, "/zones/zone1/security-center/insights/ab12-cd34/dismiss", gotPath)
+	assert.JSONEq(t, `{"dismiss":false}`, gotBody)
+}
+
+func TestDismissRejectsUnsafeIDs(t *testing.T) {
+	c := insights.NewClient("t")
+
+	for _, id := range []string{"", "a/b", "../x", "a b", "a?b=1", "a.b", "a\n"} {
+		require.Error(t, c.Dismiss(context.Background(), insights.Scope{AccountID: "a"}, id, true), "%q", id)
+	}
+
+	require.Error(t, c.Dismiss(context.Background(), insights.Scope{}, "ok", true))
+}
+
+func TestDismissMatchingIsDryRunUnlessApplied(t *testing.T) {
+	var puts []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			puts = append(puts, r.URL.Path)
+			_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{}}`)
+
+			return
+		}
+
+		assert.Equal(t, "false", r.URL.Query().Get("dismissed"))
+		assert.Equal(t, "Low", r.URL.Query().Get("severity"))
+		_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{"count":2,"page":1,"per_page":100,"issues":[`+
+			`{"id":"aa11","severity":"Low","issue_type":"t","issue_class":"c","subject":"example.com"},`+
+			`{"id":"bb22","severity":"Low","issue_type":"t","issue_class":"c","subject":"example.org"}]}}`)
+	}))
+	defer srv.Close()
+
+	c := insights.NewClient("tok")
+	c.API.Base = srv.URL
+
+	f := insights.Filter{Severity: []string{"low"}, Dismissed: insights.AnyState}
+
+	got, err := c.DismissMatching(context.Background(), insights.Scope{ZoneID: "z1"}, f, "accepted risk")
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+	assert.Empty(t, puts, "dry run writes nothing")
+
+	c.Apply = true
+	got, err = c.DismissMatching(context.Background(), insights.Scope{ZoneID: "z1"}, f, "accepted risk")
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+	assert.Equal(t, []string{
+		"/zones/z1/security-center/insights/aa11/dismiss",
+		"/zones/z1/security-center/insights/bb22/dismiss",
+	}, puts)
+
+	_, err = c.DismissMatching(context.Background(), insights.Scope{ZoneID: "z1"}, f, "bad\nreason")
+	require.Error(t, err)
+}
+
+func TestDismissMatchingStopsAtFirstFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			if strings.Contains(r.URL.Path, "bb22") {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}],"result":null}`)
+
+				return
+			}
+
+			_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{}}`)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{"count":2,"page":1,"per_page":100,"issues":[{"id":"aa11"},{"id":"bb22"}]}}`)
+	}))
+	defer srv.Close()
+
+	c := insights.NewClient("tok-secret")
+	c.API.Base = srv.URL
+	c.Apply = true
+
+	got, err := c.DismissMatching(context.Background(), insights.Scope{AccountID: "a1"}, insights.Filter{}, "")
+	require.ErrorContains(t, err, "bb22")
+	assert.NotContains(t, err.Error(), "tok-secret")
+	require.Len(t, got, 1)
+	assert.Equal(t, "aa11", got[0].ID)
+}
+
+func TestDismissMatchingUndoListsDismissedAndRestores(t *testing.T) {
+	var body string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			b, _ := io.ReadAll(r.Body)
+			body = string(b)
+			_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{}}`)
+
+			return
+		}
+
+		assert.Equal(t, "true", r.URL.Query().Get("dismissed"))
+		_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":{"count":1,"page":1,"per_page":100,"issues":[{"id":"aa11","dismissed":true}]}}`)
+	}))
+	defer srv.Close()
+
+	c := insights.NewClient("tok")
+	c.API.Base = srv.URL
+	c.Apply, c.Undo = true, true
+
+	got, err := c.DismissMatching(context.Background(), insights.Scope{AccountID: "a1"}, insights.Filter{}, "")
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
+	assert.JSONEq(t, `{"dismiss":false}`, body)
+}

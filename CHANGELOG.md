@@ -5,6 +5,13 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/insights`: `Client.Dismiss` and `Client.DismissMatching`, and `edge-insights dismiss`.** `Dismiss(ctx, scope, issueID, dismiss)` archives (or restores) one Security Center insight through `PUT /accounts/{id}/security-center/insights/{issue_id}/dismiss` or the zone form, body `{"dismiss": true|false}`; the id is checked. `DismissMatching` lists by `Filter` and dismisses each match, and is a dry run unless `Client.Apply` is set. The command takes `-id` or `-class`/`-type`/`-severity`, `-apply` and `-undo`; a filter that matches nothing reports it and exits 0. See [docs/cloudflare/insights.md](docs/cloudflare/insights.md).
+- **`cloudflare/presets`: the `insights-admin` kind (`KindInsightsAdmin`).** Account Security Center Insights Write and Read on the account, Zone Security Center Insights Write and Read on each zone (or the row's zones), default lifetime one hour, store none, nothing else writable. It is the credential `edge-insights dismiss` needs; the `insights` kind stays read only and unchanged. See [docs/cloudflare/presets.md](docs/cloudflare/presets.md).
+
 ## v3.4.0
 
 ### Added

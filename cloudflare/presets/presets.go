@@ -20,6 +20,9 @@
 //	insights  read only: Account Security Center Insights Read on the account;
 //	          Zone Security Center Insights Read, Bot Management Read, Analytics
 //	          Read and Zone WAF Read on each zone.
+//	insights-admin  Account Security Center Insights Write and Read on the
+//	          account; Zone Security Center Insights Write and Read on each
+//	          zone. The one kind that can dismiss insights; nothing else writable.
 //	r2-admin  Workers R2 Storage Write on the account (every bucket).
 //	bucket-rw     R2 object read and write on ONE bucket (an R2 credential).
 //	bucket-write  R2 object write on ONE bucket (an R2 credential).
@@ -52,13 +55,16 @@ import (
 
 // The kinds.
 const (
-	KindEdge        = "edge"
-	KindStatus      = "status"
-	KindDNS         = "dns"
-	KindInsights    = "insights"
-	KindR2Admin     = "r2-admin"
-	KindBucketRW    = "bucket-rw"
-	KindBucketWrite = "bucket-write"
+	KindEdge     = "edge"
+	KindStatus   = "status"
+	KindDNS      = "dns"
+	KindInsights = "insights"
+	// KindInsightsAdmin is the write-capable counterpart of KindInsights: it
+	// can dismiss Security Center insights and reads nothing else.
+	KindInsightsAdmin = "insights-admin"
+	KindR2Admin       = "r2-admin"
+	KindBucketRW      = "bucket-rw"
+	KindBucketWrite   = "bucket-write"
 )
 
 // The permission groups a kind adds to tokensplit's own.
@@ -74,8 +80,13 @@ const (
 	permBotManagementRead       = "Bot Management Read"
 	permAnalyticsRead           = "Analytics Read"
 	permZoneWAFRead             = "Zone WAF Read"
-	permBucketItemRead          = "Workers R2 Storage Bucket Item Read"
-	permBucketItemWrite         = tokensplit.PermWorkersR2StorageBucketItemWrite
+	// The insights-admin groups, by the exact names an account's own list
+	// returns (read 2026-10-15). Read is listed beside Write because dismissing
+	// starts from a listing and this package does not assume Write implies Read.
+	permAccountSecurityInsightsWrite = "Account Security Center Insights Write"
+	permZoneSecurityInsightsWrite    = "Zone Security Center Insights Write"
+	permBucketItemRead               = "Workers R2 Storage Bucket Item Read"
+	permBucketItemWrite              = tokensplit.PermWorkersR2StorageBucketItemWrite
 )
 
 // Store is where sluis keeps a preset's current credential.
@@ -93,7 +104,7 @@ const DefaultLifetime = time.Hour
 
 var (
 	// Kinds are the kinds this package builds.
-	Kinds = []string{KindEdge, KindStatus, KindDNS, KindInsights, KindR2Admin, KindBucketRW, KindBucketWrite}
+	Kinds = []string{KindEdge, KindStatus, KindDNS, KindInsights, KindInsightsAdmin, KindR2Admin, KindBucketRW, KindBucketWrite}
 
 	// grantPattern is a policy group's name: the estate's own, a short label.
 	grantPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:._-]*$`)
@@ -198,6 +209,8 @@ func Description(accountName, kind string) string {
 		return "Pulumi: DNS records in the " + accountName + " account"
 	case KindInsights:
 		return "Read-only security insights, bot management, analytics and WAF settings of the " + accountName + " account"
+	case KindInsightsAdmin:
+		return "Security insights of the " + accountName + " account, read and dismiss; nothing else"
 	case KindR2Admin:
 		return "Pulumi: R2 buckets of the " + accountName + " account"
 	case KindBucketRW:
@@ -333,7 +346,7 @@ func validateRow(reg Registry, row *Row) []error {
 		return errs
 	}
 
-	zoned := slices.Contains([]string{KindEdge, KindStatus, KindDNS, KindInsights}, row.Kind)
+	zoned := slices.Contains([]string{KindEdge, KindStatus, KindDNS, KindInsights, KindInsightsAdmin}, row.Kind)
 	bucketed := row.Kind == KindBucketRW || row.Kind == KindBucketWrite
 
 	inAccount := map[string]bool{}
@@ -361,7 +374,7 @@ func validateRow(reg Registry, row *Row) []error {
 	all := func(string) bool { return true }
 
 	if !zoned && len(row.Zones) > 0 {
-		bad("Zones is for the edge, status, dns and insights kinds, not %s", row.Kind)
+		bad("Zones is for the edge, status, dns, insights and insights-admin kinds, not %s", row.Kind)
 	}
 
 	if zoned {
@@ -588,6 +601,15 @@ func build(reg Registry, row *Row) (Preset, error) {
 		for _, id := range ids {
 			p.Policies = append(p.Policies, account.ChildTokenPolicy{
 				PermissionGroups: []string{permZoneSecurityInsights, permBotManagementRead, permAnalyticsRead, permZoneWAFRead}, Scope: account.ZoneScope{ZoneID: id},
+			})
+		}
+	case KindInsightsAdmin:
+		p.Policies = []account.ChildTokenPolicy{{
+			PermissionGroups: []string{permAccountSecurityInsightsWrite, permAccountSecurityInsights}, Scope: account.WholeAccountScope{},
+		}}
+		for _, id := range ids {
+			p.Policies = append(p.Policies, account.ChildTokenPolicy{
+				PermissionGroups: []string{permZoneSecurityInsightsWrite, permZoneSecurityInsights}, Scope: account.ZoneScope{ZoneID: id},
 			})
 		}
 	case KindR2Admin:

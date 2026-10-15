@@ -2,16 +2,20 @@
 // safe and Security Center warnings are clearing.
 //
 //	edge-insights list   -account ID | -zone ID [-severity S] [-type T] [-dismissed no|yes|any]
+//	edge-insights dismiss -account ID | -zone ID (-id ID ... | [-class C] [-type T] [-severity S]) [-apply] [-undo]
 //	edge-insights events -zone ID [-since 24h | -from T -to T] [-host H] [-rule R] [-action A] [-source S]
 //
 // list is the Security Center insights of an account or a zone. events is the
 // Security Events (firewall events) of a zone summed per host, rule and
-// action, from the GraphQL Analytics API. Both print a table, or JSON with
-// -format json.
+// action, from the GraphQL Analytics API. Both only read. dismiss archives
+// insights, by id or by filter; it is a dry run that prints what it would
+// dismiss unless -apply is given, and -undo brings dismissed insights back.
+// Every command prints a table, or JSON with -format json.
 //
 // The token comes from the environment variable named by -token-env
 // (CLOUDFLARE_API_TOKEN by default) or from the output of -token-cmd. The
-// preset kind `insights` is enough.
+// preset kind `insights` is enough for list and events; dismiss needs
+// `insights-admin`.
 package main
 
 import (
@@ -53,8 +57,8 @@ func (l *list) Set(v string) error {
 }
 
 func run(ctx context.Context, args []string, out io.Writer, getenv func(string) string, now time.Time, base string) error {
-	if len(args) == 0 || (args[0] != "list" && args[0] != "events") {
-		return errors.New("usage: edge-insights list|events [flags]")
+	if len(args) == 0 || (args[0] != "list" && args[0] != "events" && args[0] != "dismiss") {
+		return errors.New("usage: edge-insights list|events|dismiss [flags]")
 	}
 
 	cmd := args[0]
@@ -71,6 +75,13 @@ func run(ctx context.Context, args []string, out io.Writer, getenv func(string) 
 	fs.Var(&severity, "severity", "list: Low, Moderate, Critical (repeat or comma-separate)")
 	fs.Var(&kinds, "type", "list: issue type (repeat or comma-separate)")
 	fs.Var(&classes, "class", "list: issue class (repeat or comma-separate)")
+
+	var ids list
+
+	fs.Var(&ids, "id", "dismiss: insight id (repeat or comma-separate); or use -class, -type and -severity")
+
+	apply := fs.Bool("apply", false, "dismiss: do it; without it, print what would be dismissed")
+	undo := fs.Bool("undo", false, "dismiss: bring dismissed insights back instead")
 
 	since := fs.Duration("since", 24*time.Hour, "events: the window ends now and starts this long ago")
 	from := fs.String("from", "", "events: window start, RFC 3339 (with -to; replaces -since)")
@@ -96,6 +107,11 @@ func run(ctx context.Context, args []string, out io.Writer, getenv func(string) 
 
 	c := insights.NewClient(tok)
 	c.API.Base = base
+
+	if cmd == "dismiss" {
+		return runDismiss(ctx, c, out, *format, *account, *zone, ids,
+			insights.Filter{Severity: severity, Type: kinds, Class: classes}, *apply, *undo)
+	}
 
 	if cmd == "list" {
 		var d insights.Dismissed
@@ -198,4 +214,84 @@ func eventsTable(w io.Writer, s *insights.Summary) error {
 	}
 
 	return nil
+}
+
+// runDismiss dismisses (or, with undo, restores) the insights named by id or
+// matched by filter. Without apply it only prints what it would change.
+func runDismiss(ctx context.Context, c *insights.Client, out io.Writer, format, account, zone string, ids list,
+	f insights.Filter, apply, undo bool) error {
+	byFilter := len(f.Severity)+len(f.Type)+len(f.Class) > 0
+	if (len(ids) > 0) == byFilter {
+		return errors.New("dismiss: give -id, or at least one of -class, -type and -severity, not both and not neither")
+	}
+
+	scope := insights.Scope{AccountID: account, ZoneID: zone}
+	verb := "dismiss"
+
+	if undo {
+		verb = "restore"
+	}
+
+	var done []insights.Insight
+
+	if len(ids) > 0 {
+		for _, id := range ids {
+			if err := insights.ValidID(id); err != nil {
+				return err
+			}
+		}
+
+		for _, id := range ids {
+			if apply {
+				if err := c.Dismiss(ctx, scope, id, !undo); err != nil {
+					return fmt.Errorf("insight %s: %w", id, err)
+				}
+			}
+
+			done = append(done, insights.Insight{ID: id})
+		}
+	} else {
+		c.Apply, c.Undo = apply, undo
+
+		var err error
+		if done, err = c.DismissMatching(ctx, scope, f, ""); err != nil {
+			return err
+		}
+	}
+
+	if format == "json" {
+		return writeJSON(out, struct {
+			Applied  bool               `json:"applied"`
+			Undo     bool               `json:"undo"`
+			Insights []insights.Insight `json:"insights"`
+		}{apply, undo, nonNil(done)})
+	}
+
+	if len(done) == 0 {
+		_, err := fmt.Fprintln(out, "no insight matches; nothing to "+verb)
+
+		return err
+	}
+
+	if err := listTable(out, done); err != nil {
+		return err
+	}
+
+	if apply {
+		_, err := fmt.Fprintf(out, "%sed %d insight(s)\n", strings.TrimSuffix(verb, "e"), len(done))
+
+		return err
+	}
+
+	_, err := fmt.Fprintf(out, "dry run: would %s %d insight(s); add -apply to do it\n", verb, len(done))
+
+	return err
+}
+
+func nonNil(v []insights.Insight) []insights.Insight {
+	if v == nil {
+		return []insights.Insight{}
+	}
+
+	return v
 }
