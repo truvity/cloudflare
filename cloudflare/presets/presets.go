@@ -13,7 +13,7 @@
 //
 //	edge      tunnel write on the account; DNS, SSL, zone settings, cache
 //	          settings and config settings write on each zone; then Zone WAF
-//	          Write on Row.WAFZones, Cloud Connector Write on
+//	          Write on Row.WAFZones, Bot Management Write on Row.BotManagementZones, Cloud Connector Write on
 //	          Row.CloudConnectorZones, and DNS Write on Row.DNSOnlyZones. No R2.
 //	status    tunnel write on the account; DNS write on each zone.
 //	dns       DNS write on each zone, nothing else.
@@ -150,6 +150,10 @@ type (
 		// WAFZones (edge only) get Zone WAF Write; each must be among the
 		// zones of the row.
 		WAFZones []string
+		// BotManagementZones (edge only) get Bot Management Write, the grant
+		// a zone that sets bot_management needs; each must be among the
+		// zones of the row. StandardRows leaves it empty: set it on the row.
+		BotManagementZones []string
 		// CloudConnectorZones (edge only) get Cloud Connector Write; each must
 		// be a zone of Account. They need not be among the row's zones.
 		CloudConnectorZones []string
@@ -385,8 +389,8 @@ func validateRow(reg Registry, row *Row) []error {
 		}
 	}
 
-	if row.Kind != KindEdge && (len(row.WAFZones) > 0 || len(row.CloudConnectorZones) > 0 || len(row.DNSOnlyZones) > 0) {
-		bad("WAFZones, CloudConnectorZones and DNSOnlyZones are for the edge kind, not %s", row.Kind)
+	if row.Kind != KindEdge && (len(row.WAFZones) > 0 || len(row.BotManagementZones) > 0 || len(row.CloudConnectorZones) > 0 || len(row.DNSOnlyZones) > 0) {
+		bad("WAFZones, BotManagementZones, CloudConnectorZones and DNSOnlyZones are for the edge kind, not %s", row.Kind)
 	}
 
 	if row.Kind == KindEdge {
@@ -394,6 +398,7 @@ func validateRow(reg Registry, row *Row) []error {
 		notCovered := func(n string) bool { return !covered(n) }
 
 		checkList("WAFZones", row.WAFZones, covered, "is not among the zones of the row")
+		checkList("BotManagementZones", row.BotManagementZones, covered, "is not among the zones of the row")
 		checkList("CloudConnectorZones", row.CloudConnectorZones, all, "")
 		checkList("DNSOnlyZones", row.DNSOnlyZones, notCovered, "is already among the zones of the row")
 	}
@@ -576,6 +581,13 @@ func build(reg Registry, row *Row) (Preset, error) {
 		}
 
 		p.Policies = account.EdgePoliciesWithWAF(waf, ids...)
+
+		var bots []string
+		for _, n := range row.BotManagementZones {
+			bots = append(bots, zoneNamed(reg, n).ID)
+		}
+
+		p.Policies = append(p.Policies, account.BotManagementPolicies(bots...)...)
 
 		for _, n := range row.CloudConnectorZones {
 			p.Policies = append(p.Policies, account.ChildTokenPolicy{

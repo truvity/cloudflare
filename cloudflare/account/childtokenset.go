@@ -142,6 +142,28 @@ func EdgePoliciesWithWAF(wafZoneIDs []string, zoneIDs ...string) []ChildTokenPol
 	return policies
 }
 
+// PermBotManagementWrite is the permission group cloudflare/zone's
+// Args.BotManagement needs to write the zone's bot management setting.
+const PermBotManagementWrite = "Bot Management Write"
+
+// BotManagementPolicies returns one ZoneScope policy per entry of zoneIDs, in
+// order, each granting only "Bot Management Write" on that zone. Append it to
+// EdgePolicies or EdgePoliciesWithWAF for the zones that set
+// Args.BotManagement; EdgePolicies itself never includes it. Writing the
+// setting is one PUT, which needs no read grant. No zones returns nil.
+func BotManagementPolicies(zoneIDs ...string) []ChildTokenPolicy {
+	var policies []ChildTokenPolicy
+
+	for _, zoneID := range zoneIDs {
+		policies = append(policies, ChildTokenPolicy{
+			PermissionGroups: []string{PermBotManagementWrite},
+			Scope:            ZoneScope{ZoneID: zoneID},
+		})
+	}
+
+	return policies
+}
+
 // R2AdminPolicies is the policy set for an account-wide R2 administrator
 // child: create, list and configure the lifecycle of every bucket on the
 // account (Workers R2 Storage Write, WholeAccountScope). Pair it with

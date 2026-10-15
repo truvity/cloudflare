@@ -210,6 +210,22 @@ func TestEdgePoliciesWithWAF(t *testing.T) {
 	assert.Equal(t, ZoneScope{ZoneID: zoneB}, two[3].Scope)
 }
 
+func TestBotManagementPolicies(t *testing.T) {
+	const zoneA, zoneB = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+
+	assert.Nil(t, BotManagementPolicies(), "no zones: nothing to append")
+
+	got := BotManagementPolicies(zoneA, zoneB)
+	require.Len(t, got, 2)
+	assert.Equal(t, []string{"Bot Management Write"}, got[0].PermissionGroups)
+	assert.Equal(t, ZoneScope{ZoneID: zoneA}, got[0].Scope)
+	assert.Equal(t, ZoneScope{ZoneID: zoneB}, got[1].Scope)
+
+	for _, p := range EdgePoliciesWithWAF([]string{zoneA}, zoneA) {
+		assert.NotContains(t, p.PermissionGroups, PermBotManagementWrite, "the edge grant never includes it")
+	}
+}
+
 func TestR2AdminPoliciesShape(t *testing.T) {
 	policies := R2AdminPolicies()
 	require.Len(t, policies, 1)
