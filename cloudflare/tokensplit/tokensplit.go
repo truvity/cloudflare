@@ -103,6 +103,12 @@ type (
 		// AccountID is the account that owns the zone; only zones of the
 		// root token's own account are granted.
 		AccountID string
+		// SecurityTxtOnly marks a zone managed for its security.txt alone
+		// (config manage: security_txt). MatchingZoneIDs leaves it out, so
+		// the edge and status children get none of their usual groups on
+		// it; the edge child gets Zone Settings Write on it, the one group
+		// security.txt needs (SecurityTxtZoneIDs).
+		SecurityTxtOnly bool
 	}
 
 	// Bucket is one enabled R2 bucket.
@@ -162,7 +168,9 @@ func Deploy(ctx *pulumi.Context, logger *slog.Logger, in Inputs) error {
 	}
 
 	zoneIDs := MatchingZoneIDs(in.Zones, in.AccountID)
-	if len(zoneIDs) == 0 {
+	txtIDs := SecurityTxtZoneIDs(in.Zones, in.AccountID)
+
+	if len(zoneIDs)+len(txtIDs) == 0 {
 		return fmt.Errorf(
 			"no zone belongs to account %s (the root token's own account): nothing to scope edge/status to", in.AccountID)
 	}
@@ -171,7 +179,7 @@ func Deploy(ctx *pulumi.Context, logger *slog.Logger, in Inputs) error {
 		ChildEdge: {
 			Name:     tokenNamePrefix + ChildEdge,
 			Rotation: in.Rotation.Edge,
-			Policies: EdgePolicies(in.Zones, zoneIDs, in.WAFZone),
+			Policies: append(EdgePolicies(in.Zones, zoneIDs, in.WAFZone), account.SecurityTxtPolicies(txtIDs...)...),
 		},
 		ChildStatus: {
 			Name:     tokenNamePrefix + ChildStatus,
@@ -247,15 +255,26 @@ func (in Inputs) put(ctx *pulumi.Context, child string, properties map[string]pu
 
 // MatchingZoneIDs is every zone id whose account is the root token's own,
 // sorted by zone name for a deterministic policy order. A further zone under
-// the same account picks up the grants with no code change.
+// the same account picks up the grants with no code change. A zone managed for
+// its security.txt only is left out (SecurityTxtZoneIDs).
 func MatchingZoneIDs(zones []Zone, accountID string) []string {
+	return zoneIDs(zones, accountID, false)
+}
+
+// SecurityTxtZoneIDs is the ids of the zones of the root token's account that
+// are managed for their security.txt only, sorted by zone name.
+func SecurityTxtZoneIDs(zones []Zone, accountID string) []string {
+	return zoneIDs(zones, accountID, true)
+}
+
+func zoneIDs(zones []Zone, accountID string, securityTxtOnly bool) []string {
 	sorted := slices.Clone(zones)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
 
 	out := make([]string, 0, len(sorted))
 
 	for _, z := range sorted {
-		if z.AccountID == accountID {
+		if z.AccountID == accountID && z.SecurityTxtOnly == securityTxtOnly {
 			out = append(out, z.ID)
 		}
 	}

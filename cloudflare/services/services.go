@@ -132,6 +132,10 @@ func Deploy(ctx *pulumi.Context, args Args) error {
 
 	for name := range cfg.Zones {
 		z := cfg.Zones[name]
+		if z.SecurityTxtOnly() {
+			continue
+		}
+
 		if _, ok := providers[z.Account]; ok {
 			zoneIDs[name] = z.ZoneID
 			zoneAccounts[name] = z.Account

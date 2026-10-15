@@ -164,6 +164,29 @@ func BotManagementPolicies(zoneIDs ...string) []ChildTokenPolicy {
 	return policies
 }
 
+// PermZoneSettingsWrite is the one permission group cloudflare/securitytxt
+// needs to write a zone's security.txt.
+const PermZoneSettingsWrite = "Zone Settings Write"
+
+// SecurityTxtPolicies returns one ZoneScope policy per entry of zoneIDs, in
+// order, each granting only "Zone Settings Write" on that zone: what a zone
+// managed for its security.txt alone (config manage: security_txt) needs, and
+// none of EdgePolicies' DNS, SSL, cache or config groups. Append it to
+// EdgePolicies for such zones, which are NOT passed to EdgePolicies itself.
+// No zones returns nil.
+func SecurityTxtPolicies(zoneIDs ...string) []ChildTokenPolicy {
+	var policies []ChildTokenPolicy
+
+	for _, zoneID := range zoneIDs {
+		policies = append(policies, ChildTokenPolicy{
+			PermissionGroups: []string{PermZoneSettingsWrite},
+			Scope:            ZoneScope{ZoneID: zoneID},
+		})
+	}
+
+	return policies
+}
+
 // R2AdminPolicies is the policy set for an account-wide R2 administrator
 // child: create, list and configure the lifecycle of every bucket on the
 // account (Workers R2 Storage Write, WholeAccountScope). Pair it with

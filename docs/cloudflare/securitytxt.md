@@ -13,7 +13,9 @@ GET|PUT /zones/{zone_id}/security-center/securitytxt
 
 Reading needs read access to the zone. Writing needs Zone Settings Write: the
 zone settings of the preset kind `edge` (see [presets](presets.md)). The
-other kinds, `insights` included, cannot write it.
+other kinds, `insights` included, cannot write it. A zone declared with
+`manage: security_txt` ([config](config.md)) gets exactly that one group in
+the `edge` kind and no other edge group.
 
 ## Library
 
