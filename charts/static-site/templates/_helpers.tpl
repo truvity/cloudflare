@@ -49,7 +49,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/* The inline name -> value placeholders: placeholders minus the Secret keys. */}}
 {{- define "static-site.inlinePlaceholders" -}}
-{{- toJson (omit (default dict .Values.placeholders) "secretName" "secretKeys" "optionalKeys") -}}
+{{- toJson (omit (default dict .Values.placeholders) "secretName" "secretKeys" "optionalKeys" "externalSecret") -}}
 {{- end -}}
 
 {{/* Refuse a Secret source that declares no names. */}}
@@ -62,6 +62,20 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if or .Values.placeholders.secretKeys .Values.placeholders.optionalKeys -}}
 {{- if not .Values.placeholders.secretName -}}
 {{- fail "placeholders.secretKeys and placeholders.optionalKeys need placeholders.secretName" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Refuse an externalSecret that does not fill exactly the Secret's keys. */}}
+{{- define "static-site.validateExternalSecret" -}}
+{{- with .Values.placeholders.externalSecret -}}
+{{- if not $.Values.placeholders.secretName -}}
+{{- fail "placeholders.externalSecret needs placeholders.secretName: the Secret it fills" -}}
+{{- end -}}
+{{- $want := concat (default list $.Values.placeholders.secretKeys) (default list $.Values.placeholders.optionalKeys) | uniq | sortAlpha -}}
+{{- $have := keys .properties | sortAlpha -}}
+{{- if ne (toJson $want) (toJson $have) -}}
+{{- fail (printf "placeholders.externalSecret.properties has the keys %s, but placeholders.secretKeys plus optionalKeys are %s: they must be the same names" (join ", " $have) (join ", " $want)) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

@@ -1,0 +1,15 @@
+# The chart renders the ExternalSecret that fills the placeholders Secret.
+placeholders:
+  secretName: static-site-values
+  secretKeys:
+    - gtmId
+  optionalKeys:
+    - bannerText
+  externalSecret:
+    storeRef:
+      kind: ClusterSecretStore
+      name: example-store
+    remoteKey: static-sites/docs.example/placeholders
+    properties:
+      gtmId: gtm-id
+      bannerText: banner-text
