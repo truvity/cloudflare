@@ -11,8 +11,9 @@
 //     visible before the managed WAF widens.
 //
 // Nothing here writes. The preset kind `insights` is the credential: Account
-// Security Center Insights on the account, and Analytics Read, Zone WAF Read
-// and Bot Management Read on each zone.
+// Security Center Insights Read on the account, and Zone Security Center
+// Insights Read, Analytics Read, Zone WAF Read and Bot Management Read on each
+// zone.
 package insights
 
 import (

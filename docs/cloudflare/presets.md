@@ -35,7 +35,7 @@ read one `presets.Preset`.
 | `edge` | tunnel write on the account; DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone; Zone WAF Write on `WAFZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`. No R2. |
 | `status` | tunnel write on the account; DNS write on each zone |
 | `dns` | DNS write on each zone |
-| `insights` | read only: Account Security Center Insights on the account; Bot Management Read, Analytics Read and Zone WAF Read on each zone. Nothing writable |
+| `insights` | read only: Account Security Center Insights Read on the account; Zone Security Center Insights Read, Bot Management Read, Analytics Read and Zone WAF Read on each zone. Nothing writable |
 | `r2-admin` | Workers R2 Storage Write on the account (every bucket) |
 | `bucket-rw` | R2 object read and write on one bucket (`Bucket`, `Jurisdiction`); an R2 credential |
 | `bucket-write` | R2 object write on one bucket; an R2 credential |
