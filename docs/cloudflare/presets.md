@@ -14,7 +14,7 @@ reg := presets.Registry{
 
 rows := presets.StandardRows("example", []string{"example:deploy"}, []string{"example.com"})
 
-table, err := presets.Build(reg, rows) // edge, status, r2-admin
+table, err := presets.Build(reg, rows) // edge, status, r2-admin (use presets.SplitRows to add zone and services)
 ```
 
 The package reads no file and no environment and registers no resource. Rows
@@ -32,14 +32,29 @@ read one `presets.Preset`.
 
 | Kind | Rights, in this order |
 |---|---|
-| `edge` | tunnel write on the account; DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone; Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`. A zone with `Zone.SecurityTxtOnly` (config `manage: security_txt`) gets none of these: one extra policy per such zone, last, granting only Zone Settings Write (`account.SecurityTxtPolicies`), which is what writing its security.txt takes. No R2. |
+| `zone` | the per-company zone stack (`cloudflare-<company>-zone`): every group of `edge` except Cloudflare Tunnel Write, so no account-wide grant. DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone (`account.ZonePolicies`); Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`; Zone Settings Write alone on each `SecurityTxtOnly` zone. DNS Write is the zone's own `records:` |
+| `services` | the per-company services stack (`cloudflare-<company>-services`): tunnel write on the account; DNS write on each managed zone. The same policies as `status` (`tokensplit.StatusPolicies`), differing in name and description only; a `SecurityTxtOnly` zone is refused as for `status` |
+| `edge` | **DEPRECATED, kept for one release; use `zone` and `services`.** tunnel write on the account; DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone; Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`. A zone with `Zone.SecurityTxtOnly` (config `manage: security_txt`) gets none of these: one extra policy per such zone, last, granting only Zone Settings Write (`account.SecurityTxtPolicies`), which is what writing its security.txt takes. No R2. |
 | `status` | tunnel write on the account; DNS write on each zone |
 | `dns` | DNS write on each zone |
 | `insights` | read only: Account Security Center Insights Read on the account; Zone Security Center Insights Read, Bot Management Read, Analytics Read and Zone WAF Read on each zone. Nothing writable |
 | `insights-admin` | Account Security Center Insights Write and Read on the account; Zone Security Center Insights Write and Read on each zone. The one kind that can dismiss insights (`edge-insights dismiss`); Read sits beside Write because dismissing starts from a listing and Write is not assumed to imply Read. Nothing else writable |
-| `r2-admin` | Workers R2 Storage Write on the account (every bucket) |
+| `r2-admin` | **DEPRECATED, kept for one release.** Workers R2 Storage Write on the account (every bucket) |
 | `bucket-rw` | R2 object read and write on one bucket (`Bucket`, `Jurisdiction`); an R2 credential |
 | `bucket-write` | R2 object write on one bucket; an R2 credential |
+
+### Moving from `edge` to `zone` and `services`
+
+The split replaces one `edge` token per account with two: `zone` for the zone
+stack and `services` for the services stack. `TestZonePlusServicesCoverEdge`
+pins that together they hold exactly the `(permission group, resource)` pairs
+`edge` holds for the same row inputs: no group lost, none gained. Only two
+things differ, and both are the point of the split: `zone` has no tunnel write
+and `services` has it, and `services` repeats DNS Write on each managed zone
+(already inside `edge`'s zone policy). A `services` row cannot list a
+`SecurityTxtOnly` zone, so for an account whose only zones are such, there is
+no `services` row and the tunnel write has no counterpart. `edge` and
+`r2-admin` stay for one release, then go.
 
 A zone-scoped kind with no `Zones` covers every zone of its account, by zone
 name, so a further zone picks the grant up with no row change. With `Zones`
@@ -73,7 +88,8 @@ has no way to ask.
 | `BuildReady(reg, rows)` | the same, leaving out the rows of an account with a pending zone (`zone_id_pending`): its prototypes would be narrower than its children, and the other accounts are unaffected |
 | `ForAccount(reg, rows, account)` | one account's presets; fails only for that account's own problems and names the pending zone |
 | `Named(table, name)`, `AccountOf(reg, preset)` | lookups |
-| `StandardRows(account, grants, wafZones)` | the three rows `<account>-edge`, `-status`, `-r2-admin` |
+| `StandardRows(account, grants, wafZones)` | the three rows `<account>-edge`, `-status`, `-r2-admin` (`edge` and `r2-admin` are deprecated). Its output does not change |
+| `SplitRows(account, grants, wafZones, botZones)` | the same three rows, then `<account>-zone` (WAF on `wafZones`, Bot Management on `botZones`) and `<account>-services`; `botZones` is also set on `edge` so the pair stays comparable |
 
 A `Preset` carries `Name`, `Kind`, `Account`, `AccountID`, `Description`,
 `Policies` (the `account.ChildTokenPolicy` list, in its fixed order), `R2`,
