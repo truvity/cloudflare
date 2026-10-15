@@ -215,13 +215,52 @@ placeholders:
   optionalKeys: [bannerText]             # may be absent; served as empty
 ```
 
-The chart sets strict mode when `secretName` is set. It does not create the
-Secret. The values are read when the pod starts, so a changed Secret takes a
+The chart sets strict mode when `secretName` is set. It creates the Secret
+only through `externalSecret` (below). The values are read when the pod starts, so a changed Secret takes a
 restart: roll the Deployment (for example with a reloader annotation in
 `podAnnotations`). The inline values roll the pods by themselves.
 
-An example ExternalSecret that fills the Secret from a secret store (the
-store, key paths and namespace are yours):
+#### The chart renders the ExternalSecret
+
+With the reserved key `externalSecret` the chart renders the
+`external-secrets.io/v1` ExternalSecret that fills the Secret, so an estate
+passes only names. It is unset by default: nothing is rendered and nothing
+changes for an existing install.
+
+```yaml
+placeholders:
+  secretName: static-site-values   # the target Secret (required)
+  secretKeys: [gtmId]
+  optionalKeys: [bannerText]
+  externalSecret:
+    storeRef:
+      kind: ClusterSecretStore     # or SecretStore
+      name: example-store
+    remoteKey: static-sites/docs.example/placeholders   # one key in the store
+    properties:                    # Secret key: property under remoteKey
+      gtmId: gtm-id
+      bannerText: banner-text
+    refreshInterval: 1h            # default
+    ignoreHealthcheck: true        # default; see below
+    annotations: {}                # more annotations on the ExternalSecret
+```
+
+- The ExternalSecret is named `placeholders.secretName`, in the release
+  namespace, and its target Secret has the same name (`creationPolicy: Owner`).
+- The keys of `properties` must be exactly `secretKeys` plus `optionalKeys`;
+  any difference fails the render, as does `externalSecret` without
+  `secretName`. `storeRef` (`kind`, `name`), `remoteKey` and `properties` are
+  required.
+- Each entry reads `remoteRef` with `conversionStrategy: Default`,
+  `decodingStrategy: None`, `metadataPolicy: None` and `nullBytePolicy: Ignore`.
+- It carries `argocd.argoproj.io/ignore-healthcheck: "true"` by default: the
+  values are written by hand after the install, and an unwritten value must
+  not hold the Argo CD application Degraded (the ExternalSecret still reports
+  its own state). Set `ignoreHealthcheck: false` to drop it.
+
+For an estate without External Secrets, create the Secret yourself. An
+ExternalSecret that fills it, as the chart would render it (the store, key
+paths and namespace are yours):
 
 ```yaml
 apiVersion: external-secrets.io/v1
@@ -240,8 +279,11 @@ spec:
     - secretKey: gtmId
       remoteRef:
         key: static-sites/docs.example/placeholders
-        property: gtmId   # the value is e.g. GTM-XXXXXXX
+        property: gtm-id   # the value is e.g. GTM-XXXXXXX
 ```
+
+A plain `kubectl create secret generic static-site-values --from-literal=gtmId=...`
+works the same: the chart only mounts the Secret named by `secretName`.
 
 ## Operations
 

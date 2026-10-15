@@ -64,16 +64,32 @@ registry:
 #    A-Za-z0-9 ._:/@#+=,~-
 #  - a Secret: `secretName` is mounted read-only, one file per key. The chart
 #    never creates it (an ExternalSecret does; see
-#    docs/static-site.md). `secretKeys` lists the names the server expects
+#    docs/static-site.md) or, with `externalSecret` below, the chart does.
+#    `secretKeys` lists the names the server expects
 #    from it, `optionalKeys` the names that may be absent (served as empty).
 #    With a Secret the server runs strict: a {{ token }} in the content that
 #    is unknown, or declared but without a value, fails the load.
 #    Nothing is rendered for the Secret while secretName is empty.
+#  - externalSecret (optional, unset by default): renders the ExternalSecret
+#    that fills the Secret, so the estate passes only names. `properties`
+#    maps each Secret key to its property under `remoteKey` in the store, and
+#    its keys must equal secretKeys plus optionalKeys (the render fails
+#    otherwise). Needs secretName. The ExternalSecret carries the Argo CD
+#    annotation ignore-healthcheck (ignoreHealthcheck: true) so that a value
+#    nobody has written yet does not hold the application Degraded;
+#    `annotations` adds more.
 placeholders: {}
   # gtmId: GTM-XXXXXXX
   # secretName: static-site-values
   # secretKeys: [gtmId]
   # optionalKeys: []
+  # externalSecret:
+  #   storeRef: {kind: ClusterSecretStore, name: example-store}
+  #   remoteKey: static-sites/docs.example/placeholders
+  #   properties: {gtmId: gtm-id}
+  #   refreshInterval: 1h
+  #   ignoreHealthcheck: true
+  #   annotations: {}
 
 cache:
   # File names matching this regexp are served immutable for a year. Empty

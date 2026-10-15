@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`static-site`: the chart renders the placeholders ExternalSecret.** `placeholders.externalSecret` (a reserved key, unset by default) renders an `external-secrets.io/v1` ExternalSecret named `placeholders.secretName` with `creationPolicy: Owner`: `storeRef` (`kind` `ClusterSecretStore` or `SecretStore`, `name`), `remoteKey`, `properties` (Secret key to remote property) and `refreshInterval` (default `1h`). Each key reads with `conversionStrategy: Default`, `decodingStrategy: None`, `metadataPolicy: None`, `nullBytePolicy: Ignore`. The ExternalSecret carries `argocd.argoproj.io/ignore-healthcheck: "true"` (`ignoreHealthcheck`, default `true`; `annotations` adds more) so an unwritten value does not hold the application Degraded. The keys of `properties` must equal `secretKeys` plus `optionalKeys`, and `secretName` is required; a mismatch fails the render. Additive: without `externalSecret` the render is unchanged. See [docs/static-site.md](docs/static-site.md).
+
 ## v3.10.0
 
 ### Added
