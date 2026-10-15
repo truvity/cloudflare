@@ -282,6 +282,7 @@ func legacyZoneArgs(name string, z config.Zone) zone.Args {
 	out.Records = z.RecordsLibrary(name)
 	out.AlwaysUseHTTPS = z.AlwaysUseHTTPS
 	out.HSTS = z.HSTS.Library()
+	out.BotManagement = z.BotManagement.Library()
 	out.ManagedWAF = z.ManagedWAF.Library(name)
 
 	// The public documents' cache rule, a contribution with its ref, as the

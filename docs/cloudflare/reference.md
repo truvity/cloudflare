@@ -405,6 +405,7 @@ z, err := zone.New(ctx, "example-com", zone.Args{
 | `Records` | `records` | see below | the listed DNS records, and only those: records made by hand, by an import or by a tunnel are never touched |
 | `AlwaysUseHTTPS` | `alwaysUseHttps` | `true`, `false` (a `*bool`; nil leaves it alone) | the zone setting `always_use_https`: `on` redirects every plain-HTTP request to HTTPS |
 | `HSTS` | `hsts` | see below | the zone setting `security_header`: the `Strict-Transport-Security` header |
+| `BotManagement` | `botManagement` | see below | the zone's AI bots rule and managed `robots.txt` (`bot_management`), nothing else of it |
 | `ManagedWAF` | `managedWaf` | see below | the zone's whole `http_request_firewall_managed` ruleset: the Cloudflare Managed Ruleset on the listed hosts |
 
 `TotalTLS`:
@@ -539,6 +540,26 @@ disable it. The value is written with the Cloudflare API's own keys
 (`strict_transport_security.max_age`, ...): the camelCase keys in the
 provider's generated example never converge
 ([pulumi/pulumi-cloudflare#1579](https://github.com/pulumi/pulumi-cloudflare/issues/1579)).
+
+`BotManagement`:
+
+| Field | YAML key | Meaning |
+| --- | --- | --- |
+| `AIBots` | `aiBots` | the AI scrapers and crawlers rule: `block`, `disabled` or `only_on_ad_pages`. Empty leaves it alone |
+| `ManagedRobotsTxt` | `managedRobotsTxt` | serve Cloudflare's managed `robots.txt` (prepended to the zone's own). Nil leaves it alone; `false` turns it off |
+
+At least one field is required; the block alone makes a zone worth declaring.
+One `cloudflare.BotManagement` child, `bot-management-<name>`, is registered
+with `zoneId`, `aiBotsProtection` and `isRobotsTxtManaged` only. Bot Fight
+Mode, Super Bot Fight Mode (`fight_mode`, `sbfm_*`), JavaScript detections
+and crawler protection are never sent, so this block neither turns them on
+nor resets them. Nil registers nothing.
+
+The setting is a singleton of the zone, so deleting the resource changes
+nothing in Cloudflare. To undo, set `aiBots: disabled` and
+`managedRobotsTxt: false`, apply, then remove the block. The token needs
+`Bot Management Write` on the zone; `EdgePolicies` does not grant it, so add
+it to the token policy of a zone that declares the block.
 
 `ManagedWAF`:
 

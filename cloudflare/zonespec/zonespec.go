@@ -262,6 +262,10 @@ type (
 		// hosts. Nil leaves the http_request_firewall_managed phase
 		// alone; non-nil owns it.
 		ManagedWAF *ManagedWAF `json:"managedWaf,omitempty" yaml:"managedWaf,omitempty"`
+		// BotManagement is the zone's AI bots rule and managed robots.txt
+		// (the bot_management setting, only those two fields). Nil leaves
+		// the setting alone.
+		BotManagement *BotManagement `json:"botManagement,omitempty" yaml:"botManagement,omitempty"`
 		// Contributions are further rules the zone's rulesets take, from
 		// the builders in cloudflare/rules (public-paths caching, an SSL
 		// mode for one host, ...). They are assembled together with the
@@ -481,6 +485,12 @@ func (a *Args) Validate() error {
 		}
 	}
 
+	if a.BotManagement != nil {
+		if err := a.BotManagement.validate(a.ZoneID); err != nil {
+			return err
+		}
+	}
+
 	for phase, id := range a.ImportRulesets {
 		if phase == "" || id == "" || strings.ContainsAny(id, "/ \t\n") {
 			return fmt.Errorf("zone %q: importRulesets[%q] %q must be a phase and a ruleset id", a.ZoneID, phase, id)
@@ -488,7 +498,7 @@ func (a *Args) Validate() error {
 	}
 
 	if a.SSL == "" && a.MinTLSVersion == "" && a.TotalTLS == nil && a.Cache == nil && !a.TrustedClients.Managed() &&
-		!a.RateLimits.Managed() && !a.Records.Managed() && a.AlwaysUseHTTPS == nil && a.HSTS == nil && !a.ManagedWAF.Managed() &&
+		!a.RateLimits.Managed() && !a.Records.Managed() && a.AlwaysUseHTTPS == nil && a.HSTS == nil && !a.ManagedWAF.Managed() && a.BotManagement == nil &&
 		a.AuthenticatedOriginPulls == nil && len(a.Contributions) == 0 {
 		return fmt.Errorf("zone %q: nothing to apply — omit the zone instead of declaring one that manages no setting", a.ZoneID)
 	}

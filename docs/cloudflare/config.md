@@ -50,6 +50,7 @@ zones:
     total_tls: {enabled: true, certificate_authority: lets_encrypt}
     always_use_https: true
     hsts: {enabled, max_age, include_subdomains, nosniff}   # preload is refused; needs always_use_https
+    bot_management: {ai_bots: block, managed_robots_txt: true}   # ai_bots: block | disabled | only_on_ad_pages; only these two fields
     cache: {respect_origin_browser_ttl: true}               # hosts are derived, never written
     public_cache: {host: <name>, ttl: 5m}                   # needs cache
     trusted_clients: {hosts: [...], ranges: [...], skip: [...]}   # skip default: bot and rate-limit checks only
