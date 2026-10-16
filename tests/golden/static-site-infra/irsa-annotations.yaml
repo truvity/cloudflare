@@ -29,6 +29,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "-25"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   name: example-default-static-site-infra
   description: "static-site default/static-site-infra: workload role"
@@ -68,6 +69,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   clusterName: example
   namespace: default
@@ -90,6 +92,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "-30"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   name: example-default-static-site-infra
   description: "static-site default/static-site-infra: ECR pull access"

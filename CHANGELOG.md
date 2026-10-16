@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Fixed
+
+- **`static-site-infra`: the ACK `Policy`, `Role` and `PodIdentityAssociation` carry `argocd.argoproj.io/sync-options: Prune=false,Delete=false`, like the ServiceAccount.** During the handover from `static-site` 3.11 the live objects are still tracked by the site's Argo CD Application, which refreshes independently and may re-take tracking; its sync to 3.12.0, which no longer renders them, would prune them and ACK would delete the IAM Role. Argo CD reads the sync option from the live object when it prunes, and under server-side apply the previous owner cannot strip an annotation it never owned, so the guard holds whichever Application syncs. `Delete=false` also keeps the IAM Role if the `static-site-infra` Application is deleted, the same posture as the ServiceAccount. **Use this version or later for the handover**: install `static-site-infra` at 3.12.1 or later (it adds the guard to the live objects), then upgrade `static-site`; 3.12.0 does not protect the ACK objects.
+
 ## v3.12.0
 
 ### Changed

@@ -9,6 +9,16 @@ objects, so the live ones do not change:
   - ServiceAccount (-15, serviceaccount.yaml): after the association
 The static-site chart only names the ServiceAccount and checks, in a hook,
 that a pod admitted now has the identity (platform contract rule 11).
+
+Policy, Role and PodIdentityAssociation carry `argocd.argoproj.io/sync-options:
+Prune=false,Delete=false`, like the ServiceAccount. During the handover from
+static-site v3.11 the live objects are still tracked by the site's Application,
+which refreshes independently and may re-take tracking; its sync, no longer
+rendering them, would prune them and ACK would delete the IAM Role. Argo CD
+reads the sync option from the LIVE object when it prunes, and under
+server-side apply the previous owner cannot strip an annotation it never owned,
+so the guard holds whichever Application syncs. `Delete=false` also keeps the
+IAM Role if this Application is deleted: the same posture as the ServiceAccount.
 */}}
 {{- include "static-site-infra.validate" . }}
 {{- if include "static-site-infra.enabled" . }}
@@ -24,6 +34,7 @@ metadata:
     {{- include "static-site-infra.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-30"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   name: {{ $name }}
   description: "static-site {{ .Release.Namespace }}/{{ include "static-site-infra.installName" . }}: ECR pull access"
@@ -57,6 +68,7 @@ metadata:
     {{- include "static-site-infra.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-25"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   name: {{ $name }}
   description: "static-site {{ .Release.Namespace }}/{{ include "static-site-infra.installName" . }}: workload role"
@@ -102,6 +114,7 @@ metadata:
     {{- include "static-site-infra.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   clusterName: {{ $ack.clusterName }}
   namespace: {{ .Release.Namespace }}
