@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "properties": {
     "global": { "type": "object" },
+    "service-lib": { "type": "object", "description": "Helm adds a key for every dependency; the library takes no values" },
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" },
     "replicaCount": { "type": "integer", "minimum": 0 },
@@ -17,6 +18,24 @@
         "tag": { "type": "string" },
         "digest": { "type": "string", "pattern": "^(sha256:[0-9a-f]{64})?$" },
         "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "identity-check": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "the identity check hook's image (truvity/k8s cmd/identity-check)",
+          "required": ["repository", "digest"],
+          "properties": {
+            "registry": { "type": "string" },
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string" },
+            "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
       }
     },
     "imagePullSecrets": { "type": "array", "items": { "type": "object" } },
@@ -49,7 +68,7 @@
         "ack": {
           "type": "object",
           "additionalProperties": false,
-          "description": "ACK objects (IAM Policy and Role, EKS PodIdentityAssociation) that give the ServiceAccount read access to the ECR repositories; registry.auth=ecr only",
+          "description": "the ServiceAccount's AWS identity on EKS is static-site-infra's (the same keys); this chart reads enabled alone: with registry.auth=ecr it renders no ServiceAccount and the identity check hook",
           "properties": {
             "enabled": { "type": "boolean" },
             "clusterName": { "type": "string", "pattern": "^([a-zA-Z0-9][a-zA-Z0-9_-]{0,99})?$" },

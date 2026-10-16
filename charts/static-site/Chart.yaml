@@ -11,6 +11,14 @@ type: application
 # the server image it runs are always the same release.
 version: 0.0.0
 appVersion: 0.0.0
+# The pod's cloud identity check comes from the platform's library chart
+# (rule 11 of the platform contract). It is rendered only for registry.auth=ecr
+# with registry.ack.enabled. `helm dependency build` resolves it; the release
+# packages with it.
+dependencies:
+  - name: service-lib
+    version: 1.51.0
+    repository: oci://ghcr.io/truvity/charts
 home: https://github.com/truvity/edge
 sources:
   - https://github.com/truvity/edge

@@ -1,0 +1,15 @@
+# Default ServiceAccount name (the fullname), a pinned check image.
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main
+images:
+  identity-check:
+    tag: 0.31.2
+    digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

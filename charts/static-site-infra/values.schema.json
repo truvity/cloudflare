@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "static-site-infra chart values",
+  "description": "Strict at the top level: unknown keys are rejected so a typo fails the render. The key names are those of the static-site chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object"
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "installName": {
+      "type": "string",
+      "pattern": "^([a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?)?$",
+      "description": "release name of the static-site install; default this release's name"
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auth": {
+          "enum": [
+            "dockerconfig",
+            "ecr",
+            "none"
+          ],
+          "description": "dockerconfig: the Docker config of site.pullSecretName (default); ecr: the server authenticates to Amazon ECR through the AWS SDK default credential chain; none: anonymous"
+        },
+        "ack": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ACK objects (IAM Policy and Role, EKS PodIdentityAssociation) that give the ServiceAccount read access to the ECR repositories; registry.auth=ecr only",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "clusterName": {
+              "type": "string",
+              "pattern": "^([a-zA-Z0-9][a-zA-Z0-9_-]{0,99})?$"
+            },
+            "repositoryArns": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^arn:aws[a-z-]*:ecr:[a-z0-9-]+:[0-9]{12}:repository/[a-z0-9._/-]+$"
+              }
+            },
+            "rolePrefix": {
+              "type": "string",
+              "pattern": "^([a-zA-Z0-9+=,.@_-]{1,64})?$"
+            },
+            "accountId": {
+              "type": "string",
+              "pattern": "^([0-9]{12})?$"
+            },
+            "region": {
+              "type": "string",
+              "pattern": "^([a-z]{2}(-[a-z]+)+-[0-9]+)?$"
+            },
+            "tags": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "permissionsBoundary": {
+              "type": "string",
+              "pattern": "^(arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+)?$"
+            }
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

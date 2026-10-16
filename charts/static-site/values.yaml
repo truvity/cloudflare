@@ -13,6 +13,16 @@ image:
   # Optional pin; renders repository:tag@digest.
   digest: ""
   pullPolicy: IfNotPresent
+# Other images. identity-check is the pre-install/pre-upgrade hook that proves
+# a pod admitted now has its cloud identity (truvity/k8s cmd/identity-check),
+# rendered when registry.auth=ecr and registry.ack.enabled.
+images:
+  identity-check:
+    registry: ghcr.io
+    repository: truvity/k8s/identity-check
+    tag: 0.31.1
+    digest: sha256:d2c62885b97f03fed283478f57480ad2c7ebf2b2d7eb43f1cbc2482866e5692d
+
 # Secrets for pulling the SERVER image (not the site artifact).
 imagePullSecrets: []
 
@@ -52,13 +62,18 @@ site:
 #  none          anonymous. See docs/static-site.md.
 registry:
   auth: dockerconfig
-  # ACK objects that give the ServiceAccount its AWS identity on EKS (needs
-  # registry.auth=ecr): an IAM Policy (the ECR pull actions of the server),
-  # an IAM Role trusting EKS Pod Identity for this namespace and ServiceAccount,
-  # and a PodIdentityAssociation. The namespace needs the estate's ACK wiring.
-  # Off by default; IRSA (non-EKS) stays serviceAccount.annotations.
+  # The ServiceAccount's AWS identity on EKS (needs registry.auth=ecr) is the
+  # static-site-infra chart's: an IAM Policy, an IAM Role trusting EKS Pod
+  # Identity, a PodIdentityAssociation, then the ServiceAccount. With
+  # ack.enabled this chart renders none of them, and no ServiceAccount: it
+  # names serviceAccount.name (default: the fullname) and renders the identity
+  # check hook, which fails until a pod admitted now has the identity. Install
+  # static-site-infra first. The other keys of ack are static-site-infra's
+  # (the same keys, so one set of values feeds both); this chart reads
+  # `enabled` alone. IRSA (non-EKS) stays serviceAccount.annotations.
   ack:
     enabled: false
+    # Read by static-site-infra, ignored here:
     # EKS cluster the association is in. Required when enabled.
     clusterName: ""
     # ECR repository ARNs the artifact is pulled from (may be in another

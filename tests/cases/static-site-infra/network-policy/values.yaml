@@ -1,0 +1,14 @@
+# The identity check's egress, for a namespace that denies egress by default.
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+    tags:
+      project: example
+serviceAccount:
+  name: static-site
+networkPolicy:
+  enabled: true

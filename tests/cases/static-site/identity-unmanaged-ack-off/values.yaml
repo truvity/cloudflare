@@ -1,0 +1,9 @@
+# ecr with ack off: the identity is someone else's (Pod Identity set up by
+# hand): the chart creates its ServiceAccount and renders no check.
+registry:
+  auth: ecr
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main
+serviceAccount:
+  name: static-site

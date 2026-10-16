@@ -1,7 +1,7 @@
 # Development commands. Everything CI runs is a recipe here — the shared
 # check workflow (truvity/ci-workflows) runs each one as its own job.
 
-charts := "cloudflared gateway-fleet gateway-groups gateway-policies gateway-projects static-site"
+charts := "cloudflared gateway-fleet gateway-groups gateway-policies gateway-projects static-site static-site-infra"
 
 # Library charts: they render nothing by themselves, so every check that
 # needs a render goes through tests/harness/<chart>, the consumer chart
@@ -20,6 +20,7 @@ lint:
     set -euo pipefail
     hack/sync-gateway-projects.sh check
     hack/cloudflared-pin.sh check
+    hack/chart-deps.sh
     for chart in {{ charts }}; do
       helm lint "charts/$chart"
       # An unknown top-level key must fail the render. Not `! helm
@@ -94,6 +95,7 @@ leak-canary:
 package:
     #!/usr/bin/env bash
     set -euo pipefail
+    hack/chart-deps.sh
     for chart in {{ charts }} {{ libraries }}; do helm package "charts/$chart" --destination dist/; done
 
 # Everything CI runs on a pull request.

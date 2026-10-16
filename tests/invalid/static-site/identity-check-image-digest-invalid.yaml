@@ -1,0 +1,4 @@
+images:
+  identity-check:
+    repository: ghcr.io/example/identity-check
+    digest: sha256:not-hex

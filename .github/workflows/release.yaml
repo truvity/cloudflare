@@ -30,7 +30,7 @@ jobs:
       packages: write
     uses: truvity/ci-workflows/.github/workflows/release-public.yaml@a523f2f6e5868b00362056569c667243631fd90f # v3.26.2
     with:
-      charts: '["cloudflared", "gateway-fleet", "gateway-groups", "gateway-policies", "gateway-projects", "gateway-routes", "static-site"]'
+      charts: '["cloudflared", "gateway-fleet", "gateway-groups", "gateway-policies", "gateway-projects", "gateway-routes", "static-site", "static-site-infra"]'
       # The static-site server image: goreleaser's ko section pushes it to
       # <ko-docker-repo>/static-site at the same tag as the charts.
       ko-docker-repo: ghcr.io/truvity/edge

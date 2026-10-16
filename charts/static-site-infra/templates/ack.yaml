@@ -1,16 +1,19 @@
 {{- /*
-ACK-managed AWS identity of the static-site server (EKS Pod Identity), in the
-shape of truvity/dms charts/dms-infra/templates/ack.yaml:
-  - Policy: the ECR actions the server calls, from internal/staticsite
+The ACK-managed AWS identity of a static-site install (EKS Pod Identity), moved
+here from the static-site chart with the same names and the same rendered
+objects, so the live ones do not change:
+  - Policy (wave -30): the ECR actions the server calls, from internal/staticsite
     (ecrpermissions.go); a Go test compares them with this render
-  - Role: trusts pods.eks.amazonaws.com for this namespace and ServiceAccount
-  - PodIdentityAssociation: binds the ServiceAccount to the Role
-The IAM objects sync before the Deployment.
+  - Role (-25): trusts pods.eks.amazonaws.com for this namespace and ServiceAccount
+  - PodIdentityAssociation (-20): binds the ServiceAccount to the Role
+  - ServiceAccount (-15, serviceaccount.yaml): after the association
+The static-site chart only names the ServiceAccount and checks, in a hook,
+that a pod admitted now has the identity (platform contract rule 11).
 */}}
-{{- if .Values.registry.ack.enabled }}
-{{- include "static-site.validateRegistry" . }}
+{{- include "static-site-infra.validate" . }}
+{{- if include "static-site-infra.enabled" . }}
 {{- $ack := .Values.registry.ack }}
-{{- $name := include "static-site.ackName" . }}
+{{- $name := include "static-site-infra.ackName" . }}
 ---
 apiVersion: iam.services.k8s.aws/v1alpha1
 kind: Policy
@@ -18,12 +21,12 @@ metadata:
   name: {{ $name }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "static-site.labels" . | nindent 4 }}
+    {{- include "static-site-infra.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-30"
 spec:
   name: {{ $name }}
-  description: "static-site {{ .Release.Namespace }}/{{ .Release.Name }}: ECR pull access"
+  description: "static-site {{ .Release.Namespace }}/{{ include "static-site-infra.installName" . }}: ECR pull access"
   policyDocument: |
     {
       "Version": "2012-10-17",
@@ -51,12 +54,12 @@ metadata:
   name: {{ $name }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "static-site.labels" . | nindent 4 }}
+    {{- include "static-site-infra.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-25"
 spec:
   name: {{ $name }}
-  description: "static-site {{ .Release.Namespace }}/{{ .Release.Name }}: workload role"
+  description: "static-site {{ .Release.Namespace }}/{{ include "static-site-infra.installName" . }}: workload role"
   {{- with $ack.permissionsBoundary }}
   permissionsBoundary: {{ . }}
   {{- end }}
@@ -81,7 +84,7 @@ spec:
             "aws:SourceArn": {{ printf "arn:aws:eks:%s:%s:cluster/%s" $ack.region $ack.accountId $ack.clusterName | quote }},
             {{- end }}
             "aws:RequestTag/kubernetes-namespace": {{ .Release.Namespace | quote }},
-            "aws:RequestTag/kubernetes-service-account": {{ include "static-site.serviceAccountName" . | quote }}
+            "aws:RequestTag/kubernetes-service-account": {{ include "static-site-infra.serviceAccountName" . | quote }}
           }
         }
       }]
@@ -96,13 +99,13 @@ metadata:
   name: {{ $name }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "static-site.labels" . | nindent 4 }}
+    {{- include "static-site-infra.labels" . | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
   clusterName: {{ $ack.clusterName }}
   namespace: {{ .Release.Namespace }}
-  serviceAccount: {{ include "static-site.serviceAccountName" . }}
+  serviceAccount: {{ include "static-site-infra.serviceAccountName" . }}
   roleRef:
     from:
       name: {{ $name }}

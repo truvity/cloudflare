@@ -5,6 +5,27 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## v4.0.0
+
+### Changed
+
+- **Breaking: `static-site` no longer renders the pod's cloud identity; the new `static-site-infra` chart does, and `static-site` checks it before the Deployment starts.** EKS Pod Identity associations are eventually consistent: ACK reports one `Synced` seconds before the cluster's admission webhook can see it, and credentials are injected only when a pod is created, so a pod admitted in the gap runs for its whole life without credentials (seen on a staging and a production site). With `registry.auth=ecr` and `registry.ack.enabled` (derived, no new switch):
+  - `static-site-infra` (new, `oci://ghcr.io/truvity/charts/static-site-infra`) renders the ACK `Policy` (wave -30), `Role` (-25) and `PodIdentityAssociation` (-20) that `static-site` v3 rendered, with the same names and specs, then the `ServiceAccount` (-15) with `argocd.argoproj.io/sync-options: Prune=false,Delete=false`: same name, labels and annotations as before, plus the wave and the guard. Its values use the keys `static-site` had: `registry.auth`, `registry.ack.*`, `serviceAccount.{create,name,annotations}`, `nameOverride`, `fullnameOverride`; new are `installName` (the application's release name, default the release's) and `networkPolicy.enabled` (egress for the check: DNS, `169.254.170.23:80`, HTTPS).
+  - `static-site` renders no ACK objects and no ServiceAccount (it names `serviceAccount.name`, default the fullname) and renders the identity check of truvity/policy's `service-lib` (v1.51.0, a new chart dependency): a `pre-install,pre-upgrade` hook Job, `restartPolicy: Never`, running as that ServiceAccount, which passes only once a pod admitted now has the identity. Its image is `images.identity-check` (`ghcr.io/truvity/k8s/identity-check` 0.31.1, pinned by digest). The check pod carries labels of its own, so the site's Service, PodDisruptionBudget and NetworkPolicy do not select it. With `registry.auth` of `none` or `dockerconfig`, IRSA, or `registry.ack.enabled` off, the render is unchanged. The `registry.ack` keys other than `enabled` are still accepted by the schema and ignored. Decision: [0013](https://github.com/truvity/policy/blob/v1.51.0/docs/decisions/0013-pods-are-admitted-with-their-identity.md). See [docs/static-site.md](docs/static-site.md).
+
+### Upgrade
+
+For an install with `registry.ack.enabled`:
+
+1. Install `static-site-infra` with the same release name (or `installName`) and the site's `registry`, `serviceAccount`, `nameOverride` and `fullnameOverride` values, **before** upgrading `static-site`: as its own Argo CD Application synced and healthy first (an app-of-apps wave, or a health gate between the two Applications), or `helm upgrade --install` first with plain Helm. The objects render as they are live, so nothing changes in the cluster; Argo CD takes them over, and the `Prune=false,Delete=false` guard on the ServiceAccount keeps either Application from deleting it while the ownership moves. Set `networkPolicy.enabled` where the namespace denies egress by default.
+2. Upgrade `static-site` to v4.0.0. It stops rendering the ACK objects and the ServiceAccount, and runs the identity check before the Deployment.
+
+Do not upgrade `static-site` first: it would prune the Policy, Role and PodIdentityAssociation and ACK would delete the IAM Role. For an install without `registry.ack.enabled` there is nothing to do.
+
+### Added
+
+- **`static-site-infra` chart**, released with every tag beside the others, at the same version; `hack/chart-deps.sh` resolves `static-site`'s registry dependency for lint, golden renders and packaging (`Chart.lock` is committed).
+
 ## v3.11.0
 
 ### Added
