@@ -10,6 +10,7 @@ together at every version.
 ### Fixed
 
 - **`static-site-infra`: the ACK `Policy` and `Role` carry `services.k8s.aws/adoption-policy: adopt-or-create`.** A `Policy` created while the project's ACK role was missing (AccessDenied) existed in AWS on the retry, so ACK refused the create for good (`ACK.Terminal`, "Resource already exists") and the `Role` and `PodIdentityAssociation` that reference it stayed blocked ("Reference resolution failed"). With the annotation, ACK (feature gate `ResourceAdoption=true`) adopts the object already in AWS. The `PodIdentityAssociation` is deliberately not adopted: AWS identifies it by cluster, namespace and ServiceAccount, and adopting it could let a legacy owner's deletion remove the association under the new object. See [docs/static-site.md](docs/static-site.md).
+- **`edge-insights dismiss -id ... -format table` printed only the id: the SEVERITY, TYPE, CLASS and SUBJECT columns were empty.** The `-id` path built bare insights instead of looking them up. It now lists the scope first and prints the listed insights, so the table matches `list`; an id that the account or zone does not list is refused before anything is written. The counts and the filter path (`-class`, `-type`, `-severity`) were already right.
 
 ## v3.12.1
 

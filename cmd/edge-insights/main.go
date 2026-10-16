@@ -241,14 +241,33 @@ func runDismiss(ctx context.Context, c *insights.Client, out io.Writer, format, 
 			}
 		}
 
+		// Look the ids up first, so the table shows what the list shows and
+		// an id that is not in this scope is refused before anything is written.
+		listed, err := c.List(ctx, scope, insights.Filter{Dismissed: insights.AnyState})
+		if err != nil {
+			return err
+		}
+
+		byID := make(map[string]insights.Insight, len(listed))
+		for _, i := range listed {
+			byID[i.ID] = i
+		}
+
 		for _, id := range ids {
-			if apply {
-				if err := c.Dismiss(ctx, scope, id, !undo); err != nil {
-					return fmt.Errorf("insight %s: %w", id, err)
-				}
+			i, ok := byID[id]
+			if !ok {
+				return fmt.Errorf("insight %s: not listed in this account or zone", id)
 			}
 
-			done = append(done, insights.Insight{ID: id})
+			done = append(done, i)
+		}
+
+		if apply {
+			for _, i := range done {
+				if err := c.Dismiss(ctx, scope, i.ID, !undo); err != nil {
+					return fmt.Errorf("insight %s: %w", i.ID, err)
+				}
+			}
 		}
 	} else {
 		c.Apply, c.Undo = apply, undo
