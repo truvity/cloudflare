@@ -186,6 +186,14 @@ func TestIdentityIsSplitAcrossTheTwoCharts(t *testing.T) {
 	for _, o := range load("static-site-infra", "ack") {
 		assert.Equal(t, "Prune=false,Delete=false", o.Metadata.Annotations["argocd.argoproj.io/sync-options"],
 			"%s lacks the prune/delete guard", o.Kind)
+		// Policy and Role adopt an object already in AWS; the association never does.
+		adoption, adopts := o.Metadata.Annotations["services.k8s.aws/adoption-policy"]
+		switch o.Kind {
+		case "Policy", "Role":
+			assert.Equal(t, "adopt-or-create", adoption, "%s lacks the adoption policy", o.Kind)
+		default:
+			assert.False(t, adopts, "%s must not be adopted", o.Kind)
+		}
 	}
 
 	var job *object

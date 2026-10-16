@@ -29,6 +29,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-25"
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    services.k8s.aws/adoption-policy: adopt-or-create
 spec:
   name: example-default-static-site
   description: "static-site default/static-site: workload role"
@@ -55,7 +56,6 @@ spec:
   policyRefs:
     - from:
         name: example-default-static-site
-
 ---
 # Source: static-site-infra/templates/ack.yaml
 apiVersion: eks.services.k8s.aws/v1alpha1
@@ -94,6 +94,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-30"
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    services.k8s.aws/adoption-policy: adopt-or-create
 spec:
   name: example-default-static-site
   description: "static-site default/static-site: ECR pull access"
