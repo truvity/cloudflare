@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/cloudflared"
+	"github.com/truvity/edge/v4/cloudflare/cloudflared"
 )
 
 // TestChartImageIsThePin keeps charts/cloudflared/values.yaml on the Go pin.
@@ -52,7 +52,7 @@ func TestPinShape(t *testing.T) {
 }
 
 func TestNoNonStdlibImports(t *testing.T) {
-	const pkg = "github.com/truvity/edge/v3/cloudflare/cloudflared"
+	const pkg = "github.com/truvity/edge/v4/cloudflare/cloudflared"
 
 	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	require.NoError(t, err, "go list -deps")

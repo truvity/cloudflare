@@ -25,7 +25,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/truvity/edge/v3/cloudflare/cloudflared"
+	"github.com/truvity/edge/v4/cloudflare/cloudflared"
 )
 
 // Defaults applied by Bootstrap to a zero field.

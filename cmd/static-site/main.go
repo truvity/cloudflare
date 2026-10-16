@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/truvity/edge/v3/internal/staticsite"
+	"github.com/truvity/edge/v4/internal/staticsite"
 )
 
 // version is stamped by the release build.

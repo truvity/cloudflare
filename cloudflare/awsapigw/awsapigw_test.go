@@ -15,7 +15,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/awsapigw"
+	"github.com/truvity/edge/v4/cloudflare/awsapigw"
 )
 
 // The ids are built and not written out, which the repository's leak canary

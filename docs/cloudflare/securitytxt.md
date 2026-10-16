@@ -12,10 +12,10 @@ GET|PUT /zones/{zone_id}/security-center/securitytxt
 ## Credential
 
 Reading needs read access to the zone. Writing needs Zone Settings Write: the
-zone settings of the preset kind `edge` (see [presets](presets.md)). The
+zone settings of the preset kind `zone` (see [presets](presets.md)). The
 other kinds, `insights` included, cannot write it. A zone declared with
 `manage: security_txt` ([config](config.md)) gets exactly that one group in
-the `edge` kind and no other edge group.
+the `zone` kind and no other zone group.
 
 ## Library
 
@@ -63,5 +63,5 @@ derives the tunnels from the edge catalog, which this command has no use for.
 `Parse` holds each zone, `security_txt` included, to the same validation.
 
 An estate that mints short-lived tokens wraps the command (or the library)
-with `presettoken.Estate.Credential` for its `edge` preset and passes the
+with `presettoken.Estate.Credential` for its `zone` preset and passes the
 token through the environment variable.

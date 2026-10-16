@@ -49,10 +49,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/truvity/edge/v3/catalog"
-	"github.com/truvity/edge/v3/cloudflare/cfnames"
-	"github.com/truvity/edge/v3/cloudflare/edgespec"
-	cfzone "github.com/truvity/edge/v3/cloudflare/zonespec"
+	"github.com/truvity/edge/v4/catalog"
+	"github.com/truvity/edge/v4/cloudflare/cfnames"
+	"github.com/truvity/edge/v4/cloudflare/edgespec"
+	cfzone "github.com/truvity/edge/v4/cloudflare/zonespec"
 )
 
 const (
@@ -463,7 +463,7 @@ type (
 		ExpireAfterDays int `yaml:"expire_after_days"`
 	}
 
-	// R2Token is the bucket's account-owned parent token (cloudflare/r2.TokenConfig).
+	// R2Token is the bucket's account-owned parent token, minted by cloudflare/tokensplit.
 	R2Token struct {
 		// Permission is object-read-write or object-read-only. Required.
 		Permission string `yaml:"permission"`

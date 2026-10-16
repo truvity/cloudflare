@@ -22,7 +22,7 @@ func heldFixture() Registry {
 func TestSecurityTxtOnlyZoneGetsZoneSettingsWriteAndNothingElse(t *testing.T) {
 	for name, zones := range map[string][]string{"every zone of the account": nil, "named zones": {"a.example", "b.example"}} {
 		t.Run(name, func(t *testing.T) {
-			table, err := Build(heldFixture(), []Row{{Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella", Zones: zones}})
+			table, err := Build(heldFixture(), []Row{{Name: "umbrella-zone", Kind: KindZone, Account: "umbrella", Zones: zones}})
 			require.NoError(t, err)
 
 			got := flat(t, table[0])
@@ -67,14 +67,14 @@ func TestSecurityTxtOnlyZoneIsLeftOutOfDNSAndStatus(t *testing.T) {
 	require.ErrorContains(t, err, "managed for its security.txt only")
 }
 
-func TestSecurityTxtOnlyZoneRefusesTheEdgeAddOns(t *testing.T) {
+func TestSecurityTxtOnlyZoneRefusesTheZoneAddOns(t *testing.T) {
 	for name, mutate := range map[string]func(*Row){
 		"waf":             func(r *Row) { r.WAFZones = []string{"b.example"} },
 		"bot management":  func(r *Row) { r.BotManagementZones = []string{"b.example"} },
 		"cloud connector": func(r *Row) { r.CloudConnectorZones = []string{"b.example"} },
 		"dns only":        func(r *Row) { r.Zones = []string{"a.example"}; r.DNSOnlyZones = []string{"b.example"} },
 	} {
-		r := Row{Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella"}
+		r := Row{Name: "umbrella-zone", Kind: KindZone, Account: "umbrella"}
 		mutate(&r)
 
 		_, err := Build(heldFixture(), []Row{r})
@@ -88,10 +88,9 @@ func TestAccountOfOnlySecurityTxtOnlyZonesCannotRunDNS(t *testing.T) {
 	_, err := Build(reg, []Row{{Name: "umbrella-dns", Kind: KindDNS, Account: "umbrella"}})
 	require.ErrorContains(t, err, "every zone is managed for its security.txt only")
 
-	table, err := Build(reg, []Row{{Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella"}})
+	table, err := Build(reg, []Row{{Name: "umbrella-zone", Kind: KindZone, Account: "umbrella"}})
 	require.NoError(t, err)
-	assert.Contains(t, flat(t, table[0]), "Zone Settings Write@zone."+zoneB)
-	assert.Len(t, flat(t, table[0]), 2)
+	assert.Equal(t, []string{"Zone Settings Write@zone." + zoneB}, flat(t, table[0]))
 }
 
 func TestInsightsKindsStillCoverASecurityTxtOnlyZone(t *testing.T) {

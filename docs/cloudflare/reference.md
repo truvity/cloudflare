@@ -92,7 +92,7 @@ kubectl -n cloudflare-system create secret generic cloudflared-origin-ca \
 
 ## cloudflare/account
 
-`github.com/truvity/edge/v3/cloudflare/account`
+`github.com/truvity/edge/v4/cloudflare/account`
 
 ```go
 func New(ctx *pulumi.Context, name string, args Args, token pulumi.StringInput, opts ...pulumi.ResourceOption) (*Account, error)
@@ -287,8 +287,8 @@ func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy
 | `EdgePolicies(zoneIDs...)` | `Cloudflare Tunnel Write` on the whole account, plus `DNS Write`, `SSL and Certificates Write`, `Zone Settings Write`, `Cache Settings Write` and `Config Settings Write` (the dashboard's "Config Rules: Edit") on each zone in `zoneIDs` — a stack that manages zones (`cloudflare/zone`) and runs a tunnel (`cloudflare/tunnel`) |
 | `EdgePoliciesWithWAF(wafZoneIDs, zoneIDs...)` | Everything `EdgePolicies(zoneIDs...)` grants, plus one policy per zone in `wafZoneIDs` granting only `Zone WAF Write` there — what `cloudflare/zone`'s `Args.TrustedClients` needs. Opt-in: an empty `wafZoneIDs` returns `EdgePolicies` unchanged. `wafZoneIDs` is independent of `zoneIDs`; list a zone in both when the token also manages it |
 | `BotManagementPolicies(zoneIDs...)` | one policy per zone granting only `Bot Management Write` (`PermBotManagementWrite`) there — what `cloudflare/zone`'s `Args.BotManagement` needs. Append it to `EdgePolicies` or `EdgePoliciesWithWAF`; the preset does so for `Row.BotManagementZones`. No zones returns nil |
-| `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`cloudflare/r2`, called with `Config.Token.Enabled: false`) |
-| `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential, the replacement for `cloudflare/r2`'s deprecated `Config.Token` (see [cloudflare/r2](#cloudflarer2)) |
+| `R2AdminPolicies()` | `Workers R2 Storage Write` on the whole account — a stack that creates and administers R2 buckets (`cloudflare/r2`) |
+| `R2BucketParentPolicies(jurisdiction, bucket)` | `Workers R2 Storage Bucket Item Write` on exactly one bucket (`R2BucketScope{Jurisdiction: jurisdiction, Bucket: bucket}`) — a bucket consumer's own object-level credential (`cloudflare/r2` mints none; see [cloudflare/r2](#cloudflarer2)) |
 
 Each is a plain `[]ChildTokenPolicy` value: use it as `Policies` in a
 `ChildTokenConfig` directly, or edit the slice it returns before passing
@@ -354,7 +354,7 @@ Each token is the Pulumi resource `prototype-<name>`, `status: disabled`, protec
 
 ## cloudflare/zone
 
-`github.com/truvity/edge/v3/cloudflare/zone`
+`github.com/truvity/edge/v4/cloudflare/zone`
 
 ```go
 func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOption) (*Zone, error)
@@ -660,7 +660,7 @@ zone (`account.EdgePoliciesWithWAF`).
 
 ## cloudflare/tunnel
 
-`github.com/truvity/edge/v3/cloudflare/tunnel`
+`github.com/truvity/edge/v4/cloudflare/tunnel`
 
 ```go
 func New(ctx *pulumi.Context, name string, args Args, secret pulumi.StringInput, opts ...pulumi.ResourceOption) (*Tunnel, error)
@@ -758,36 +758,31 @@ and `.` becomes `-`, so `*.team.example.com` is `star-team-example-com`.
 
 ## cloudflare/r2
 
-`github.com/truvity/edge/v3/cloudflare/r2`
+`github.com/truvity/edge/v4/cloudflare/r2`
 
 ```go
 func New(ctx *pulumi.Context, name string, cfg Config, opts ...pulumi.ResourceOption) (*R2, error)
 ```
 
-A component of type `truvity:cloudflare:R2`: one R2 bucket, an opt-in
-expiry lifecycle, and an opt-in **account-owned** API token
-(`cloudflare.AccountToken`, `/accounts/{account_id}/tokens` — not a user
-token, which is tied to a person who might leave) scoped to exactly that
-bucket, plus the S3-compatible credential pair Cloudflare derives from it,
-so a caller never re-implements the derivation.
+A component of type `truvity:cloudflare:R2`: one R2 bucket and an opt-in
+expiry lifecycle. It mints no credentials. A bucket's parent token (the one
+R2's temporary credentials are minted from, and whose id and SHA-256 hashed
+value are the S3 credential pair) is minted separately, with
+`account.NewChildToken` or `account.NewChildTokenSet` and
+`account.R2BucketParentPolicies(jurisdiction, bucket)`; see
+[layout.md](layout.md#recommended-layout). Until v4.0.0 `Config.Token`
+minted it inline; that path is removed.
 
 **Provisioning permissions.** The Cloudflare API token the Pulumi program
-itself runs as needs, on the account being managed: `Account API Tokens
-Write` to create and manage the account-owned token, and `Workers R2
-Storage Write` to create the bucket and its lifecycle and to read the
-account's own permission-group list — both the account's own
-`getAccountApiTokenPermissionGroupsList` names, confirmed live, never the
-dashboard's own (differently worded) labels for the same grants.
+itself runs as needs `Workers R2 Storage Write` on the account being
+managed, to create the bucket and its lifecycle (the account's own
+`getAccountApiTokenPermissionGroupsList` name, never the dashboard's label).
 
 ```go
 r, err := r2.New(ctx, "cache", r2.Config{
 	AccountID: acct.AccountID,
 	Bucket:    "example-cache-bucket",
 	Lifecycle: &r2.Lifecycle{ExpireAfterDays: 14},
-	Token: r2.TokenConfig{
-		Enabled:    true,
-		Permission: r2.PermissionObjectReadWrite,
-	},
 }, acct.Use())
 ```
 
@@ -797,9 +792,8 @@ r, err := r2.New(ctx, "cache", r2.Config{
 | --- | --- | --- | --- |
 | `AccountID` | `accountId` | yes | the account owning the bucket; take it from `Account.AccountID` |
 | `Bucket` | `bucket` | yes | the R2 bucket name; refused if it does not follow Cloudflare's own naming rules (3-63 characters, lowercase letters, digits and hyphens, no leading or trailing hyphen) |
-| `Jurisdiction` | `jurisdiction` | no | `""`/`"default"`, `"eu"`, `"fedramp"` or `"us"`; sets the bucket's data-residency jurisdiction AND the segment used when scoping the token's policy to this bucket, so the two can never disagree |
+| `Jurisdiction` | `jurisdiction` | no | `""`/`"default"`, `"eu"`, `"fedramp"` or `"us"`: the bucket's data-residency jurisdiction |
 | `Lifecycle` | `lifecycle` | no | see below; nil expires nothing |
-| `Token` | `token` | yes (block always present; `Enabled` decides) | **deprecated since v2.6.0** — see below |
 
 `Lifecycle`:
 
@@ -808,101 +802,13 @@ r, err := r2.New(ctx, "cache", r2.Config{
 | `ExpireAfterDays` | `expireAfterDays` | required when `lifecycle` is set; must be greater than zero |
 | `Prefix` | `prefix` | restricts the rule to objects whose key starts with it; empty is every object |
 
-`TokenConfig`:
-
-| Field | YAML key | Notes |
-| --- | --- | --- |
-| `Enabled` | `enabled` | false creates the bucket (and its lifecycle) only; every `Token*`/`S3*` output resolves to `""` |
-| `Permission` | `permission` | `object-read-write` (`r2.PermissionObjectReadWrite`) or `object-read-only` (`r2.PermissionObjectReadOnly`); required when `Enabled` |
-| `ExpiresOn` | `expiresOn` | an RFC3339 timestamp after which Cloudflare refuses the token; optional, must be in the future when set — for a scratch or test token that should not outlive its errand |
-| `Rotation` | `rotation` | changing it to any new value forces the token to be replaced — a fresh id and value, never an in-place rename. See [safety.md](safety.md#rotation-is-a-replace-not-an-update) |
-| `PermissionGroupName` | `permissionGroupName` | overrides the permission group name looked up for `Permission` (see below); empty uses the documented default |
-
-### `Token` is deprecated
-
-Since v2.6.0, minting a bucket's parent token inline (`Config.Token`) is
-deprecated in favour of minting it separately with
-[`account.NewChildToken`](#newchildtoken) or
-[`account.NewChildTokenSet`](#newchildtokenset) and
-`account.R2BucketParentPolicies(cfg.Jurisdiction, cfg.Bucket)` — the exact
-same permission group and resource key `Config.Token` has always used —
-then calling `New` with `Token.Enabled: false`. See
-[docs/cloudflare/layout.md](layout.md#recommended-layout) for why: a bucket's own
-admin token (`account.R2AdminPolicies`, account-wide) and a bucket
-consumer's object-level token are two different blast radii and two
-different rotation schedules, and minting the second inside the component
-that creates the bucket makes that separation harder to see. `Config.Token`
-itself is unchanged and keeps working — removing it would be a major
-version (see [Child names are a contract](#child-names-are-a-contract)).
-
-### The token's permission group
-
-Since v2.4.0 the token itself is minted by
-[`account.NewChildToken`](#newchildtoken); this package supplies only the
-permission group name and the bucket's own scope (`account.R2BucketScope`).
-The mechanics below are unchanged, just relocated.
-
-The policy naming the token's one permission group is resolved **by
-name**, through the provider's **account-scoped**
-`getAccountApiTokenPermissionGroupsList` data source, at apply time — never
-a hard-coded id, which is per-account, and never the global (user-token)
-`getApiTokenPermissionGroupsList` list, which is the wrong lookup for an
-account-owned token's own permission groups. The two names this package
-knows, confirmed against
-[developers.cloudflare.com/r2/api/tokens/](https://developers.cloudflare.com/r2/api/tokens/)
-(accessed 2026-09-27; R2 is listed as compatible with account-owned tokens
-on
-[developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/),
-same date):
-
-| `Permission` | Permission group name | Grants |
-| --- | --- | --- |
-| `object-read-write` | `Workers R2 Storage Bucket Item Write` | read, write and list on objects in the named bucket |
-| `object-read-only` | `Workers R2 Storage Bucket Item Read` | read and list on objects in the named bucket |
-
-These are distinct from `Workers R2 Storage Bucket Write`/`…Bucket Read`,
-names that do not appear on that page as of the date above. If Cloudflare
-renames a group before this package catches up, set
-`Token.PermissionGroupName` rather than waiting for a release.
-
-The lookup itself carries whatever explicit Cloudflare provider `opts`
-gave `New` (`acct.Use()`, typically) — not just the bucket and token
-resources: this package rebuilds an `account.Account` from `opts`'
-provider and hands it to `account.NewChildToken`, which binds it onto both
-the token resource and the lookup invoke explicitly. See
-[safety.md](safety.md#an-invoke-does-not-inherit-a-provider-the-way-a-resource-does)
-for why that needs saying: an invoke does not inherit a provider from its
-component the way a resource does, and v2.2.0 shipped this one without
-either.
-
-### The token's scope
-
-The policy's `Resources` map names exactly one resource, Cloudflare's own
-name for "this one bucket":
-`com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>`,
-jurisdiction `default` for a non-jurisdictional bucket — confirmed on the
-same page. A token this package creates can therefore never reach a
-second bucket, however `Config` changes. This is `account.R2BucketScope`'s
-own resource key (see [`NewChildToken`](#newchildtoken)); this package
-builds one from `Config.AccountID`, `Config.Jurisdiction` and
-`Config.Bucket` and passes it as the one policy's `Scope`.
-
 ### Outputs and names
 
 | | |
 | --- | --- |
 | `R2.BucketName` | the bucket name, as created |
-| `R2.TokenID` | the parent token's id; `""` when `Token.Enabled` is false |
-| `R2.TokenValue` | the parent token's secret value; a secret output; `""` when `Token.Enabled` is false |
-| `R2.S3AccessKeyID` | equals `TokenID` — Cloudflare's R2-to-S3 mapping uses the token id as the access key id ([developers.cloudflare.com/r2/api/s3/tokens/](https://developers.cloudflare.com/r2/api/s3/tokens/), accessed 2026-09-27; the same page names account-owned tokens as a token type in their own right, without restricting the mapping to user tokens, and an account-owned token has the same id/value shape) |
-| `R2.S3SecretAccessKey` | the SHA-256 hash of `TokenValue`, hex encoded, per the same page; a secret output; `""` when `Token.Enabled` is false |
 | `R2.S3Endpoint` | `https://<accountId>.r2.cloudflarestorage.com`, this account's R2 S3-compatible endpoint |
-| children | `bucket-<name>` (`cloudflare.R2Bucket`), `lifecycle-<name>` (`cloudflare.R2BucketLifecycle`, only when `Lifecycle` is set), `token-<name>` (`cloudflare.AccountToken`, only when `Token.Enabled`) |
-
-This package creates no secret store entry and no chart Secret; where the
-token value and its derived S3 credentials are stored (a Pulumi config
-secret today, OpenBAO KV tomorrow) is the caller's decision, matching
-`cloudflare/tunnel`'s existing precedent for `Tunnel.Token`.
+| children | `bucket-<name>` (`cloudflare.R2Bucket`), `lifecycle-<name>` (`cloudflare.R2BucketLifecycle`, only when `Lifecycle` is set) |
 
 ## Child names are a contract
 

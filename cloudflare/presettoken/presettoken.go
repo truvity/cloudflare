@@ -65,7 +65,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/account"
 )
 
 const (

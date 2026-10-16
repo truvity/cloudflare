@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	cfrules "github.com/truvity/edge/v3/cloudflare/rules"
+	cfrules "github.com/truvity/edge/v4/cloudflare/rules"
 )
 
 // render is every resource New registered, "type/name" to inputs, as JSON
@@ -66,7 +66,6 @@ func contributedArgs(t *testing.T) Args {
 		AuthenticatedOriginPulls: &on,
 		Contributions:            []cfrules.Contribution{public.Contribution(), sslMode},
 		ImportRulesets:           map[cfrules.Phase]string{cfrules.PhaseConfigSettings: "ruleset-id-1"},
-		Compat:                   Compat{TopLevelAliases: true},
 	}
 }
 
@@ -114,12 +113,4 @@ func TestImportMustNameAManagedPhase(t *testing.T) {
 		return err
 	}, pulumi.WithMocks("proj", "stack", &mocks{res: map[string]resource.PropertyMap{}}))
 	require.Error(t, err)
-}
-
-func TestTopLevelAliasOnlyWhenAsked(t *testing.T) {
-	base := []pulumi.ResourceOption{pulumi.Protect(true)}
-
-	assert.Len(t, withTopLevelAlias(base, Compat{}), 1)
-	assert.Len(t, withTopLevelAlias(base, Compat{TopLevelAliases: true}), 2)
-	assert.Len(t, base, 1, "the shared option slice is not modified")
 }

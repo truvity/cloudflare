@@ -9,7 +9,7 @@ import (
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/cfnames"
+	"github.com/truvity/edge/v4/cloudflare/cfnames"
 )
 
 // The two permission groups a child token this package mints must never
@@ -57,11 +57,7 @@ func ValidR2BucketName(name string) bool {
 }
 
 // rotationValid restricts ChildTokenConfig.Rotation to a charset safe to
-// embed in Cloudflare's token Name field without surprises. Mirrors
-// cloudflare/r2's own TokenConfig.Rotation rule (see r2's rotationValid) — the
-// two are not the same function only because cloudflare/r2 imports this package,
-// never the other way, so there is nowhere shared to hang one copy other
-// than accepting this small, purely-syntactic duplication.
+// embed in Cloudflare's token Name field without surprises.
 func rotationValid(value string) bool {
 	for _, r := range value {
 		switch {
@@ -155,9 +151,8 @@ type (
 		Name string
 		// Rotation forces a fresh token — a new id and value — when
 		// changed to any new value; see New's doc and
-		// docs/cloudflare/safety.md#rotation-is-a-replace-not-an-update (the same
-		// mechanism cloudflare/r2's TokenConfig.Rotation already uses). Optional;
-		// empty never rotates on its own.
+		// docs/cloudflare/safety.md#rotation-is-a-replace-not-an-update.
+		// Optional; empty never rotates on its own.
 		Rotation string
 		// ExpiresOn is an RFC3339 timestamp after which Cloudflare refuses
 		// the token. Optional; must be in the future when set.

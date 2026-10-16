@@ -105,7 +105,7 @@ Such a zone creates nothing. `zonestack.Deploy` and `services.Deploy` skip it
 `RecordsLibrary` and `ActiveOrigins` are empty, and the catalog derives no
 host, tunnel route or record in it: `ZoneOf` does not return it, so a catalog
 domain inside it is refused as in no zone. `securitytxt.Targets` includes it.
-The `edge` preset grants its token Zone Settings Write on the zone and no other
+The `zone` preset grants its token Zone Settings Write on the zone and no other
 group; see [presets](presets.md).
 
 ## Tunnels are derived

@@ -10,7 +10,7 @@
 //
 // Plan only reads: it compares the live document with the declared one and
 // returns the difference. Apply writes the zones whose document differs and
-// nothing else. The credential needs Zone Settings Write (the `edge` preset
+// nothing else. The credential needs Zone Settings Write (the `zone` preset
 // kind has it); reading needs only read access to the zone.
 package securitytxt
 
@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/internal/cfapi"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/internal/cfapi"
 )
 
 const (

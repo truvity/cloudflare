@@ -6,8 +6,7 @@ import (
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	cfrules "github.com/truvity/edge/v3/cloudflare/rules"
-	"github.com/truvity/edge/v3/cloudflare/zonespec"
+	cfrules "github.com/truvity/edge/v4/cloudflare/rules"
 )
 
 // builtinKey identifies a rule the zone's own blocks (Cache, TrustedClients,
@@ -93,17 +92,6 @@ func rulesetChild(phase cfrules.Phase, name string) string {
 	}
 }
 
-// withTopLevelAlias adds the alias of a resource that lives at the stack
-// root today, when compat asks for it.
-func withTopLevelAlias(opts []pulumi.ResourceOption, c zonespec.Compat) []pulumi.ResourceOption {
-	if !c.TopLevelAliases {
-		return opts
-	}
-
-	return append(append([]pulumi.ResourceOption(nil), opts...),
-		pulumi.Aliases([]pulumi.Alias{{NoParent: pulumi.Bool(true)}}))
-}
-
 // newRulesets assembles every contribution and registers one ruleset per
 // phase that has any.
 func newRulesets(ctx *pulumi.Context, name string, args *Args, zoneID pulumi.String, child []pulumi.ResourceOption) error {
@@ -130,11 +118,6 @@ func newRulesets(ctx *pulumi.Context, name string, args *Args, zoneID pulumi.Str
 		}
 
 		opts := child
-
-		switch phase {
-		case cfrules.PhaseFirewallCustom, cfrules.PhaseConfigSettings:
-			opts = withTopLevelAlias(child, args.Compat)
-		}
 
 		if id := args.ImportRulesets[phase]; id != "" {
 			opts = append(append([]pulumi.ResourceOption(nil), opts...),

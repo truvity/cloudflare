@@ -12,7 +12,7 @@ import (
 )
 
 // The registry and rows in testdata are synthetic (two accounts, four zones,
-// six rows, one WAF zone). golden.json is the table they build, dumped as the
+// eight rows, one WAF zone). golden.json is the table they build, dumped as the
 // documents Cloudflare receives: it pins every policy, group, scope, order,
 // name, description, grant and lifetime a kind produces, so a change to any of
 // them is a visible diff. Regenerate it with `go test ./cloudflare/presets -update`
@@ -119,7 +119,7 @@ func TestGolden(t *testing.T) {
 
 	table, err := Build(reg, rows)
 	require.NoError(t, err)
-	require.Len(t, table, 6)
+	require.Len(t, table, 8)
 
 	if *update {
 		require.NoError(t, os.WriteFile("testdata/golden.json", dump(t, table), 0o644))
@@ -128,7 +128,7 @@ func TestGolden(t *testing.T) {
 	var golden []goldenPreset
 
 	want := readJSON(t, "golden.json", &golden)
-	require.Len(t, golden, 6)
+	require.Len(t, golden, 8)
 
 	assert.Equal(t, string(want), string(dump(t, table)))
 
@@ -154,7 +154,7 @@ func TestStandardRowsEqualTheRows(t *testing.T) {
 		name string
 		waf  []string
 	}{{"globex", nil}, {"acme", []string{"example.com"}}} {
-		std = append(std, StandardRows(a.name, []string{"example:deploy"}, a.waf)...)
+		std = append(std, StandardRows(a.name, []string{"example:deploy"}, a.waf, nil)...)
 	}
 
 	want, err := Build(reg, rows)
@@ -179,7 +179,7 @@ func TestPendingZone(t *testing.T) {
 
 	ready, err := BuildReady(reg, rows)
 	require.NoError(t, err)
-	require.Len(t, ready, 3)
+	require.Len(t, ready, 4)
 
 	for _, p := range ready {
 		assert.Equal(t, "acme", p.Account)
@@ -193,7 +193,7 @@ func TestPendingZone(t *testing.T) {
 
 	own, err := ForAccount(reg, rows, "acme")
 	require.NoError(t, err)
-	assert.Len(t, own, 3)
+	assert.Len(t, own, 4)
 
 	_, err = ForAccount(reg, rows, "nobody")
 	require.ErrorContains(t, err, `no account "nobody"`)

@@ -1,4 +1,4 @@
-// Package cloudflare is the module root of github.com/truvity/edge/v3.
+// Package cloudflare is the module root of github.com/truvity/edge/v4.
 //
 // The module ships Cloudflare mechanism for Kubernetes estates, as Pulumi
 // Go components and the in-cluster Helm chart a tunnel needs:

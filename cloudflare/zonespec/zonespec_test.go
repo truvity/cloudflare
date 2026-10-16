@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/zonespec"
+	"github.com/truvity/edge/v4/cloudflare/zonespec"
 )
 
 // TestNoNonStdlibImports guards this package's reason to exist: a caller
 // must be able to import zonespec alone, with no Pulumi or Cloudflare SDK
 // riding along. See cloudflare/cfnames' test of the same name.
 func TestNoNonStdlibImports(t *testing.T) {
-	const pkg = "github.com/truvity/edge/v3/cloudflare/zonespec"
+	const pkg = "github.com/truvity/edge/v4/cloudflare/zonespec"
 
 	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	require.NoError(t, err, "go list -deps")
@@ -27,7 +27,7 @@ func TestNoNonStdlibImports(t *testing.T) {
 		}
 
 		// cloudflare/rulespec is this module's own standard-library-only leaf.
-		if line == "github.com/truvity/edge/v3/cloudflare/rulespec" {
+		if line == "github.com/truvity/edge/v4/cloudflare/rulespec" {
 			continue
 		}
 

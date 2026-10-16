@@ -16,8 +16,8 @@ import (
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
 )
 
 type (

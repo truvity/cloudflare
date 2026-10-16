@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/truvity/edge/v3/cloudflare/rulespec"
+	"github.com/truvity/edge/v4/cloudflare/rulespec"
 )
 
 // The rule shapes live in cloudflare/rulespec, which zonespec can import;

@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/instancetunnel"
-	"github.com/truvity/edge/v3/cloudflare/internal/stacktest"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/instancetunnel"
+	"github.com/truvity/edge/v4/cloudflare/internal/stacktest"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
 )
 
 // The box's tunnel, as an estate's status stack registers it today

@@ -44,13 +44,13 @@ func flat(t *testing.T, p Preset) []string {
 	return out
 }
 
-// The kinds a second estate (umbrella) needs: an edge preset on one zone with a
+// The kinds a second estate (umbrella) needs: a zone preset on one zone with a
 // WAF, a Cloud Connector rule and DNS on a further zone, a DNS-only preset, an
 // R2 admin and the workload buckets, with a rotation.
 func TestKindsOfASecondEstate(t *testing.T) {
 	rows := []Row{
 		{
-			Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella", Zones: []string{"a.example"}, WAFZones: []string{"a.example"},
+			Name: "umbrella-zone", Kind: KindZone, Account: "umbrella", Zones: []string{"a.example"}, WAFZones: []string{"a.example"},
 			CloudConnectorZones: []string{"a.example"}, DNSOnlyZones: []string{"c.example"}, Grants: []string{"example:deploy"},
 		},
 		{Name: "umbrella-cert-dns", Kind: KindDNS, Account: "umbrella", Zones: []string{"a.example"}},
@@ -65,15 +65,14 @@ func TestKindsOfASecondEstate(t *testing.T) {
 	table, err := Build(fixture(), rows)
 	require.NoError(t, err)
 
-	edge, err := Named(table, "umbrella-edge")
+	zonePreset, err := Named(table, "umbrella-zone")
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"Cloudflare Tunnel Write@" + acct1,
 		"DNS Write,SSL and Certificates Write,Zone Settings Write,Cache Settings Write,Config Settings Write@zone." + zoneA,
 		"Zone WAF Write@zone." + zoneA,
 		"Cloud Connector Write@zone." + zoneA,
 		"DNS Write@zone." + zoneC,
-	}, flat(t, edge))
+	}, flat(t, zonePreset))
 
 	dns, _ := Named(table, "umbrella-cert-dns")
 	assert.Equal(t, []string{"DNS Write@zone." + zoneA}, flat(t, dns))
@@ -107,7 +106,7 @@ func TestKindsOfASecondEstate(t *testing.T) {
 
 func TestValidateRefusesEveryProblem(t *testing.T) {
 	base := func(mutate func(*Row)) []Row {
-		r := Row{Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella"}
+		r := Row{Name: "umbrella-zone", Kind: KindZone, Account: "umbrella"}
 		mutate(&r)
 
 		return []Row{r}
@@ -125,8 +124,8 @@ func TestValidateRefusesEveryProblem(t *testing.T) {
 		"zones on r2":      {base(func(r *Row) { r.Kind = KindR2Admin; r.Zones = []string{"a.example"} }), "Zones is for"},
 		"waf outside":      {base(func(r *Row) { r.Zones = []string{"a.example"}; r.WAFZones = []string{"b.example"} }), "not among the zones"},
 		"bot outside":      {base(func(r *Row) { r.Zones = []string{"a.example"}; r.BotManagementZones = []string{"b.example"} }), "not among the zones"},
-		"bot on status":    {base(func(r *Row) { r.Kind = KindStatus; r.BotManagementZones = []string{"a.example"} }), "for the edge kind"},
-		"waf on status":    {base(func(r *Row) { r.Kind = KindStatus; r.WAFZones = []string{"a.example"} }), "for the edge kind"},
+		"bot on status":    {base(func(r *Row) { r.Kind = KindStatus; r.BotManagementZones = []string{"a.example"} }), "for the zone kind"},
+		"waf on status":    {base(func(r *Row) { r.Kind = KindStatus; r.WAFZones = []string{"a.example"} }), "for the zone kind"},
 		"dns-only dup":     {base(func(r *Row) { r.Zones = []string{"a.example"}; r.DNSOnlyZones = []string{"a.example"} }), "already among"},
 		"no bucket":        {base(func(r *Row) { r.Kind = KindBucketRW }), "not an R2 bucket name"},
 		"bucket on edge":   {base(func(r *Row) { r.Bucket = "x" }), "Bucket and Jurisdiction are for"},
@@ -205,7 +204,7 @@ func TestInsightsIsReadOnly(t *testing.T) {
 	}
 
 	_, err = Build(fixture(), []Row{{Name: "umbrella-insights", Kind: KindInsights, Account: "umbrella", WAFZones: []string{"a.example"}}})
-	require.ErrorContains(t, err, "for the edge kind")
+	require.ErrorContains(t, err, "for the zone kind")
 }
 
 // The insights-admin kind holds exactly the Security Center Insights groups,
@@ -252,13 +251,13 @@ func TestInsightsAdminIsOnlyInsights(t *testing.T) {
 	}
 
 	_, err = Build(fixture(), []Row{{Name: "umbrella-insights-admin", Kind: KindInsightsAdmin, Account: "umbrella", DNSOnlyZones: []string{"a.example"}}})
-	require.ErrorContains(t, err, "for the edge kind")
+	require.ErrorContains(t, err, "for the zone kind")
 }
 
 // Bot Management Write is granted only on the zones a row lists, and a row
 // that lists none builds exactly what it built before.
 func TestBotManagementZonesGrant(t *testing.T) {
-	row := Row{Name: "umbrella-edge", Kind: KindEdge, Account: "umbrella", Zones: []string{"a.example"}}
+	row := Row{Name: "umbrella-zone", Kind: KindZone, Account: "umbrella", Zones: []string{"a.example"}}
 
 	plain, err := Build(fixture(), []Row{row})
 	require.NoError(t, err)

@@ -2,13 +2,12 @@ package presets
 
 import (
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/tokensplit"
+	"github.com/truvity/edge/v4/cloudflare/tokensplit"
 )
 
 const zoneT = "dddddddddddddddddddddddddddddddd"
@@ -30,10 +29,9 @@ func groups(t *testing.T, reg Registry, row Row) []string {
 	return flat(t, table[0])
 }
 
-// zone and services together hold exactly the groups edge holds for the same
-// inputs: nothing lost, nothing gained. The one difference is stated: edge's
-// tunnel write appears in services (as status holds it), once.
-func TestZonePlusServicesCoverEdge(t *testing.T) {
+// zone holds no account-wide grant; services holds the account's tunnel write
+// and DNS Write on the managed zones, nothing else.
+func TestZoneAndServicesSplitTheRights(t *testing.T) {
 	reg := splitFixture()
 	common := Row{
 		Account: "umbrella", WAFZones: []string{"a.example"}, BotManagementZones: []string{"b.example"},
@@ -52,44 +50,30 @@ func TestZonePlusServicesCoverEdge(t *testing.T) {
 
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			edge, zoneRow, svc := in, in, in
-			edge.Name, edge.Kind = "umbrella-edge", KindEdge
+			zoneRow, svc := in, in
 			zoneRow.Name, zoneRow.Kind = "umbrella-zone", KindZone
 			svc.Name, svc.Kind = "umbrella-services", KindServices
 			// services never lists a security.txt-only zone (it writes DNS).
 			svc.Zones = without(svc.Zones, "t.example")
 			svc.WAFZones, svc.BotManagementZones, svc.CloudConnectorZones, svc.DNSOnlyZones = nil, nil, nil, nil
 
-			e := groups(t, reg, edge)
 			z := groups(t, reg, zoneRow)
 			tunnel := "Cloudflare Tunnel Write@" + acct1
 
-			// A services row needs a managed zone: with only a security.txt-only
-			// zone there is no services row, and edge's tunnel write is the
-			// stated difference.
-			var s []string
-			if name != "txt-only zone only" {
-				s = groups(t, reg, svc)
-				assert.Contains(t, s, tunnel)
-			}
-
 			// zone holds no account-wide grant: no tunnel write.
 			assert.NotContains(t, z, tunnel)
-			assert.Contains(t, e, tunnel)
 
-			// Every edge group other than the tunnel write is in zone, in the
-			// same order, and zone has nothing else.
-			assert.Equal(t, without(e, tunnel), z)
-
-			// The union, compared as (permission group, resource) pairs, is
-			// edge's: DNS Write on a managed zone is held by both zone and
-			// services (a repeat is the same right), nothing else is added.
-			if name != "txt-only zone only" {
-				assert.Equal(t, atoms(e), atoms(append(slices.Clone(z), s...)))
+			// A services row needs a managed zone: with only a security.txt-only
+			// zone there is no services row.
+			if name == "txt-only zone only" {
+				return
 			}
 
-			// services adds, beyond edge, nothing but the tunnel write and DNS
-			// Write on managed zones, which edge already holds in its zone policy.
+			// services holds the tunnel write and DNS Write on managed zones,
+			// nothing else.
+			s := groups(t, reg, svc)
+			assert.Contains(t, s, tunnel)
+
 			for _, g := range s {
 				if g != tunnel {
 					assert.Regexp(t, `^DNS Write@zone\.`, g)
@@ -109,22 +93,6 @@ func without[S ~[]string](in S, drop string) S {
 	}
 
 	return out
-}
-
-// atoms are the distinct "group@resource" pairs of flattened policies, sorted.
-func atoms(in []string) []string {
-	var out []string
-
-	for _, g := range in {
-		names, res, _ := strings.Cut(g, "@")
-		for _, n := range strings.Split(names, ",") {
-			out = append(out, n+"@"+res)
-		}
-	}
-
-	slices.Sort(out)
-
-	return slices.Compact(out)
 }
 
 // The exact groups of the two new kinds.
@@ -189,24 +157,21 @@ func TestServicesRefusesSecurityTxtOnlyZone(t *testing.T) {
 
 func TestServicesRefusesEdgeOnlyLists(t *testing.T) {
 	_, err := Build(fixture(), []Row{{Name: "umbrella-services", Kind: KindServices, Account: "umbrella", WAFZones: []string{"a.example"}}})
-	require.ErrorContains(t, err, "for the edge kind")
+	require.ErrorContains(t, err, "for the zone kind")
 }
 
-// StandardRows is unchanged; SplitRows is StandardRows plus the two new rows.
-func TestSplitRows(t *testing.T) {
-	std := StandardRows("umbrella", []string{"example:deploy"}, []string{"a.example"})
-	require.Len(t, std, 3)
+// StandardRows are an account's four rows: status, r2-admin, zone and services.
+func TestStandardRows(t *testing.T) {
+	rows := StandardRows("umbrella", []string{"example:deploy"}, []string{"a.example"}, []string{"b.example"})
+	require.Len(t, rows, 4)
 
-	split := SplitRows("umbrella", []string{"example:deploy"}, []string{"a.example"}, []string{"b.example"})
-	require.Len(t, split, 5)
+	assert.Equal(t, []string{"umbrella-status", "umbrella-r2-admin", "umbrella-zone", "umbrella-services"},
+		[]string{rows[0].Name, rows[1].Name, rows[2].Name, rows[3].Name})
+	assert.Equal(t, []string{KindStatus, KindR2Admin, KindZone, KindServices},
+		[]string{rows[0].Kind, rows[1].Kind, rows[2].Kind, rows[3].Kind})
+	assert.Equal(t, []string{"b.example"}, rows[2].BotManagementZones)
+	assert.Equal(t, []string{"a.example"}, rows[2].WAFZones)
 
-	assert.Equal(t, []string{"umbrella-edge", "umbrella-status", "umbrella-r2-admin", "umbrella-zone", "umbrella-services"},
-		[]string{split[0].Name, split[1].Name, split[2].Name, split[3].Name, split[4].Name})
-	assert.Equal(t, []string{KindEdge, KindStatus, KindR2Admin, KindZone, KindServices},
-		[]string{split[0].Kind, split[1].Kind, split[2].Kind, split[3].Kind, split[4].Kind})
-	assert.Equal(t, []string{"b.example"}, split[3].BotManagementZones)
-	assert.Equal(t, []string{"a.example"}, split[3].WAFZones)
-
-	_, err := Build(fixture(), split)
+	_, err := Build(fixture(), rows)
 	require.NoError(t, err)
 }

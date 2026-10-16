@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/config"
 )
 
 func TestASecurityTxtOnlyZoneRegistersNothing(t *testing.T) {
