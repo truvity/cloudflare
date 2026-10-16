@@ -295,7 +295,10 @@ func TestWAFRefusals(t *testing.T) {
 		"reason needs off":    {"app.dev.example.com\n", "{host: app.dev.example.com, waf_reason: why}\n", "only meaningful with waf: off"},
 		"only off is a value": {"waf: off", "waf: on", `"on" is not "off"`},
 		"unknown key refused": {"waf: off", "waf: off, wafe: 1", "wafe"},
-		"off off a tunnel":    {"arrival: cloudflare-tunnel\n    cloudflare_accounts: [main]", "arrival: " + catalog.ArrivalPrivateClusterIP, "only a cloudflare-tunnel exposure"},
+		"off off a tunnel": {
+			"arrival: cloudflare-tunnel\n    cloudflare_accounts: [main]", "arrival: " + catalog.ArrivalPrivateClusterIP,
+			"only a cloudflare-tunnel exposure",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			doc := strings.Replace(wafDoc, tc.old, tc.new, 1)

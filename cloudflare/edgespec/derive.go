@@ -182,7 +182,9 @@ func Derive(in DeriveInput) (Derived, error) {
 			}
 		}
 
-		for _, g := range e.Groups {
+		for gi := range e.Groups {
+			g := &e.Groups[gi]
+
 			for _, host := range g.Hosts {
 				zone := ZoneOf(zones, host)
 				if zone == "" {
@@ -317,8 +319,10 @@ func deriveCache(in DeriveInput, zones []string) map[string][]string {
 	byZone := map[string][]string{}
 
 	for _, e := range in.Exposures {
-		for _, g := range e.Groups {
-			if !businessGroup(g, in.Business) {
+		for gi := range e.Groups {
+			g := &e.Groups[gi]
+
+			if !businessGroup(*g, in.Business) {
 				continue
 			}
 
@@ -433,7 +437,9 @@ func deriveWAF(in DeriveInput, zones []string) (map[string][]string, error) {
 	byZone := map[string][]string{}
 
 	for _, e := range in.Exposures {
-		for _, g := range e.Groups {
+		for gi := range e.Groups {
+			g := &e.Groups[gi]
+
 			for _, host := range g.Hosts {
 				zone := ZoneOf(zones, host)
 				if zone == "" || !slices.Contains(in.WAFZones, zone) {
