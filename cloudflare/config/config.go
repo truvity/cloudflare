@@ -162,6 +162,13 @@ type (
 		// business project is served on. Written by Load, never
 		// authored, and empty unless Cache is set.
 		CacheHosts []string `yaml:"-"`
+		// WAFHosts is the exact hosts the managed WAF covers when
+		// managed_waf.enabled: derived by Load from the edge catalog (every
+		// name an exposure serves in this zone, minus those a domain opted
+		// out with waf: off) and from this zone's proxied records, plus
+		// whatever the consumer adds with Config.AddWAFHosts. Sorted,
+		// de-duplicated, never a wildcard. Never authored.
+		WAFHosts []string `yaml:"-"`
 		// TrustedClients exempts named client address ranges from the
 		// zone's Cloudflare security features on named hosts. Nil
 		// manages no firewall ruleset at all.
@@ -264,10 +271,22 @@ type (
 	}
 
 	// ManagedWAFCfg mirrors cloudflare/zonespec ManagedWAF in this
-	// file's snake_case: the hosts the Cloudflare Managed Ruleset runs on,
-	// or the whole zone. An empty host list is refused unless whole_zone
-	// says so.
+	// file's snake_case: the hosts the Cloudflare Managed Ruleset runs on.
+	//
+	// THE WAY TO WRITE IT is `managed_waf: {enabled: true}`: the hosts are
+	// derived, explicit and exact, from the names the edge catalog serves in
+	// the zone (and the zone's proxied records), so the WAF's coverage lives
+	// next to where each name is declared and a new name is covered with no
+	// edit here. A name is left out with `waf: off` and a `waf_reason` on
+	// its catalog domain (`waf: false` and `waf_reason` on a record).
+	//
+	// Hosts and WholeZone are the older, hand-written forms. They stay
+	// for a zone that has not moved, are exclusive with Enabled, and Hosts
+	// refuses a wildcard.
 	ManagedWAFCfg struct {
+		// Enabled derives the host list (see above). Exclusive with hosts
+		// and whole_zone.
+		Enabled   bool     `yaml:"enabled,omitempty"`
 		Hosts     []string `yaml:"hosts,omitempty"`
 		WholeZone bool     `yaml:"whole_zone,omitempty"`
 	}
@@ -293,6 +312,10 @@ type (
 		Proxied bool   `yaml:"proxied,omitempty"`
 		TTL     int    `yaml:"ttl,omitempty"`
 		Comment string `yaml:"comment,omitempty"`
+		// WAF is false to leave a proxied record's name out of a zone's
+		// derived managed WAF; absent is covered. False needs WAFReason.
+		WAF       *bool  `yaml:"waf,omitempty"`
+		WAFReason string `yaml:"waf_reason,omitempty"`
 	}
 
 	// RateLimitsCfg mirrors cloudflare/zonespec RateLimits in
@@ -707,9 +730,14 @@ func (c *Config) derive(cat *catalog.Config, projects []catalog.Project) error {
 		if c.Zones[name].Cache != nil {
 			in.CacheZones = append(in.CacheZones, name)
 		}
+
+		if m := c.Zones[name].ManagedWAF; m != nil && m.Enabled {
+			in.WAFZones = append(in.WAFZones, name)
+		}
 	}
 
 	sort.Strings(in.CacheZones)
+	sort.Strings(in.WAFZones)
 
 	for name, a := range c.Accounts {
 		in.LegacyNames[name] = a.LegacyNames
@@ -737,6 +765,10 @@ func (c *Config) derive(cat *catalog.Config, projects []catalog.Project) error {
 				for _, d := range g.Domains {
 					if d.DNSElsewhere {
 						group.DNSElsewhere = append(group.DNSElsewhere, d.Host)
+					}
+
+					if !d.WAFCovered() {
+						group.WAFOff = append(group.WAFOff, d.Host)
 					}
 				}
 
@@ -766,6 +798,95 @@ func (c *Config) derive(cat *catalog.Config, projects []catalog.Project) error {
 		z := c.Zones[name]
 		z.CacheHosts = hosts
 		c.Zones[name] = z
+	}
+
+	return c.deriveWAF(derived.WAFHosts)
+}
+
+// deriveWAF fills each enabled zone's WAFHosts: the hosts the catalog
+// derived plus the zone's proxied records that have not opted out. A proxied
+// wildcard record must opt out, for the reason a wildcard catalog host must.
+func (c *Config) deriveWAF(fromCatalog map[string][]string) error {
+	for _, name := range sortedKeys(c.Zones) {
+		z := c.Zones[name]
+		if z.ManagedWAF == nil || !z.ManagedWAF.Enabled {
+			continue
+		}
+
+		hosts := append([]string(nil), fromCatalog[name]...)
+
+		for _, r := range z.Records {
+			if r.Proxied && r.WAF != nil && !*r.WAF && strings.TrimSpace(r.WAFReason) == "" {
+				return fmt.Errorf("%s: zones[%s].records[%s].waf_reason: required with waf: false", FileName, name, r.Name)
+			}
+
+			if r.WAFReason != "" && (r.WAF == nil || *r.WAF) {
+				return fmt.Errorf("%s: zones[%s].records[%s].waf_reason: only meaningful with waf: false", FileName, name, r.Name)
+			}
+
+			if !(cfzone.Record{Proxied: r.Proxied, WAF: r.WAF}).WAFCovered() {
+				continue
+			}
+
+			if strings.HasPrefix(r.Name, "*.") {
+				return fmt.Errorf("%s: zones[%s].records[%s] is a proxied wildcard, and managed_waf lists exact names only: "+
+					"give the record waf: false and a waf_reason, and add records for the exact names", FileName, name, r.Name)
+			}
+
+			hosts = append(hosts, r.Name)
+		}
+
+		z.WAFHosts = sortedUnique(hosts)
+		c.Zones[name] = z
+	}
+
+	return nil
+}
+
+func sortedUnique(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+
+	return slices.Compact(out)
+}
+
+// AddWAFHosts adds exact hosts to the managed WAF of zone: for a name the
+// edge catalog and the zone's records do not declare, such as a status page
+// another stack creates in this zone. Call it after Load and before
+// Contributions or the zone stack. Each host must be an exact lower-case name
+// inside the zone (no wildcard, no scheme or path), and the zone must have
+// managed_waf: {enabled: true}. Hosts already covered are not repeated.
+//
+// Apply the zone stack before the stack that creates the name: a WAF entry for
+// a name that does not exist yet is harmless, the reverse leaves it unprotected.
+func (c *Config) AddWAFHosts(zone string, hosts ...string) error {
+	z, ok := c.Zones[zone]
+	if !ok {
+		return fmt.Errorf("%s: AddWAFHosts: no zone %q", FileName, zone)
+	}
+
+	if z.ManagedWAF == nil || !z.ManagedWAF.Enabled {
+		return fmt.Errorf("%s: zones[%s]: AddWAFHosts needs managed_waf: {enabled: true}", FileName, zone)
+	}
+
+	for _, h := range hosts {
+		if err := validateExactWAFHost(zone, h); err != nil {
+			return fmt.Errorf("%s: zones[%s]: AddWAFHosts: %w", FileName, zone, err)
+		}
+	}
+
+	z.WAFHosts = sortedUnique(append(append([]string(nil), z.WAFHosts...), hosts...))
+	c.Zones[zone] = z
+
+	return nil
+}
+
+// validateExactWAFHost holds a host to what the derived WAF accepts: an exact
+// lower-case name that is the zone or inside it.
+func validateExactWAFHost(zone, host string) error {
+	if host == "" || host != strings.ToLower(host) || strings.ContainsAny(host, `*/:"\ `) || strings.HasSuffix(host, ".") ||
+		(host != zone && !strings.HasSuffix(host, "."+zone)) {
+		return fmt.Errorf("%q must be an exact lower-case hostname inside %s (no wildcard)", host, zone)
 	}
 
 	return nil
@@ -1300,7 +1421,7 @@ func (z Zone) RecordsLibrary(zone string) *cfzone.Records {
 	out := &cfzone.Records{Zone: zone, Entries: make([]cfzone.Record, 0, len(z.Records))}
 	for _, r := range z.Records {
 		out.Entries = append(out.Entries, cfzone.Record{
-			Name: r.Name, Type: r.Type, Content: r.Content, Proxied: r.Proxied, TTL: r.TTL, Comment: r.Comment,
+			Name: r.Name, Type: r.Type, Content: r.Content, Proxied: r.Proxied, TTL: r.TTL, Comment: r.Comment, WAF: r.WAF,
 		})
 	}
 
@@ -1391,12 +1512,47 @@ func (b *BotManagementCfg) Library() *cfzone.BotManagement {
 }
 
 // Library is the block as cloudflare/zonespec's input for zone zoneName, or nil.
+// For an enabled block it carries no hosts (they are derived: use
+// Zone.ManagedWAFLibrary).
 func (m *ManagedWAFCfg) Library(zoneName string) *cfzone.ManagedWAF {
 	if m == nil {
 		return nil
 	}
 
 	return &cfzone.ManagedWAF{Zone: zoneName, Hosts: m.Hosts, WholeZone: m.WholeZone}
+}
+
+// ManagedWAFLibrary is the zone's managed WAF as the library takes it, or nil:
+// the derived WAFHosts when managed_waf is enabled, else the authored block.
+func (z Zone) ManagedWAFLibrary(zoneName string) *cfzone.ManagedWAF {
+	if z.ManagedWAF == nil || !z.ManagedWAF.Enabled {
+		return z.ManagedWAF.Library(zoneName)
+	}
+
+	return &cfzone.ManagedWAF{Zone: zoneName, Hosts: z.WAFHosts}
+}
+
+// validateManagedWAF refuses the shapes managed_waf must not take: enabled
+// beside a hand-written host list or whole_zone (one source), and a wildcard
+// in hosts.
+func (z Zone) validateManagedWAF(where string) error {
+	m := z.ManagedWAF
+	if m == nil {
+		return nil
+	}
+
+	if m.Enabled && (len(m.Hosts) > 0 || m.WholeZone) {
+		return fmt.Errorf("%s.managed_waf: enabled derives the hosts from the edge catalog; it is exclusive with hosts and whole_zone (one source)", where)
+	}
+
+	for i, h := range m.Hosts {
+		if strings.Contains(h, "*") {
+			return fmt.Errorf("%s.managed_waf.hosts[%d] %q: a wildcard is refused; the WAF lists exact names. "+
+				"Use managed_waf: {enabled: true} and list the names on their catalog domains", where, i, h)
+		}
+	}
+
+	return nil
 }
 
 // securityTxtContact is a contact URI security.txt accepts here: mail or a
@@ -1408,9 +1564,20 @@ var securityTxtContact = regexp.MustCompile(`^(mailto:[^@\s]+@[a-z0-9.-]+\.[a-z]
 // never preloaded, and is never sent by a zone that does not
 // redirect plain HTTP first.
 func (z Zone) validateHardening(where, zone string) error {
-	if z.AlwaysUseHTTPS != nil || z.HSTS != nil || z.ManagedWAF != nil || z.BotManagement != nil {
+	if err := z.validateManagedWAF(where); err != nil {
+		return err
+	}
+
+	// An enabled block's hosts are derived after validation; the rule is
+	// validated, with its hosts, when the contribution is built.
+	var wafLib *cfzone.ManagedWAF
+	if z.ManagedWAF != nil && !z.ManagedWAF.Enabled {
+		wafLib = z.ManagedWAF.Library(zone)
+	}
+
+	if z.AlwaysUseHTTPS != nil || z.HSTS != nil || wafLib != nil || z.BotManagement != nil {
 		if err := (&cfzone.Args{
-			ZoneID: zone, AlwaysUseHTTPS: z.AlwaysUseHTTPS, HSTS: z.HSTS.Library(), ManagedWAF: z.ManagedWAF.Library(zone),
+			ZoneID: zone, AlwaysUseHTTPS: z.AlwaysUseHTTPS, HSTS: z.HSTS.Library(), ManagedWAF: wafLib,
 			BotManagement: z.BotManagement.Library(),
 		}).Validate(); err != nil {
 			return fmt.Errorf("%s: %w", where, err)

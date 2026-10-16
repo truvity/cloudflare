@@ -81,7 +81,7 @@ public-paths-access.example.com]` and the bypass is
 | `StaticSiteCache(host, StaticSiteArgs)` | cache | Order 900; claims the host; origin Cache-Control and strong ETag decide, a long edge TTL only under `HashedPrefix` |
 | `RateLimits(plan, rows)` | ratelimit | `zonespec` plan validation |
 | `TrustedClients(t)` | firewall custom | one `skip` rule; unmanaged block: no rules |
-| `ManagedWAF(m)` | firewall managed | one `execute` rule |
+| `ManagedWAF(m)` | firewall managed | one `execute` rule on `http.host in {...}`; `Hosts` may hold wildcards (suffix tests) in the library, but `cloudflare/config` feeds it only exact, derived hosts (`managed_waf: {enabled: true}`, see [config.md](config.md)); an expression over 4096 characters is refused |
 | `SSLMode(host, mode, ref)` | config settings | one `set_config` rule |
 
 `PublicPathsCache` caches a key set (a JWKS or similar public document) at the edge for the TTL it is given. When a signing key is removed after a compromise, purge those paths at Cloudflare as part of the removal: a removed key is otherwise still served from the edge cache until the edge TTL expires, and a verifier that fetches the set keeps trusting it for that long.

@@ -76,7 +76,7 @@ func (z Zone) Contributions() ([]rules.Contribution, error) {
 		out = append(out, c)
 	}
 
-	if w := z.ManagedWAF.Library(z.Name); w != nil {
+	if w := z.ManagedWAFLibrary(z.Name); w != nil {
 		c, err := rules.ManagedWAF(w)
 		if err != nil {
 			return nil, fmt.Errorf("managed_waf: %w", err)

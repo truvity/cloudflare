@@ -21,6 +21,10 @@ type Project struct {
 type Endpoint struct {
 	Environment string
 	Hostname    string
+	// WAFOff, when non-empty, leaves the hostname out of the managed WAF
+	// and is the reason (the generated domain gets waf: off and this as
+	// its waf_reason). Empty: covered.
+	WAFOff string
 }
 
 type (
@@ -57,6 +61,10 @@ type (
 	DomainNames struct {
 		ListenerName string `yaml:"listener_name,omitempty"`
 		SecretName   string `yaml:"secret_name,omitempty"`
+		// WAF and WAFReason are Domain.WAF and Domain.WAFReason for the
+		// hostname, for a hostname whose endpoint cannot say it itself.
+		WAF       string `yaml:"waf,omitempty"`
+		WAFReason string `yaml:"waf_reason,omitempty"`
 	}
 )
 
@@ -134,9 +142,17 @@ func (c *Config) WithProjects(projects []Project) error {
 					}
 
 					domain := Domain{Host: endpoint.Hostname}
+					if endpoint.WAFOff != "" {
+						domain.WAF, domain.WAFReason = WAFOff, endpoint.WAFOff
+					}
+
 					if names, ok := override.Names[endpoint.Hostname]; ok {
 						domain.ListenerName = names.ListenerName
 						domain.SecretName = names.SecretName
+
+						if names.WAF != "" || names.WAFReason != "" {
+							domain.WAF, domain.WAFReason = names.WAF, names.WAFReason
+						}
 					}
 
 					domains = append(domains, domain)

@@ -320,6 +320,10 @@ type (
 		// Proxied serves the name through Cloudflare's edge (orange
 		// cloud); false answers DNS only.
 		Proxied bool `json:"proxied,omitempty" yaml:"proxied,omitempty"`
+		// WAF says whether a proxied record's name is covered by the
+		// zone's derived managed WAF. Nil is on; only false opts the name
+		// out (WAFCovered). Meaningless on a DNS-only record.
+		WAF *bool `json:"waf,omitempty" yaml:"waf,omitempty"`
 		// TTL in seconds for a DNS-only record, 60 to 86400; 0 is
 		// Cloudflare's automatic TTL. A proxied record is always
 		// automatic, so it must leave TTL at 0.
@@ -328,6 +332,10 @@ type (
 		Comment string `json:"comment,omitempty" yaml:"comment,omitempty"`
 	}
 )
+
+// WAFCovered reports whether the record's name belongs in the derived
+// managed WAF host set: it is proxied and has not opted out.
+func (r Record) WAFCovered() bool { return r.Proxied && (r.WAF == nil || *r.WAF) }
 
 // Record types Records accepts, and the DNS-only TTL range.
 var validRecordTypes = []string{"A", "AAAA", "CNAME"}

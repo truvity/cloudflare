@@ -56,12 +56,12 @@ zones:
     public_cache: {host: <name>, ttl: 5m}                   # needs cache
     trusted_clients: {hosts: [...], ranges: [...], skip: [...]}   # skip default: bot and rate-limit checks only
     rate_limits: {plan: pro, rules: [{name, endpoints: [{host, path | path_prefix, methods}], characteristics, period, requests, mitigation_timeout, action}]}
-    managed_waf: {hosts: [...]} | {whole_zone: true}
+    managed_waf: {enabled: true}                            # hosts are derived, never written; or the older {hosts: [exact...]} | {whole_zone: true}
     ssl_mode_rules: {<host>: full | strict}
     ssl_mode_rule_refs: {<host>: <32 hex>}
     config_rules_import_id: <32 hex>
     origin_cnames: {<host>: "" | d-<id>.execute-api.<region>.amazonaws.com}
-    records: [{name, type: A | AAAA | CNAME, content, proxied, ttl, comment}]
+    records: [{name, type: A | AAAA | CNAME, content, proxied, ttl, comment, waf: false, waf_reason}]
     security_txt: {contact: [mailto: | https:], expires: <RFC 3339>, preferred_languages}
 fleets:
   internal: {service: <name>, namespace: <ns>}   # required
@@ -137,6 +137,63 @@ else writes, and it is refused on any arrival but `cloudflare-tunnel`. Two
 consequences in this model: a `records` entry may name such a host (the zone is
 then its one writer), and an `origin_cnames` key may not (there is no tunnel
 record to move).
+
+### managed_waf: derived, explicit, next to the name
+
+`managed_waf: {enabled: true}` runs the Cloudflare Managed Ruleset on **every
+proxied name, listed one by one**: no wildcard, no whole-zone rule, and no host
+list in `cloudflare.yaml`. The list is derived by `Load` (as the cache hosts
+are) and kept in `Zone.WAFHosts`:
+
+- every exact host an exposure serves through a tunnel in the zone (a
+  `dns_elsewhere` name included: its traffic still arrives through
+  Cloudflare), plus
+- every `records` entry of the zone that is `proxied`,
+
+minus the names that opted out. So the coverage lives next to where each name
+is declared: a new catalog domain or project endpoint is covered with no edit
+to the zone, and a name is left out only where it is written, with a reason:
+
+```yaml
+# gateways.yaml
+domains:
+  - app.example.com                      # covered
+  - {host: upload.example.com, waf: off, waf_reason: raw multipart bodies trip rule 1234}
+  - {host: '*.preview.example.com', waf: off, waf_reason: per-install names; list them as exact domains}
+```
+
+`waf` takes only `off` (absent is on) and `waf_reason` is required with it and
+refused without it; both are refused on an exposure that does not arrive by
+`cloudflare-tunnel`. A record opts out with `waf: false` and `waf_reason`. A
+generated project group takes the same from the project endpoint
+(`catalog.Endpoint.WAFOff`, the reason) or from
+`project_groups.overrides[cluster][project].names[host]` (`waf`, `waf_reason`).
+
+**A wildcard never enters the list.** A proxied wildcard host (catalog domain
+or record) in a zone with `enabled: true` must opt out with a reason, or the
+config fails to load naming the host. `enabled` is exclusive with `hosts` and
+`whole_zone` (one source), and `hosts` refuses a `*` (it is **breaking** for a
+config that listed a wildcard: list the exact names on their domains and use
+`enabled`). A zone that sets neither `enabled` nor wildcards behaves as before.
+
+A name another stack creates in this zone (a status page, say) that neither the
+catalog nor `records` declares is added by the consumer after `Load`:
+
+```go
+cfg, _ := config.Load(fsys, cat, projects)
+err := cfg.AddWAFHosts("example.com", "status.example.com") // exact, inside the zone, zone has enabled: true
+```
+
+Exact lower-case names only, validated like the derived ones; a duplicate is
+absorbed. The rule is one expression, `http.host in {"a" "b" ...}`, sorted, and
+the build refuses one over Cloudflare's 4096-character limit
+(`zonespec.MaxRuleExpression`): opt names out with a reason, or split the zone.
+
+**Order of applies**: apply the zone stack before the services stack. A WAF
+entry for a name that does not exist yet is harmless; the reverse (the name
+served before the zone stack lists it) leaves a gap. Both stacks load the same
+config at the same commit, so the zone stack sees every name the services stack
+will create.
 
 ## Contributions
 

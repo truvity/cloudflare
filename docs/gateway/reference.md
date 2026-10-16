@@ -628,12 +628,13 @@ exposures:
             group: <name>           # keep a live group name
             description: <text>
             names:                  # keep live listener and Secret names, by host
-              <host>: {listener_name: <name>, secret_name: <name>}
+              <host>: {listener_name: <name>, secret_name: <name>, waf: off, waf_reason: <why>}
     clusters:
       <cluster>:
         groups:                     # the groups nobody generates: platform consoles, wildcards
           <name>:
-            domains: [<host>, {host: <host>, listener_name: <n>, secret_name: <n>}]
+            # waf: off + waf_reason leaves a tunnel-served name out of the zone's derived Cloudflare managed WAF
+            domains: [<host>, {host: <host>, listener_name: <n>, secret_name: <n>, dns_elsewhere: true, waf: off, waf_reason: <why>}]
             route_namespaces: [<namespace>]
             listener_set: true
 ```
@@ -642,7 +643,7 @@ exposures:
 c, err := catalog.Load(fsys)          // refuses unknown keys
 err = c.WithProjects([]catalog.Project{{
     Name: "shop",                     // also the namespace its routes live in
-    Endpoints: []catalog.Endpoint{{Environment: "dev", Hostname: "shop.dev.example.com"}},
+    Endpoints: []catalog.Endpoint{{Environment: "dev", Hostname: "shop.dev.example.com"}}, // WAFOff: "reason" opts a hostname out of the managed WAF
 }})
 ```
 
