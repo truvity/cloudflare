@@ -182,6 +182,11 @@ func TestIdentityIsSplitAcrossTheTwoCharts(t *testing.T) {
 	assert.Less(t, waves["Role"], waves["PodIdentityAssociation"])
 	assert.Less(t, waves["PodIdentityAssociation"], waves["ServiceAccount"])
 	assert.Equal(t, "Prune=false,Delete=false", account.Metadata.Annotations["argocd.argoproj.io/sync-options"])
+	// The ACK objects carry the same guard: the old Application's prune must not delete the Role.
+	for _, o := range load("static-site-infra", "ack") {
+		assert.Equal(t, "Prune=false,Delete=false", o.Metadata.Annotations["argocd.argoproj.io/sync-options"],
+			"%s lacks the prune/delete guard", o.Kind)
+	}
 
 	var job *object
 	for _, o := range load("static-site", "identity-managed") {

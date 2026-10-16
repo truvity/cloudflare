@@ -259,14 +259,25 @@ that denies egress by default it needs its own: name resolution, the Pod
 Identity agent (`169.254.170.23:80`) and HTTPS to STS.
 `static-site-infra` renders that policy with `networkPolicy.enabled: true`.
 
+**The guard.** The Policy, Role and PodIdentityAssociation carry
+`argocd.argoproj.io/sync-options: Prune=false,Delete=false`, like the
+ServiceAccount. Until the handover is done the live objects are tracked by the
+site's old Application, which refreshes independently and could re-take
+tracking; its sync would then prune them and ACK would delete the IAM Role.
+Argo CD reads the sync option from the live object, and the server-side apply
+by the infra Application puts the annotation there, where the previous owner
+cannot remove it. `Delete=false` also keeps the Role if the infra Application is
+deleted.
+
 **Moving an existing install.** The Policy, Role and PodIdentityAssociation
-render byte-identically to what `static-site` v3 rendered (same names, labels,
-annotations and specs), and the ServiceAccount has the same name, labels and
-annotations plus the wave and the guard. Install `static-site-infra` with the
-site's values *before* upgrading `static-site`: Argo CD adopts the live
-objects without changing them, and the upgraded `static-site` no longer renders
-them. Upgrade `static-site` first and it prunes the ACK objects, and ACK
-deletes the IAM Role. See the Upgrade section of the changelog.
+render as `static-site` v3 rendered them (same names, labels and specs) plus the
+wave and the guard, and the ServiceAccount has the same name, labels and
+annotations plus the wave and the guard. **Use `static-site-infra` 3.12.1 or
+later for the handover** (3.12.0 lacks the guard on the ACK objects). Install it
+with the site's values *before* upgrading `static-site`: Argo CD adopts the live
+objects, and the upgraded `static-site` no longer renders them. Upgrade
+`static-site` first and it prunes the ACK objects, and ACK deletes the IAM Role.
+See the Upgrade section of the changelog.
 
 The namespace needs the estate's ACK project wiring: the ACK role that applies
 these objects is confined on the `project` tag (`aws:ResourceTag/project`), so

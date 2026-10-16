@@ -28,6 +28,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "-25"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   name: example-ns-a-www
   description: "static-site ns-a/www: workload role"
@@ -67,6 +68,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   clusterName: example
   namespace: ns-a
@@ -89,6 +91,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
   annotations:
     argocd.argoproj.io/sync-wave: "-30"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   name: example-ns-a-www
   description: "static-site ns-a/www: ECR pull access"
