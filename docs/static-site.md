@@ -274,7 +274,13 @@ deleted.
 `ResourceAdoption=true`), so a create that finds the object already in AWS
 adopts it instead of failing with `Resource already exists` forever, which
 would block the Role and the association that reference it. This recovers an
-install whose first create reached AWS while ACK's own role was missing. The
+install whose first create reached AWS while ACK's own role was missing. ACK
+adopts by a resource's primary identifier: a Role's is its name, but a managed
+policy's is its ARN, so the Policy also carries
+`services.k8s.aws/adoption-fields: '{"arn":"arn:aws:iam::<accountId>:policy/<name>"}'`,
+built from `registry.ack.accountId` (rendered only when that is set; without
+it only the Role is adopted and the Policy create still fails with
+`EntityAlreadyExists`). The
 PodIdentityAssociation is not adopted: AWS identifies it by (cluster, namespace,
 ServiceAccount), and adopting it could let a legacy owner's deletion remove the
 association under the new object.

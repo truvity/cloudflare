@@ -97,6 +97,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "-30"
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
     services.k8s.aws/adoption-policy: adopt-or-create
+    services.k8s.aws/adoption-fields: '{"arn":"arn:aws:iam::123456789012:policy/example-static-www"}'
 spec:
   name: example-static-www
   description: "static-site default/static-site: ECR pull access"

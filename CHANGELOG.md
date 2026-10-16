@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Fixed
+
+- **`static-site-infra`: the ACK `Policy` now adopts the managed policy already in AWS.** v3.12.2's `adoption-policy: adopt-or-create` was enough for the `Role` (ACK adopts a role by name) but not for the `Policy`: an IAM managed policy is identified by its ARN, so ACK still called `CreatePolicy` and got `EntityAlreadyExists`. The `Policy` now also carries `services.k8s.aws/adoption-fields: {"arn":"arn:aws:iam::<accountId>:policy/<name>"}`, built from `registry.ack.accountId` (set it, together with `region`, for adoption to work; without it only the `Role` is adopted). The `Role` and `PodIdentityAssociation` annotations are unchanged. See [docs/static-site.md](docs/static-site.md).
+
 ## v3.12.2
 
 ### Fixed
