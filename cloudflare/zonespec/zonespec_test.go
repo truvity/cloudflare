@@ -1,6 +1,7 @@
 package zonespec_test
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -76,4 +77,28 @@ func TestHardeningStandsAlone(t *testing.T) {
 
 	var none *zonespec.ManagedWAF
 	assert.False(t, none.Managed())
+}
+
+func TestManagedWAFExpressionLengthIsGuarded(t *testing.T) {
+	var hosts []string
+	for i := 0; i < 400; i++ {
+		hosts = append(hosts, fmt.Sprintf("host-%04d.example.com", i))
+	}
+
+	err := (&zonespec.Args{ZoneID: "z", ManagedWAF: &zonespec.ManagedWAF{Zone: "example.com", Hosts: hosts}}).Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "over Cloudflare's 4096 limit")
+
+	few := hosts[:20]
+	require.NoError(t, (&zonespec.Args{ZoneID: "z", ManagedWAF: &zonespec.ManagedWAF{Zone: "example.com", Hosts: few}}).Validate())
+}
+
+func TestRecordWAFCoverage(t *testing.T) {
+	off := false
+	on := true
+
+	assert.True(t, zonespec.Record{Proxied: true}.WAFCovered(), "proxied defaults to covered")
+	assert.True(t, zonespec.Record{Proxied: true, WAF: &on}.WAFCovered())
+	assert.False(t, zonespec.Record{Proxied: true, WAF: &off}.WAFCovered())
+	assert.False(t, zonespec.Record{}.WAFCovered(), "a DNS-only record is not behind the WAF")
 }

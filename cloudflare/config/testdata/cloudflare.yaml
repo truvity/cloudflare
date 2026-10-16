@@ -23,9 +23,7 @@ zones:
     always_use_https: true
 
     managed_waf:
-      hosts:
-        - "*.devel.example.com"
-        - gemaal.example.com
+      enabled: true
 
     security_txt:
       contact: ["mailto:security@example.com"]

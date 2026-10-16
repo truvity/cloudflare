@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -1013,33 +1014,34 @@ func TestZoneHardeningIsPinned(t *testing.T) {
 		}
 	}
 
-	waf := c.Zones["example.com"].ManagedWAF
-	require.NotNil(t, waf)
-	assert.False(t, waf.WholeZone)
+	zone := c.Zones["example.com"]
+	require.NotNil(t, zone.ManagedWAF)
+	assert.True(t, zone.ManagedWAF.Enabled)
+	assert.Empty(t, zone.ManagedWAF.Hosts, "enabled derives the hosts; none are authored")
 
-	covered := func(host string) bool {
-		for _, h := range waf.Hosts {
-			if suffix, ok := strings.CutPrefix(h, "*"); (ok && strings.HasSuffix(host, suffix)) || h == host {
-				return true
-			}
-		}
-
-		return false
-	}
-
+	// Every exact name a tunnel carries in the zone is covered, in every
+	// cluster; the two opted-out wildcards are the only names left out.
 	for _, tun := range c.Tunnels {
 		for _, host := range tun.Hosts {
 			if c.ZoneOf(host) != "example.com" {
 				continue
 			}
 
-			if tun.Cluster == "devel" {
-				assert.True(t, covered(host), "step 1 covers every devel name: %s", host)
-			} else {
-				assert.False(t, covered(host), "step 1 covers devel only, not %s (%s)", host, tun.Cluster)
+			if strings.HasPrefix(host, "*.") {
+				assert.NotContains(t, zone.WAFHosts, host)
+
+				continue
 			}
+
+			assert.Contains(t, zone.WAFHosts, host, "every exact proxied name is covered: %s", host)
 		}
 	}
+
+	for _, h := range zone.WAFHosts {
+		assert.NotContains(t, h, "*")
+	}
+
+	assert.True(t, sort.StringsAreSorted(zone.WAFHosts))
 }
 
 // TestPublicCacheIsPinned: the installation host's public documents are
@@ -1072,6 +1074,7 @@ func TestTheFixtureRoundTrips(t *testing.T) {
 	for name, z := range parsed.Zones {
 		lz := loaded.Zones[name]
 		lz.CacheHosts = nil
+		lz.WAFHosts = nil
 		assert.Equal(t, z, lz, name)
 	}
 

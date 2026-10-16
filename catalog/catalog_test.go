@@ -259,3 +259,81 @@ func TestDomainMappingStillRefusesUnknownKeys(t *testing.T) {
 		t.Errorf("err = %v, want the unknown key named", err)
 	}
 }
+
+const wafDoc = `
+version: 1
+exposures:
+  public:
+    class: edge
+    arrival: cloudflare-tunnel
+    cloudflare_accounts: [main]
+    clusters:
+      dev:
+        groups:
+          apps:
+            domains:
+              - app.dev.example.com
+              - {host: status.dev.example.com, waf: off, waf_reason: served by a third party}
+            route_namespaces: [apps]
+`
+
+func TestWAFOptOutIsReadWithItsReason(t *testing.T) {
+	g := load(t, wafDoc).Groups("public", "dev")[0]
+
+	if !g.Domains[0].WAFCovered() || g.Domains[1].WAFCovered() {
+		t.Fatalf("covered = %v, %v, want true then false: absent is on", g.Domains[0].WAFCovered(), g.Domains[1].WAFCovered())
+	}
+
+	if g.Domains[1].WAFReason != "served by a third party" {
+		t.Errorf("reason = %q", g.Domains[1].WAFReason)
+	}
+}
+
+func TestWAFRefusals(t *testing.T) {
+	for name, tc := range map[string]struct{ old, new, want string }{
+		"off needs a reason":  {", waf_reason: served by a third party", "", "waf_reason: required"},
+		"reason needs off":    {"app.dev.example.com\n", "{host: app.dev.example.com, waf_reason: why}\n", "only meaningful with waf: off"},
+		"only off is a value": {"waf: off", "waf: on", `"on" is not "off"`},
+		"unknown key refused": {"waf: off", "waf: off, wafe: 1", "wafe"},
+		"off off a tunnel":    {"arrival: cloudflare-tunnel\n    cloudflare_accounts: [main]", "arrival: " + catalog.ArrivalPrivateClusterIP, "only a cloudflare-tunnel exposure"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := strings.Replace(wafDoc, tc.old, tc.new, 1)
+			if doc == wafDoc {
+				t.Fatalf("fixture has no %q", tc.old)
+			}
+
+			_, err := catalog.Load(fstest.MapFS{catalog.FileName: {Data: []byte(doc)}})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestWAFOptOutFlowsFromAProjectEndpoint(t *testing.T) {
+	c := load(t, fixture)
+
+	err := c.WithProjects([]catalog.Project{{Name: "shop", Endpoints: []catalog.Endpoint{
+		{Environment: "dev", Hostname: "shop.dev.example.com"},
+		{Environment: "dev", Hostname: "pay.dev.example.com", WAFOff: "a payment provider posts raw bodies"},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, g := range c.Groups("public", "dev") {
+		for _, d := range g.Domains {
+			switch d.Host {
+			case "shop.dev.example.com":
+				if !d.WAFCovered() {
+					t.Errorf("%s is opted out; absent is on", d.Host)
+				}
+			case "pay.dev.example.com":
+				if d.WAFCovered() || d.WAFReason == "" {
+					t.Errorf("%s: covered=%v reason=%q, want opted out with the reason", d.Host, d.WAFCovered(), d.WAFReason)
+				}
+			}
+		}
+	}
+}

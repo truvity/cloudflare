@@ -5,6 +5,16 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Added
+
+- **`cloudflare/config`: `managed_waf: {enabled: true}` derives the managed WAF's hosts: every proxied name, listed explicitly, next to where it is declared.** `Load` fills `Zone.WAFHosts` with every exact host the edge catalog serves through a tunnel in the zone (a `dns_elsewhere` name included) and every `proxied` entry of the zone's `records`, minus the names that opted out, sorted and de-duplicated, as `Zone.CacheHosts` is derived. The rule is one `http.host in {...}` expression, never a wildcard and never the whole zone. A name opts out where it is written, with a reason: a catalog domain takes `waf: off` and a required `waf_reason` (refused without `off`, and refused on an exposure that does not arrive by `cloudflare-tunnel`); a record takes `waf: false` and `waf_reason`; a generated project group takes `catalog.Endpoint.WAFOff` (the reason) or `names[host].{waf, waf_reason}` in `project_groups.overrides`. A proxied wildcard host (domain or record) in an enabled zone must opt out with a reason, or `Load` fails naming the host. `enabled` is exclusive with `hosts` and `whole_zone`. A name no catalog domain or record declares (a status page another stack creates) is added after `Load` with `Config.AddWAFHosts(zone, hosts...)`: exact lower-case names inside the zone, validated like the derived ones. A rule expression over Cloudflare's 4096-character limit is refused (`zonespec.MaxRuleExpression`). New library API: `Zone.ManagedWAFLibrary`, `zonespec.Record.WAF` and `WAFCovered`, `edgespec.DeriveInput.WAFZones`, `Group.WAFOff` and `Derived.WAFHosts`. Apply the zone stack before the services stack: a WAF entry for a name not created yet is harmless, the reverse leaves a gap. See [docs/cloudflare/config.md](docs/cloudflare/config.md).
+
+### Changed
+
+- **Breaking for a `cloudflare.yaml` whose `managed_waf.hosts` holds a wildcard (`*.x`): it now fails to load.** The managed WAF lists exact names only. Move to `managed_waf: {enabled: true}`, remove the host list, and give each wildcard catalog domain `waf: off` and a `waf_reason` (list the exact names it serves as their own domains). A config with exact `hosts` or `whole_zone` and no `enabled` loads and renders as before.
+
 ## v3.12.3
 
 ### Fixed

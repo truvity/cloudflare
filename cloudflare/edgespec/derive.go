@@ -105,6 +105,10 @@ type (
 		// record is written by something other than the tunnel: they get
 		// an ingress rule and no CNAME.
 		DNSElsewhere []string
+		// WAFOff are the group's hosts, a subset of Hosts, that the catalog
+		// opted out of the managed WAF (each with a reason, kept in the
+		// catalog).
+		WAFOff []string
 	}
 
 	// Exposure is one way names arrive through Cloudflare tunnels: the
@@ -130,6 +134,10 @@ type (
 		// CacheZones are the zones that declare a cache policy; only they get
 		// CacheHosts.
 		CacheZones []string
+		// WAFZones are the zones that enable the managed WAF; only they get
+		// WAFHosts, and only in them is a proxied wildcard host refused
+		// unless the catalog opted it out.
+		WAFZones []string
 	}
 
 	// Derived is what Derive returns.
@@ -139,6 +147,10 @@ type (
 		Tunnels []Tunnel
 		// CacheHosts maps each cache zone to its sorted, de-duplicated hosts.
 		CacheHosts map[string][]string
+		// WAFHosts maps each WAF zone to its sorted, de-duplicated exact
+		// hosts: every host an exposure serves in the zone, opted-out ones
+		// removed. Never a wildcard.
+		WAFHosts map[string][]string
 	}
 )
 
@@ -200,7 +212,12 @@ func Derive(in DeriveInput) (Derived, error) {
 		}
 	}
 
-	out := Derived{CacheHosts: deriveCache(in, zones)}
+	wafHosts, err := deriveWAF(in, zones)
+	if err != nil {
+		return Derived{}, err
+	}
+
+	out := Derived{CacheHosts: deriveCache(in, zones), WAFHosts: wafHosts}
 
 	for k, list := range hosts {
 		ordered := OrderHosts(list)
@@ -397,4 +414,56 @@ func sortedKeys[V any](m map[string]V) []string {
 	sort.Strings(out)
 
 	return out
+}
+
+// deriveWAF is each WAF zone's hosts: every exact name an exposure serves
+// through a tunnel in the zone (the names Cloudflare proxies, whether or not
+// the tunnel writes their CNAME), minus the names the catalog opted out.
+//
+// EXPLICIT, NEVER A WILDCARD. The managed WAF lists the names it covers, one
+// by one, beside where each is declared. A wildcard host cannot be listed: it
+// would be a suffix test that also covers names nobody declared. So a proxied
+// wildcard host in a WAF zone must be opted out with a reason, and is
+// refused here, naming the host, when it is not.
+func deriveWAF(in DeriveInput, zones []string) (map[string][]string, error) {
+	if len(in.WAFZones) == 0 {
+		return nil, nil
+	}
+
+	byZone := map[string][]string{}
+
+	for _, e := range in.Exposures {
+		for _, g := range e.Groups {
+			for _, host := range g.Hosts {
+				zone := ZoneOf(zones, host)
+				if zone == "" || !slices.Contains(in.WAFZones, zone) {
+					continue
+				}
+
+				if slices.Contains(g.WAFOff, host) {
+					continue
+				}
+
+				if strings.HasPrefix(host, "*.") {
+					return nil, fmt.Errorf(
+						"exposures[%s].clusters[%s].groups[%s]: %q is a proxied wildcard in zone %s, whose managed_waf lists exact names only: "+
+							"give the domain waf: off and a waf_reason, and list the exact names it serves",
+						e.Name, g.Cluster, g.Name, host, zone)
+				}
+
+				byZone[zone] = append(byZone[zone], host)
+			}
+		}
+	}
+
+	out := make(map[string][]string, len(in.WAFZones))
+
+	for _, zone := range in.WAFZones {
+		hosts := byZone[zone]
+		slices.Sort(hosts)
+
+		out[zone] = slices.Compact(hosts)
+	}
+
+	return out, nil
 }

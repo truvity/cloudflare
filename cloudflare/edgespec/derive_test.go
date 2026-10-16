@@ -220,3 +220,49 @@ func TestDeriveDNSElsewhereKeepsTheRuleAndDropsTheRecord(t *testing.T) {
 
 	require.NoError(t, ValidateRouting(got.Tunnels))
 }
+
+func TestDeriveWAFHostsAreEveryExactProxiedName(t *testing.T) {
+	in := deriveInput()
+	in.WAFZones = []string{"example.com"}
+	// The wildcards of the shared input must opt out; the exact names stay.
+	in.Exposures[0].Groups[0].WAFOff = []string{"*.example.com", "*.env.example.com"}
+	in.Exposures[0].Groups[1].DNSElsewhere = []string{"console.example.com"}
+
+	got, err := Derive(in)
+	require.NoError(t, err)
+
+	// Every exact host in the zone, platform consoles included (the cache
+	// list leaves those out; the WAF does not), a dns_elsewhere host too, and
+	// nothing from another zone. Sorted.
+	assert.Equal(t, map[string][]string{"example.com": {"app.example.com", "console.example.com", "dev.example.com"}}, got.WAFHosts)
+
+	for _, h := range got.WAFHosts["example.com"] {
+		assert.NotContains(t, h, "*")
+	}
+}
+
+func TestDeriveWAFOptOutRemovesAnExactHost(t *testing.T) {
+	in := deriveInput()
+	in.WAFZones = []string{"example.com"}
+	in.Exposures[0].Groups[0].WAFOff = []string{"*.example.com", "*.env.example.com", "app.example.com"}
+
+	got, err := Derive(in)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"console.example.com", "dev.example.com"}, got.WAFHosts["example.com"])
+}
+
+func TestDeriveWAFRefusesAProxiedWildcardWithoutAnOptOut(t *testing.T) {
+	in := deriveInput()
+	in.WAFZones = []string{"example.com"}
+
+	_, err := Derive(in)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"*.example.com"`, "the host is named")
+	assert.Contains(t, err.Error(), "waf_reason")
+}
+
+func TestDeriveWAFZonesOnly(t *testing.T) {
+	got, err := Derive(deriveInput())
+	require.NoError(t, err, "a wildcard is fine in a zone that does not enable the WAF")
+	assert.Empty(t, got.WAFHosts)
+}

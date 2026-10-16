@@ -195,8 +195,25 @@ type (
 		// whose records are the tunnel's own, so it is refused on any
 		// other arrival.
 		DNSElsewhere bool `yaml:"dns_elsewhere,omitempty"`
+		// WAF is "off" to leave this name out of the Cloudflare managed
+		// WAF the zone's `managed_waf: {enabled: true}` derives; absent
+		// means the name is covered. The only value is "off": covering a
+		// name is the default and needs no word. Only meaningful on a
+		// cloudflare-tunnel exposure, the one whose names Cloudflare
+		// proxies, so it is refused on any other arrival.
+		WAF string `yaml:"waf,omitempty"`
+		// WAFReason is why the name is not covered. Required with
+		// waf: off and refused without it, so every gap in the WAF is
+		// explained next to the name it is a gap for.
+		WAFReason string `yaml:"waf_reason,omitempty"`
 	}
 )
+
+// WAFOff is the only value of Domain.WAF.
+const WAFOff = "off"
+
+// WAFCovered reports whether the managed WAF covers the domain's name.
+func (d Domain) WAFCovered() bool { return d.WAF != WAFOff }
 
 // The two listener_set states, in the order a group moves through them.
 //
@@ -256,9 +273,9 @@ func (d *Domain) UnmarshalYAML(node *yaml.Node) error {
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			switch key := node.Content[i].Value; key {
-			case "host", "listener_name", "secret_name", "dns_elsewhere":
+			case "host", "listener_name", "secret_name", "dns_elsewhere", "waf", "waf_reason":
 			default:
-				return fmt.Errorf("line %d: domain field %q is not host, listener_name, secret_name or dns_elsewhere", node.Content[i].Line, key)
+				return fmt.Errorf("line %d: domain field %q is not host, listener_name, secret_name, dns_elsewhere, waf or waf_reason", node.Content[i].Line, key)
 			}
 		}
 
@@ -266,7 +283,7 @@ func (d *Domain) UnmarshalYAML(node *yaml.Node) error {
 
 		return node.Decode((*plain)(d))
 	default:
-		return fmt.Errorf("line %d: a domain is a hostname or a {host, listener_name, secret_name, dns_elsewhere} mapping", node.Line)
+		return fmt.Errorf("line %d: a domain is a hostname or a {host, listener_name, secret_name, dns_elsewhere, waf, waf_reason} mapping", node.Line)
 	}
 }
 
@@ -441,6 +458,15 @@ func (e Exposure) validate(name string) error {
 								"and only a %s exposure has a tunnel record to leave out",
 							name, cluster, group, d.Host, e.Arrival, ArrivalCloudflareTunnel)
 					}
+				}
+			}
+
+			// waf says whether the zone's managed WAF covers a name
+			// Cloudflare proxies. A name on any other arrival is not
+			// proxied by Cloudflare, so there is nothing to opt out of.
+			for _, d := range groups[group].Domains {
+				if err := d.validateWAF(name, cluster, group, e.Arrival); err != nil {
+					return err
 				}
 			}
 
@@ -827,4 +853,25 @@ func firstDuplicate(values []string) string {
 	}
 
 	return ""
+}
+
+// validateWAF holds a domain's waf and waf_reason to their rules: waf is
+// "off" or absent, off needs a reason, a reason needs off, and only a
+// cloudflare-tunnel exposure has a proxied name to opt out.
+func (d Domain) validateWAF(exposure, cluster, group, arrival string) error {
+	where := fmt.Sprintf("cfg/gateways: exposures[%s].clusters[%s].groups[%s].domains[%s]", exposure, cluster, group, d.Host)
+
+	switch {
+	case d.WAF != "" && d.WAF != WAFOff:
+		return fmt.Errorf("%s.waf: %q is not \"off\"; covering a name is the default and is not written", where, d.WAF)
+	case d.WAF == WAFOff && strings.TrimSpace(d.WAFReason) == "":
+		return fmt.Errorf("%s.waf_reason: required with waf: off; say why the name is left out of the managed WAF", where)
+	case d.WAF == "" && d.WAFReason != "":
+		return fmt.Errorf("%s.waf_reason: only meaningful with waf: off", where)
+	case d.WAF != "" && arrival != ArrivalCloudflareTunnel:
+		return fmt.Errorf("%s.waf: this exposure arrives by %s, and only a %s exposure has a name Cloudflare proxies",
+			where, arrival, ArrivalCloudflareTunnel)
+	}
+
+	return nil
 }

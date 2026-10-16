@@ -143,8 +143,16 @@ func (m *ManagedWAF) validate(zoneID string) error {
 		seen[host] = struct{}{}
 	}
 
+	if n := len(ManagedWAFExpression(m)); n > MaxRuleExpression {
+		return fmt.Errorf("zone %q: managedWaf: the rule expression is %d characters, over Cloudflare's %d limit; "+
+			"fewer hosts, or opt names out of the WAF with a reason", zoneID, n, MaxRuleExpression)
+	}
+
 	return nil
 }
+
+// MaxRuleExpression is Cloudflare's limit on a ruleset rule's expression.
+const MaxRuleExpression = 4096
 
 // ManagedWAFExpression is the filter the managed ruleset's execute rule
 // runs on: "true" for the whole zone, else the hosts, sorted so authoring
