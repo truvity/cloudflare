@@ -266,7 +266,7 @@ annotations plus the wave and the guard. Install `static-site-infra` with the
 site's values *before* upgrading `static-site`: Argo CD adopts the live
 objects without changing them, and the upgraded `static-site` no longer renders
 them. Upgrade `static-site` first and it prunes the ACK objects, and ACK
-deletes the IAM Role. See the Upgrade section of the v4.0.0 changelog.
+deletes the IAM Role. See the Upgrade section of the changelog.
 
 The namespace needs the estate's ACK project wiring: the ACK role that applies
 these objects is confined on the `project` tag (`aws:ResourceTag/project`), so

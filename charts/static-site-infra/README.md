@@ -16,7 +16,7 @@ Install it, with the same release name (or `installName`), and wait until it is
 healthy **before** installing or upgrading `static-site`: that chart's
 pre-install hook runs as this chart's ServiceAccount. It renders nothing unless
 `registry.auth=ecr` and `registry.ack.enabled=true`. The objects are those the
-`static-site` chart rendered before v4.0.0, with the same names and specs.
+`static-site` chart rendered before this chart existed, with the same names and specs.
 
 Values: `registry.auth`, `registry.ack.{enabled,clusterName,repositoryArns,rolePrefix,accountId,region,tags,permissionsBoundary}`,
 `serviceAccount.{create,name,annotations}`, `networkPolicy.enabled`,
