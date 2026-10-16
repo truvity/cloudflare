@@ -269,6 +269,16 @@ by the infra Application puts the annotation there, where the previous owner
 cannot remove it. `Delete=false` also keeps the Role if the infra Application is
 deleted.
 
+**Adoption.** The Policy and Role carry
+`services.k8s.aws/adoption-policy: adopt-or-create` (ACK runs with
+`ResourceAdoption=true`), so a create that finds the object already in AWS
+adopts it instead of failing with `Resource already exists` forever, which
+would block the Role and the association that reference it. This recovers an
+install whose first create reached AWS while ACK's own role was missing. The
+PodIdentityAssociation is not adopted: AWS identifies it by (cluster, namespace,
+ServiceAccount), and adopting it could let a legacy owner's deletion remove the
+association under the new object.
+
 **Moving an existing install.** The Policy, Role and PodIdentityAssociation
 render as `static-site` v3 rendered them (same names, labels and specs) plus the
 wave and the guard, and the ServiceAccount has the same name, labels and

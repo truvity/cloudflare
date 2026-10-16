@@ -5,6 +5,12 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Fixed
+
+- **`static-site-infra`: the ACK `Policy` and `Role` carry `services.k8s.aws/adoption-policy: adopt-or-create`.** A `Policy` created while the project's ACK role was missing (AccessDenied) existed in AWS on the retry, so ACK refused the create for good (`ACK.Terminal`, "Resource already exists") and the `Role` and `PodIdentityAssociation` that reference it stayed blocked ("Reference resolution failed"). With the annotation, ACK (feature gate `ResourceAdoption=true`) adopts the object already in AWS. The `PodIdentityAssociation` is deliberately not adopted: AWS identifies it by cluster, namespace and ServiceAccount, and adopting it could let a legacy owner's deletion remove the association under the new object. See [docs/static-site.md](docs/static-site.md).
+
 ## v3.12.1
 
 ### Fixed
