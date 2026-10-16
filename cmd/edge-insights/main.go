@@ -249,8 +249,8 @@ func runDismiss(ctx context.Context, c *insights.Client, out io.Writer, format, 
 		}
 
 		byID := make(map[string]insights.Insight, len(listed))
-		for _, i := range listed {
-			byID[i.ID] = i
+		for k := range listed {
+			byID[listed[k].ID] = listed[k]
 		}
 
 		for _, id := range ids {
@@ -263,9 +263,9 @@ func runDismiss(ctx context.Context, c *insights.Client, out io.Writer, format, 
 		}
 
 		if apply {
-			for _, i := range done {
-				if err := c.Dismiss(ctx, scope, i.ID, !undo); err != nil {
-					return fmt.Errorf("insight %s: %w", i.ID, err)
+			for k := range done {
+				if err := c.Dismiss(ctx, scope, done[k].ID, !undo); err != nil {
+					return fmt.Errorf("insight %s: %w", done[k].ID, err)
 				}
 			}
 		}
