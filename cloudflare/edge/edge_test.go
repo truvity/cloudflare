@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
-	"github.com/truvity/edge/v3/cloudflare/zone"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/zone"
 )
 
 func baseArgs(sink TokenSink) Args {

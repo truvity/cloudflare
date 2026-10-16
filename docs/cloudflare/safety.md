@@ -164,28 +164,18 @@ is refused.
 
 ### cloudflare/r2
 
-The parent token is account-owned (`cloudflare.AccountToken`,
-`/accounts/{account_id}/tokens`), not a user token: it is not tied to a
-person who might leave, and its permission group is looked up through the
-**account-scoped** `getAccountApiTokenPermissionGroupsList` data source —
-never the global, user-token-scoped list, which would look up the right
-name in the wrong catalog. Since v2.4.0 the token itself is minted by
-`account.NewChildToken` (see [cloudflare/account](#cloudflareaccount)); the rows below
-that are genuinely `account.ChildTokenConfig`'s own refusals (jurisdiction,
-`expiresOn`, `rotation`) are enforced twice — once by `Config.Validate`
-below, before anything is registered, and again inside `NewChildToken` —
-so they can never drift apart.
+The component creates a bucket and its lifecycle and mints no token (the
+inline parent token, `Config.Token`, was removed in v4.0.0; a bucket's token
+is `account.NewChildToken`'s, see [cloudflare/account](#cloudflareaccount)).
+The jurisdiction check is the same function the token's scope uses, so a
+bucket accepted here is one a separately minted token can be scoped to.
 
 | Refusal | What it prevents |
 | --- | --- |
-| no `accountId` or no `bucket` | a bucket, and a token, with nothing to be scoped to |
+| no `accountId` or no `bucket` | a bucket with nothing to be scoped to |
 | a `bucket` outside Cloudflare's own naming rules (3-63 characters; lowercase letters, digits, hyphens; no leading or trailing hyphen) | a bucket name the API would refuse at apply time instead of before it |
 | a `jurisdiction` other than `""`, `default`, `eu`, `fedramp`, `us` | a value outside the set Cloudflare accepts |
 | `lifecycle.expireAfterDays` not greater than zero | a rule that expires everything immediately or nothing at all; omit `lifecycle` instead |
-| `token.permission` other than `object-read-write` or `object-read-only` | a permission the two known permission groups do not name, found during the apply instead of before it |
-| `token.expiresOn` not RFC3339, or not in the future | a token that is already expired, or a value the API rejects |
-| `token.rotation` containing anything but letters, digits, `.`, `_` or `-` | an arbitrary string reaching Cloudflare's token `Name` field unescaped |
-| an unknown `token.permissionGroupName` (or the default name, if Cloudflare has renamed it) | New refuses at apply time with the name it looked up, rather than creating a token with no permission group at all |
 
 ### cloudflare/presettoken
 
@@ -222,8 +212,7 @@ Prototypes are protected: their ids are in the sluis configuration, and a replac
 
 ### Rotation is a REPLACE, not an update
 
-`Rotation` (`ChildTokenConfig.Rotation`; `cloudflare/r2`'s own `TokenConfig.
-Rotation` is the same field, one level up) is not a Cloudflare field. It
+`Rotation` (`ChildTokenConfig.Rotation`) is not a Cloudflare field. It
 is embedded in the account-owned token's Cloudflare-visible `Name` — a
 real, mutable field: Cloudflare's account-token update endpoint, like its
 user-token one, changes name, policies, status and dates in place, never
@@ -336,7 +325,7 @@ provider enabled never saw it — the invoke fell back to a provider that
 existed and worked. An estate that DISABLES the default provider (so
 every Cloudflare call is accountable to a named account, rather than to
 whichever one Pulumi picks) saw its whole Cloudflare stack fail at
-preview the moment `Token.Enabled` was turned on: `Default provider for
+preview the moment its inline token (since removed) was turned on: `Default provider for
 'cloudflare' disabled ... must use an explicit provider`, with no
 resource yet touched.
 

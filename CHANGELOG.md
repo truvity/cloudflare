@@ -5,6 +5,15 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the Go module are released
 together at every version.
 
+## Unreleased
+
+### Breaking
+
+- **The Go module is `github.com/truvity/edge/v4`.** Rewrite `github.com/truvity/edge/v3` to `.../v4` in your imports and run `go mod tidy`. Every chart is published at 4.0.0 and renders exactly what 3.12.x rendered. See [docs/cloudflare/adoption.md](docs/cloudflare/adoption.md#v4-the-module-moves-to-edgev4-and-three-deprecated-things-go).
+- **`cloudflare/presets`: the `edge` kind is removed** (`KindEdge`, deprecated since it was split into `zone` and `services`). `StandardRows(account, grants, wafZones, botZones)` returns the four rows status, r2-admin, zone and services; `SplitRows` is gone. A row of kind `edge` is refused as an unknown kind. `r2-admin` stays: it is still deprecated, but no narrower replacement exists yet.
+- **`cloudflare/r2`: `Config.Token` is removed**, with `TokenConfig`, the `Permission*` constants and `Permissions()`, the `Token`, `TokenID`, `TokenValue`, `S3AccessKeyID` and `S3SecretAccessKey` fields of `R2`, the matching component outputs and the `token-<name>` child (deprecated since v2.6.0). The component creates the bucket and its lifecycle only. Mint a bucket's parent token with `account.NewChildToken` (or `NewChildTokenSet`) and `account.R2BucketParentPolicies(jurisdiction, bucket)`, which grant the same permission group on the same resource key.
+- **`cloudflare/zone`, `cloudflare/zonespec`: `Compat` (`TopLevelAliases`) is removed**, and `zonestack` no longer sets it. The `firewall-custom-<name>`, `tls-client-auth-<name>` and `ssl-mode-<name>` children no longer carry an alias from the no-parent URN. Apply every zone stack with a v3 release first: a stack that was applied after it moved under the zone component previews with no create or delete on v4.
+
 ## v3.12.3
 
 ### Fixed

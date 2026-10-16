@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/truvity/edge/v3/cloudflare/internal/cfapi"
+	"github.com/truvity/edge/v4/cloudflare/internal/cfapi"
 )
 
 // Insight is one Security Center insight.

@@ -12,9 +12,9 @@ reg := presets.Registry{
 	Zones:    []presets.Zone{{Name: "example.com", ID: zoneID, Account: "example"}},
 }
 
-rows := presets.StandardRows("example", []string{"example:deploy"}, []string{"example.com"})
+rows := presets.StandardRows("example", []string{"example:deploy"}, []string{"example.com"}, nil)
 
-table, err := presets.Build(reg, rows) // edge, status, r2-admin (use presets.SplitRows to add zone and services)
+table, err := presets.Build(reg, rows) // status, r2-admin, zone, services
 ```
 
 The package reads no file and no environment and registers no resource. Rows
@@ -32,14 +32,13 @@ read one `presets.Preset`.
 
 | Kind | Rights, in this order |
 |---|---|
-| `zone` | the per-company zone stack (`cloudflare-<company>-zone`): every group of `edge` except Cloudflare Tunnel Write, so no account-wide grant. DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone (`account.ZonePolicies`); Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`; Zone Settings Write alone on each `SecurityTxtOnly` zone. DNS Write is the zone's own `records:` |
+| `zone` | the per-company zone stack (`cloudflare-<company>-zone`): no account-wide grant. DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone (`account.ZonePolicies`); Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`; Zone Settings Write alone on each `SecurityTxtOnly` zone (one extra policy per such zone, last: what writing its security.txt takes, `account.SecurityTxtPolicies`). DNS Write is the zone's own `records:`. No R2. The `edge` kind (this plus the account's tunnel write in one token) was removed in v4.0.0: use `zone` and `services` |
 | `services` | the per-company services stack (`cloudflare-<company>-services`): tunnel write on the account; DNS write on each managed zone. The same policies as `status` (`tokensplit.StatusPolicies`), differing in name and description only; a `SecurityTxtOnly` zone is refused as for `status` |
-| `edge` | **DEPRECATED, kept for one release; use `zone` and `services`.** tunnel write on the account; DNS, SSL and certificates, zone settings, cache settings and config settings write on each zone; Zone WAF Write on `WAFZones`; Bot Management Write on `BotManagementZones`; Cloud Connector Write on `CloudConnectorZones`; DNS Write on `DNSOnlyZones`. A zone with `Zone.SecurityTxtOnly` (config `manage: security_txt`) gets none of these: one extra policy per such zone, last, granting only Zone Settings Write (`account.SecurityTxtPolicies`), which is what writing its security.txt takes. No R2. |
 | `status` | tunnel write on the account; DNS write on each zone |
 | `dns` | DNS write on each zone |
 | `insights` | read only: Account Security Center Insights Read on the account; Zone Security Center Insights Read, Bot Management Read, Analytics Read and Zone WAF Read on each zone. Nothing writable |
 | `insights-admin` | Account Security Center Insights Write and Read on the account; Zone Security Center Insights Write and Read on each zone. The one kind that can dismiss insights (`edge-insights dismiss`); Read sits beside Write because dismissing starts from a listing and Write is not assumed to imply Read. Nothing else writable |
-| `r2-admin` | **DEPRECATED, kept for one release.** Workers R2 Storage Write on the account (every bucket) |
+| `r2-admin` | **DEPRECATED, kept until a narrower replacement exists.** Workers R2 Storage Write on the account (every bucket) |
 | `bucket-rw` | R2 object read and write on one bucket (`Bucket`, `Jurisdiction`); an R2 credential |
 | `bucket-write` | R2 object write on one bucket; an R2 credential |
 
@@ -88,8 +87,7 @@ has no way to ask.
 | `BuildReady(reg, rows)` | the same, leaving out the rows of an account with a pending zone (`zone_id_pending`): its prototypes would be narrower than its children, and the other accounts are unaffected |
 | `ForAccount(reg, rows, account)` | one account's presets; fails only for that account's own problems and names the pending zone |
 | `Named(table, name)`, `AccountOf(reg, preset)` | lookups |
-| `StandardRows(account, grants, wafZones)` | the three rows `<account>-edge`, `-status`, `-r2-admin` (`edge` and `r2-admin` are deprecated). Its output does not change |
-| `SplitRows(account, grants, wafZones, botZones)` | the same three rows, then `<account>-zone` (WAF on `wafZones`, Bot Management on `botZones`) and `<account>-services`; `botZones` is also set on `edge` so the pair stays comparable |
+| `StandardRows(account, grants, wafZones, botZones)` | the four rows `<account>-status`, `-r2-admin`, `-zone` (WAF on `wafZones`, Bot Management on `botZones`) and `-services`. Until v4.0.0 it returned edge, status and r2-admin, and `SplitRows` added zone and services |
 
 A `Preset` carries `Name`, `Kind`, `Account`, `AccountID`, `Description`,
 `Policies` (the `account.ChildTokenPolicy` list, in its fixed order), `R2`,
@@ -124,7 +122,7 @@ pins it.
 ## The golden test
 
 `cloudflare/presets/testdata` holds a synthetic registry (two accounts, four
-zones, one account whose edge preset has a WAF zone) and six rows, and
+zones, one account whose zone preset has a WAF zone) and eight rows, and
 `golden.json`, the table they build, dumped as the documents Cloudflare
 receives. `TestGolden` builds the table and requires the bytes to match: names,
 descriptions, grants, lifetimes, store, every group, scope and order. A change

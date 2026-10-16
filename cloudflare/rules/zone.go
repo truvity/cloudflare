@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/truvity/edge/v3/cloudflare/zonespec"
+	"github.com/truvity/edge/v4/cloudflare/zonespec"
 )
 
 // validationZone stands in for the zone id in zonespec's messages: the rules

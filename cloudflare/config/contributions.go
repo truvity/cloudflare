@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/truvity/edge/v3/cloudflare/rules"
+	"github.com/truvity/edge/v4/cloudflare/rules"
 )
 
 // SSLModeRef is the rule ref of host's rule in the zone's ssl_mode_rules:

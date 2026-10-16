@@ -188,6 +188,27 @@ the new pods are ready before the old ones go. To keep the v1.x names,
 set `fullnameOverride: cloudflared` (the ServiceAccount follows it) and
 use the procedure above, with your release name in the `helm` commands.
 
+### v4: the module moves to edge/v4, and three deprecated things go
+
+v4.0.0 is a major release: the module path is `github.com/truvity/edge/v4`
+(rewrite `github.com/truvity/edge/v3` to `.../v4` in your imports and run
+`go mod tidy`), and every chart is published at 4.0.0 with no change in
+what it renders. Three deprecated things are removed, so do these first, on
+v3:
+
+- **The `edge` preset kind** (`presets.KindEdge`). Use the `zone` and
+  `services` kinds. `presets.StandardRows(account, grants, wafZones,
+  botZones)` now returns status, r2-admin, zone and services; `SplitRows` is
+  gone.
+- **`r2.Config.Token`** (with `TokenConfig` and the `TokenID`, `TokenValue`,
+  `S3AccessKeyID` and `S3SecretAccessKey` outputs, and the `token-<name>`
+  child). Mint a bucket's parent token with `account.NewChildToken` and
+  `account.R2BucketParentPolicies` (see [layout.md](layout.md#recommended-layout)).
+- **`zonespec.Compat` (`TopLevelAliases`)**, and with it the alias `zonestack`
+  set on `firewall-custom-`, `tls-client-auth-` and `ssl-mode-` children.
+  Apply your zone stacks on v3 first, so their state holds the component
+  URNs; a preview on v4 then shows no create or delete.
+
 ### The Go module moves to edge/v3
 
 **The repository is now `truvity/edge`, and the Go module with it.** The

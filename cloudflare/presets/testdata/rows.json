@@ -1,13 +1,5 @@
 [
   {
-    "name": "globex-edge",
-    "kind": "edge",
-    "account": "globex",
-    "grants": [
-      "example:deploy"
-    ]
-  },
-  {
     "name": "globex-status",
     "kind": "status",
     "account": "globex",
@@ -24,12 +16,17 @@
     ]
   },
   {
-    "name": "acme-edge",
-    "kind": "edge",
-    "account": "acme",
-    "waf_zones": [
-      "example.com"
-    ],
+    "name": "globex-zone",
+    "kind": "zone",
+    "account": "globex",
+    "grants": [
+      "example:deploy"
+    ]
+  },
+  {
+    "name": "globex-services",
+    "kind": "services",
+    "account": "globex",
     "grants": [
       "example:deploy"
     ]
@@ -45,6 +42,25 @@
   {
     "name": "acme-r2-admin",
     "kind": "r2-admin",
+    "account": "acme",
+    "grants": [
+      "example:deploy"
+    ]
+  },
+  {
+    "name": "acme-zone",
+    "kind": "zone",
+    "account": "acme",
+    "waf_zones": [
+      "example.com"
+    ],
+    "grants": [
+      "example:deploy"
+    ]
+  },
+  {
+    "name": "acme-services",
+    "kind": "services",
     "account": "acme",
     "grants": [
       "example:deploy"

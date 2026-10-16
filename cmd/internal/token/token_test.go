@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cmd/internal/token"
+	"github.com/truvity/edge/v4/cmd/internal/token"
 )
 
 func TestResolve(t *testing.T) {

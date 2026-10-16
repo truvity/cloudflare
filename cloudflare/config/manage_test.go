@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/config"
 )
 
 const heldZone = `  held.example.net: {account: partner, zone_id: z4, manage: security_txt, ` +

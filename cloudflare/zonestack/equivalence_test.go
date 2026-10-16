@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/catalog"
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/edge"
-	"github.com/truvity/edge/v3/cloudflare/internal/stacktest"
-	"github.com/truvity/edge/v3/cloudflare/rules"
-	"github.com/truvity/edge/v3/cloudflare/services"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
-	"github.com/truvity/edge/v3/cloudflare/zone"
-	"github.com/truvity/edge/v3/cloudflare/zonestack"
+	"github.com/truvity/edge/v4/catalog"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/edge"
+	"github.com/truvity/edge/v4/cloudflare/internal/stacktest"
+	"github.com/truvity/edge/v4/cloudflare/rules"
+	"github.com/truvity/edge/v4/cloudflare/services"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/zone"
+	"github.com/truvity/edge/v4/cloudflare/zonestack"
 )
 
 // The split of one stack into a zone stack and a services stack is

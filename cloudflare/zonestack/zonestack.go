@@ -22,11 +22,11 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/rules"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
-	"github.com/truvity/edge/v3/cloudflare/zone"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/rules"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/zone"
 )
 
 // AOPProviderPrefix names the provider of a zone's Authenticated Origin Pulls
@@ -200,8 +200,7 @@ func aopProvider(slug string, p *account.Account) pulumi.ResourceTransformation 
 // the library builds them (config.Zone.Contributions: public cache, SSL
 // mode, rate limits, trusted clients, managed WAF), with their refs. A
 // ruleset an estate registered in another form takes one in-place update
-// when it adopts these (docs/cloudflare/stacks.md). Compat.TopLevelAliases is
-// on: the resources that live at a stack's root today keep their URNs.
+// when it adopts these (docs/cloudflare/stacks.md).
 //
 // A zone managed for its security.txt only (manage: security_txt) has no zone
 // component: ZoneArgs returns ErrSecurityTxtOnly for it, and a caller that
@@ -221,7 +220,6 @@ func ZoneArgs(name string, z config.Zone) (zone.Args, error) {
 		HSTS:           z.HSTS.Library(),
 		BotManagement:  z.BotManagement.Library(),
 		Records:        z.RecordsLibrary(name),
-		Compat:         zone.Compat{TopLevelAliases: true},
 	}
 
 	if z.TotalTLS != nil {

@@ -13,8 +13,9 @@ catalog (Go, data) ─┬─► Cloudflare half   cloudflare/*  (Pulumi): zones,
                                           charts/cloudflared      : the in-cluster end of a tunnel
 ```
 
-One tag versions everything: the Go module `github.com/truvity/edge/v3` and
-all the charts are released together, at the same version (first v3.0.0).
+One tag versions everything: the Go module `github.com/truvity/edge/v4` and
+all the charts are released together, at the same version (the module path
+follows the major: `/v4` from v4.0.0).
 The repository was formed from `truvity/cloudflare` and `truvity/gateway`
 (full history of both kept; see [docs/README.md](docs/README.md)).
 
@@ -41,10 +42,10 @@ The repository was formed from `truvity/cloudflare` and `truvity/gateway`
 | `charts/static-site-infra` | The cloud identity of a static-site install on EKS: the ACK IAM Policy and Role, the Pod Identity association, then the ServiceAccount, installed (and healthy) before `static-site`, which checks in a hook that a pod admitted now has the identity ([docs/static-site.md](docs/static-site.md#ecr-on-eks-with-ack-two-charts)) | shipped |
 | `cmd/static-site`, `charts/static-site` | A generic static-site server and its chart: pulls one OCI artifact (a built site) by digest, serves it with CDN-friendly caching and allowlisted serve-time placeholders; one image and one chart for every site ([docs/static-site.md](docs/static-site.md)) | shipped |
 | `charts/gateway-routes` | A library chart for the application's side: one HTTPRoute whose rules are named, `app` for the gated surface and `static` for the public assets, so a policy can gate one of them | shipped |
-| `catalog` (Go, `github.com/truvity/edge/v3/catalog`) | The edge catalog as data: loader, validation, queries, the grants a ListenerSet admits by, and the per-project groups generated from a list of projects | shipped |
+| `catalog` (Go, `github.com/truvity/edge/v4/catalog`) | The edge catalog as data: loader, validation, queries, the grants a ListenerSet admits by, and the per-project groups generated from a list of projects | shipped |
 
 Charts publish to `oci://ghcr.io/truvity/charts/<chart>` on every tag, all
-at the tag's version. The Go module is `github.com/truvity/edge/v3`; the
+at the tag's version. The Go module is `github.com/truvity/edge/v4`; the
 import paths changed from the two former repositories
 ([docs/cloudflare/adoption.md](docs/cloudflare/adoption.md#the-go-module-moves-to-edgev3)).
 
@@ -165,7 +166,7 @@ Two consequences worth stating, because both are load-bearing:
 
 ### The Cloudflare half
 
-go get github.com/truvity/edge/v3@v3.0.0
+go get github.com/truvity/edge/v4@v4.0.0
 ```
 
 A Pulumi program for the two accounts above. Every value is a
@@ -180,9 +181,9 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
-	"github.com/truvity/edge/v3/cloudflare/zone"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/zone"
 )
 
 // One row per account: the account owns its zones and its tunnel.

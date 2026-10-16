@@ -113,11 +113,12 @@ names:
 ### The one parent change
 
 `tls-client-auth-<slug>` and `ssl-mode-<slug>` are top-level resources of the
-single stack and children of the zone component in the zone stack. The zone
-component aliases them to the no-parent URN (`zonespec.Compat.TopLevelAliases`,
-which `zonestack` sets), so the first preview after the move updates a URN and
-replaces nothing. `firewall-custom-<slug>` is a child in both and carries the
-same alias. The test asserts this one difference by name.
+single stack and children of the zone component in the zone stack. Up to
+v3.x the zone component aliased them to the no-parent URN
+(`zonespec.Compat.TopLevelAliases`, which `zonestack` set), so the first
+preview after the move updated a URN and replaced nothing. v4.0.0 removes that
+alias: apply the zone stack with a v3 release first, so state holds the
+component URNs. The test asserts this one difference by name.
 
 ### One-time in-place ruleset updates (owner decision D499 a)
 

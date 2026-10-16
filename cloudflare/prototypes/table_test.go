@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/presets"
-	"github.com/truvity/edge/v3/cloudflare/presettoken"
+	"github.com/truvity/edge/v4/cloudflare/presets"
+	"github.com/truvity/edge/v4/cloudflare/presettoken"
 )
 
 // registry and rows: the same synthetic testdata as the presets package's
@@ -78,8 +78,8 @@ func TestDeployTableNamesAndPolicies(t *testing.T) {
 		id      string
 		presets []string
 	}{
-		"acme":   {"0a1b2c3d4e5f60718293a4b5c6d7e8f9", []string{"acme-edge", "acme-r2-admin", "acme-status"}},
-		"globex": {"1f2e3d4c5b6a79880716253443526170", []string{"globex-edge", "globex-r2-admin", "globex-status"}},
+		"acme":   {"0a1b2c3d4e5f60718293a4b5c6d7e8f9", []string{"acme-r2-admin", "acme-services", "acme-status", "acme-zone"}},
+		"globex": {"1f2e3d4c5b6a79880716253443526170", []string{"globex-r2-admin", "globex-services", "globex-status", "globex-zone"}},
 	} {
 		t.Run(account, func(t *testing.T) {
 			rootEnv(t)
@@ -114,7 +114,7 @@ func TestDeployTableNamesAndPolicies(t *testing.T) {
 				}
 			}
 
-			require.Len(t, golden, 3)
+			require.Len(t, golden, 4)
 
 			for _, name := range want.presets {
 				key := tokenType + "/prototype-" + name
@@ -192,5 +192,5 @@ func TestOptionsHook(t *testing.T) {
 		return err
 	}, pulumi.WithMocks("proj", "stack", newMocks()))
 	require.NoError(t, err)
-	assert.Len(t, called, 3)
+	assert.Len(t, called, 4)
 }

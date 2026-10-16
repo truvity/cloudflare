@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/cloudflared"
-	"github.com/truvity/edge/v3/cloudflare/instanceconnector"
+	"github.com/truvity/edge/v4/cloudflare/cloudflared"
+	"github.com/truvity/edge/v4/cloudflare/instanceconnector"
 )
 
 var update = flag.Bool("update", false, "rewrite testdata/*.golden")
@@ -205,13 +205,13 @@ func TestLoadTokenRuns(t *testing.T) {
 }
 
 func TestNoNonStdlibImports(t *testing.T) {
-	const pkg = "github.com/truvity/edge/v3/cloudflare/instanceconnector"
+	const pkg = "github.com/truvity/edge/v4/cloudflare/instanceconnector"
 
 	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	require.NoError(t, err, "go list -deps")
 
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line == "" || line == pkg || line == "github.com/truvity/edge/v3/cloudflare/cloudflared" {
+		if line == "" || line == pkg || line == "github.com/truvity/edge/v4/cloudflare/cloudflared" {
 			continue
 		}
 		root, _, _ := strings.Cut(line, "/")

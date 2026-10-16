@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/account"
 )
 
 // cloudflareAPI is the only API break-glass talks to; tests point it at a

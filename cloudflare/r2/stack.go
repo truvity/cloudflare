@@ -7,7 +7,7 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/account"
 )
 
 // stackProviderName is the Pulumi name of the account provider a bucket
@@ -49,8 +49,7 @@ type (
 // It mints no tokens. A bucket's own bucket-scoped credential is minted
 // elsewhere (cloudflare/tokensplit, from the same declaration), so the stack that
 // touches a bucket is never the stack that mints the credential scoped to
-// it: a bug in one cannot widen what the other reaches. Every bucket is
-// created with Config.Token at its zero value.
+// it: a bug in one cannot widen what the other reaches.
 func DeployStack(ctx *pulumi.Context, args StackArgs) error {
 	logger := args.Logger
 	if logger == nil {
