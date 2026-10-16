@@ -94,6 +94,7 @@ spec:
   policyRefs:
     - from:
         name: example-default-static-site-infra
+
 ---
 # Source: static-site-infra/templates/ack.yaml
 apiVersion: eks.services.k8s.aws/v1alpha1
