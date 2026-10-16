@@ -138,7 +138,8 @@ func TestRecordsJoinTheDerivedWAFUnlessOptedOut(t *testing.T) {
 		})
 	}
 
-	_, err = loadWith(t, [2]string{fixtureWAF, fixtureWAF + "    records:\n      - {name: '*.apps.example.com', type: CNAME, content: x.example.net, proxied: true, waf: false, waf_reason: wildcard}\n"}, [2]string{})
+	optedOut := "{name: '*.apps.example.com', type: CNAME, content: x.example.net, proxied: true, waf: false, waf_reason: wildcard}"
+	_, err = loadWith(t, [2]string{fixtureWAF, fixtureWAF + "    records:\n      - " + optedOut + "\n"}, [2]string{})
 	require.NoError(t, err, "a proxied wildcard record is fine once opted out")
 }
 
