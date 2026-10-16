@@ -1,0 +1,18 @@
+# The identity is static-site-infra's: no ACK objects, no ServiceAccount, and
+# the identity check hook before the Deployment.
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+    tags:
+      project: example
+site:
+  artifact:
+    ref: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/example:main
+serviceAccount:
+  name: static-site
+networkPolicy:
+  enabled: true

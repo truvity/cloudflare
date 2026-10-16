@@ -1,0 +1,9 @@
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    rolePrefix: ""
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+installName: a-very-long-install-name-that-together-with-the-cluster-and-namespace-is-over-the-limit

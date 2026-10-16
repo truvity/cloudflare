@@ -1,0 +1,13 @@
+# Annotations on the ServiceAccount are kept; the wave and the prune/delete
+# guard win over any of the same name.
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example
+serviceAccount:
+  annotations:
+    example.com/owner: web
+    argocd.argoproj.io/sync-options: Prune=true

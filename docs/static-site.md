@@ -137,14 +137,47 @@ or the Pod Identity agent must be allowed next to the registry: the chart's
 `networkPolicy` allows HTTPS egress, and the Pod Identity agent address
 (`169.254.170.23`) needs an `extraEgress` rule where egress is restricted.
 
-### ECR on EKS with ACK
+### ECR on EKS with ACK: two charts
 
 Where the cluster runs ACK (`roles.iam.services.k8s.aws`,
 `policies.iam.services.k8s.aws`, `podidentityassociations.eks.services.k8s.aws`),
-the chart creates the pod's AWS identity itself, in the shape of
-`dms-infra`'s `ack.yaml`:
+the pod's AWS identity is created by a chart of its own,
+`static-site-infra`, and `static-site` only uses it. The split is rule 11 of
+the [platform contract](https://github.com/truvity/policy/blob/v1.51.0/docs/contracts/platform.md)
+and [decision 0013](https://github.com/truvity/policy/blob/v1.51.0/docs/decisions/0013-pods-are-admitted-with-their-identity.md)
+explains why:
+
+- EKS Pod Identity associations are eventually consistent. The ACK controller
+  reports an association `Synced` when the AWS API returns, seconds before the
+  cluster's admission webhook can see it, and credentials are injected only
+  when a pod is *created*; a container restart never repeats it. A pod created
+  in the gap runs for its whole life without credentials and cannot pull its
+  site. Sync waves and health checks wait on the status, which is already
+  `Synced`, so they cannot close the gap.
+- So `static-site` starts with a check: a `pre-install,pre-upgrade` hook Job
+  (`restartPolicy: Never`, so every retry is a new pod admitted afresh) that
+  runs as the site's ServiceAccount and asks STS who it is. It passes only
+  once a pod admitted now has the identity; then the Deployment is created.
+- A hook runs before anything else in its release, so the ServiceAccount
+  cannot be the application release's. It is `static-site-infra`'s, rendered
+  after the association.
+
+| chart | renders |
+|---|---|
+| `static-site-infra` | the ACK `Policy` (wave -30), `Role` (-25) and `PodIdentityAssociation` (-20), then the `ServiceAccount` (-15) with `argocd.argoproj.io/sync-options: Prune=false,Delete=false`; with `networkPolicy.enabled`, the egress of the check |
+| `static-site` | the Deployment and the rest, the identity check hook; no ACK objects and no ServiceAccount (it names `serviceAccount.name`, default the fullname) |
+
+`static-site` derives which case it is in: `registry.auth=ecr` with
+`registry.ack.enabled`. There is no other switch. In every other case (`none`,
+`dockerconfig`, IRSA, ack off) it behaves as before and creates its own
+ServiceAccount when `serviceAccount.create`.
+
+The keys have the same names in both charts, so the estate keeps one set of
+values and passes each chart the keys it declares (each schema rejects the
+other's keys):
 
 ```yaml
+# static-site-infra
 registry:
   auth: ecr
   ack:
@@ -153,23 +186,87 @@ registry:
     repositoryArns:                            # required
       - arn:aws:ecr:eu-central-1:123456789012:repository/example
     # rolePrefix: example-default-static-site  # name of the Role and Policy;
-    #                                          # default <clusterName>-<namespace>-<release>
+    #                                          # default <clusterName>-<namespace>-<installName>
     # tags: {project: example}                 # on the Role; `cluster` is always set
     # permissionsBoundary: arn:aws:iam::123456789012:policy/example-boundary
     # accountId: "123456789012"                # with region: pins the trust to
     # region: eu-central-1                     # the cluster's account and ARN
+serviceAccount:
+  name: ""                                     # default the fullname of the site
+  annotations: {}
+networkPolicy:
+  enabled: false                               # egress of the check, see below
+installName: ""                                # default this release's name
+nameOverride: ""
+fullnameOverride: ""
 ```
 
-It renders an IAM `Policy` with the actions of the server (`ecr:GetAuthorizationToken`
-on `*`; `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`,
-`ecr:BatchCheckLayerAvailability` on `repositoryArns`), an IAM `Role` that
-trusts `pods.eks.amazonaws.com` (`sts:AssumeRole`, `sts:TagSession`) for this
-namespace and the chart's ServiceAccount, with the Policy in `policyRefs`, and a
-`PodIdentityAssociation` of the cluster, namespace and ServiceAccount to the
-Role (`roleRef`). Sync waves `-30`, `-25` and `-20` put them before the
-Deployment. The actions are written in the template and a Go test compares them
-with `staticsite.ECRAccountActions` and `ECRRepositoryActions`, the lists the
-server's own guard tests check against what it calls.
+```yaml
+# static-site (the same registry.ack keys are accepted and ignored but for enabled)
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+serviceAccount:
+  name: ""
+images:
+  identity-check:                              # the hook's image, pinned by digest
+    registry: ghcr.io
+    repository: truvity/k8s/identity-check
+    tag: 0.31.1
+    digest: sha256:d2c62885b97f03fed283478f57480ad2c7ebf2b2d7eb43f1cbc2482866e5692d
+```
+
+`static-site-infra` must be installed with the **same release name** as
+`static-site` (or give `installName` the application's release name): the
+default Role and Policy name `<clusterName>-<namespace>-<installName>`, the
+object labels and the default ServiceAccount name derive from it, and they are
+the names the objects have today. It renders nothing unless `registry.auth` is
+`ecr` and `registry.ack.enabled` is set.
+
+The Policy holds the actions of the server (`ecr:GetAuthorizationToken` on `*`;
+`ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`,
+`ecr:BatchCheckLayerAvailability` on `repositoryArns`), the Role trusts
+`pods.eks.amazonaws.com` (`sts:AssumeRole`, `sts:TagSession`) for this
+namespace and ServiceAccount, with the Policy in `policyRefs`, and the
+`PodIdentityAssociation` binds the cluster, namespace and ServiceAccount to the
+Role (`roleRef`). The actions are written in the template and a Go test
+compares them with `staticsite.ECRAccountActions` and `ECRRepositoryActions`,
+the lists the server's own guard tests check against what it calls; another
+checks the waves, the guard and the split.
+
+**Install order.** `static-site-infra` first, and healthy, then `static-site`:
+
+- *Argo CD, two Applications* (recommended): one for each chart, the infra one
+  synced and healthy before the application one is created or synced (an
+  app-of-apps wave, or `argocd.argoproj.io/sync-wave` on the two Application
+  objects with a health check that waits for the ACK objects and the
+  ServiceAccount). Waves order the objects of one Application, not two
+  Applications, and the hook of the second needs the first one's ServiceAccount.
+  The infra Application's ServiceAccount carries `Prune=false,Delete=false`
+  whatever either chart does later.
+- *Plain Helm:* `helm upgrade --install www oci://ghcr.io/truvity/charts/static-site-infra -f infra-values.yaml`,
+  wait for the ACK objects (`kubectl wait --for=condition=ACK.ResourceSynced`),
+  then `helm upgrade --install www oci://ghcr.io/truvity/charts/static-site -f values.yaml`.
+  Helm runs the hook as part of the second release.
+
+**The check's network.** The check pod has labels no selector of `static-site`
+matches (`app.kubernetes.io/name` and `component` are `static-site-identity-check`
+and the pod carries `service-lib.io/identity-check`), so the site's Service,
+PodDisruptionBudget and NetworkPolicy never select it: it does not receive
+site traffic and the site's NetworkPolicy does not restrict it. In a namespace
+that denies egress by default it needs its own: name resolution, the Pod
+Identity agent (`169.254.170.23:80`) and HTTPS to STS.
+`static-site-infra` renders that policy with `networkPolicy.enabled: true`.
+
+**Moving an existing install.** The Policy, Role and PodIdentityAssociation
+render byte-identically to what `static-site` v3 rendered (same names, labels,
+annotations and specs), and the ServiceAccount has the same name, labels and
+annotations plus the wave and the guard. Install `static-site-infra` with the
+site's values *before* upgrading `static-site`: Argo CD adopts the live
+objects without changing them, and the upgraded `static-site` no longer renders
+them. Upgrade `static-site` first and it prunes the ACK objects, and ACK
+deletes the IAM Role. See the Upgrade section of the v4.0.0 changelog.
 
 The namespace needs the estate's ACK project wiring: the ACK role that applies
 these objects is confined on the `project` tag (`aws:ResourceTag/project`), so
@@ -179,7 +276,7 @@ on the object, not as a failed pod.
 **IRSA** (hive, any cluster without EKS Pod Identity) stays values only: create
 the role and its trust outside the chart and set
 `serviceAccount.annotations["eks.amazonaws.com/role-arn"]`. `registry.ack`
-stays off.
+stays off (and `static-site` creates its ServiceAccount, with no identity check).
 
 **A repository in another account** needs both sides: the Policy here (it
 grants on whatever ARNs it is given), and a repository policy in the registry's

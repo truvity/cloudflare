@@ -1,0 +1,42 @@
+{{- /*
+Egress for the identity check of the static-site chart (service-lib's
+identityCheck, decision 0013). The check is a pod of its own, labelled
+`<name>-identity-check`, so neither the site's Service, budget nor
+NetworkPolicy selects it. It needs what the site needs to be given an identity
+and to prove it: name resolution, the Pod Identity agent on the node, and the
+cloud API (STS).
+*/}}
+{{- if and (include "static-site-infra.enabled" .) .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "static-site-infra.fullname" . }}-identity-check
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "static-site-infra.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ include "static-site-infra.installName" . }}
+      app.kubernetes.io/component: {{ include "static-site-infra.name" . }}-identity-check
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 169.254.170.23/32
+      ports:
+        - port: 80
+          protocol: TCP
+    - ports:
+        - port: 443
+          protocol: TCP
+{{- end }}

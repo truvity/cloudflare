@@ -1,0 +1,49 @@
+# static-site-infra: the cloud identity of one static-site install.
+#
+# The key names are the ones the static-site chart reads, so one values file
+# can feed both charts (each schema accepts only its own keys: pass each chart
+# the keys it knows). Renders nothing unless registry.auth=ecr and
+# registry.ack.enabled.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# The release name of the static-site install this identity belongs to. Names,
+# labels and the default role name derive from it, so set it when this chart's
+# release is not named like the application's. Default: this release's name.
+installName: ""
+
+registry:
+  auth: ecr
+  ack:
+    enabled: false
+    # EKS cluster the association is in. Required when enabled.
+    clusterName: ""
+    # ECR repository ARNs the artifact is pulled from (may be in another
+    # account: the repository policy there must admit the role). Required.
+    repositoryArns: []
+    # Name of the IAM Role and Policy. Default <clusterName>-<namespace>-<installName>.
+    rolePrefix: ""
+    # Optional: pin the trust to the cluster's account and ARN (both needed).
+    accountId: ""
+    region: ""
+    # Tags on the Role. `cluster` is always set; put `project: <name>` here:
+    # the ACK project role confines on aws:ResourceTag/project.
+    tags: {}
+    # ARN of the role's permissions boundary.
+    permissionsBoundary: ""
+
+# The ServiceAccount the association binds, rendered after it. create=false
+# leaves the account to someone else (the association still names it).
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Egress for the identity check Job of the static-site chart (a pod with
+# labels of its own): name resolution, the Pod Identity agent
+# (169.254.170.23:80) and HTTPS (STS). Turn on where the namespace denies
+# egress by default; the site's own networkPolicy.enabled is the same switch
+# in the static-site chart.
+networkPolicy:
+  enabled: false

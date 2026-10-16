@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -91,13 +92,13 @@ func TestPullRequestsAreCoveredByTheRepositoryActions(t *testing.T) {
 	}
 }
 
-// The chart's ACK Policy (charts/static-site/templates/ack.yaml) writes the
+// The chart's ACK Policy (charts/static-site-infra/templates/ack.yaml) writes the
 // actions out; its rendered golden must carry exactly the Go lists. The
 // golden itself is checked against `helm template` by hack/golden.sh.
 func TestChartPolicyCarriesTheGoLists(t *testing.T) {
 	for _, name := range []string{"ack", "ack-pinned"} {
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "golden", "static-site", name+".yaml"))
+			raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "golden", "static-site-infra", name+".yaml"))
 			require.NoError(t, err)
 			var policy string
 			for _, part := range strings.Split(string(raw), "\n---\n") {
@@ -132,4 +133,73 @@ func TestChartPolicyCarriesTheGoLists(t *testing.T) {
 			assert.NotEqual(t, "*", doc.Statement[1].Resource)
 		})
 	}
+}
+
+// The identity is static-site-infra's: role, then binding, then account in
+// strictly increasing sync waves, the account guarded against prune and
+// delete. The application chart renders neither the account nor any ACK
+// object, and renders the identity check as a pre-install,pre-upgrade hook
+// Job that never restarts a pod.
+func TestIdentityIsSplitAcrossTheTwoCharts(t *testing.T) {
+	type object struct {
+		Kind     string `yaml:"kind"`
+		Metadata struct {
+			Annotations map[string]string `yaml:"annotations"`
+		} `yaml:"metadata"`
+		Spec struct {
+			Template struct {
+				Spec struct {
+					RestartPolicy string `yaml:"restartPolicy"`
+				} `yaml:"spec"`
+			} `yaml:"template"`
+		} `yaml:"spec"`
+	}
+	load := func(chart, name string) []object {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "golden", chart, name+".yaml"))
+		require.NoError(t, err)
+		var out []object
+		for _, part := range strings.Split(string(raw), "\n---\n") {
+			var obj object
+			require.NoError(t, yaml.Unmarshal([]byte(part), &obj))
+			if obj.Kind != "" {
+				out = append(out, obj)
+			}
+		}
+		return out
+	}
+
+	waves := map[string]int{}
+	var account object
+	for _, o := range load("static-site-infra", "ack") {
+		w, err := strconv.Atoi(o.Metadata.Annotations["argocd.argoproj.io/sync-wave"])
+		require.NoError(t, err, "%s has no sync wave", o.Kind)
+		waves[o.Kind] = w
+		if o.Kind == "ServiceAccount" {
+			account = o
+		}
+	}
+	assert.Less(t, waves["Policy"], waves["Role"])
+	assert.Less(t, waves["Role"], waves["PodIdentityAssociation"])
+	assert.Less(t, waves["PodIdentityAssociation"], waves["ServiceAccount"])
+	assert.Equal(t, "Prune=false,Delete=false", account.Metadata.Annotations["argocd.argoproj.io/sync-options"])
+
+	var job *object
+	for _, o := range load("static-site", "identity-managed") {
+		assert.NotContains(t, []string{"ServiceAccount", "Policy", "Role", "PodIdentityAssociation"}, o.Kind,
+			"the application chart renders the identity's %s", o.Kind)
+		if o.Kind == "Job" {
+			job = &o
+		}
+	}
+	require.NotNil(t, job, "the application chart renders no identity check")
+	assert.Equal(t, "pre-install,pre-upgrade", job.Metadata.Annotations["helm.sh/hook"])
+	assert.Equal(t, "Never", job.Spec.Template.Spec.RestartPolicy)
+
+	// Without a managed identity the check is not rendered and the chart keeps its account.
+	var kinds []string
+	for _, o := range load("static-site", "identity-unmanaged-ack-off") {
+		kinds = append(kinds, o.Kind)
+	}
+	assert.Contains(t, kinds, "ServiceAccount")
+	assert.NotContains(t, kinds, "Job")
 }

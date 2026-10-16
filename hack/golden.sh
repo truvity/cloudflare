@@ -17,6 +17,8 @@ mode="${1:-check}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 fail=0
 
+"$root/hack/chart-deps.sh"
+
 for values in "$root"/tests/cases/*/*/values.yaml; do
   case_dir="$(dirname "$values")"
   case_name="$(basename "$case_dir")"

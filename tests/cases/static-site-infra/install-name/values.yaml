@@ -1,0 +1,11 @@
+# This chart's release is not named like the application's: installName makes
+# the names, labels and role name those of the static-site install `www`.
+installName: www
+nameOverride: ""
+registry:
+  auth: ecr
+  ack:
+    enabled: true
+    clusterName: example
+    repositoryArns:
+      - arn:aws:ecr:eu-central-1:123456789012:repository/example

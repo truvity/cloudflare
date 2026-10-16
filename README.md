@@ -14,7 +14,7 @@ catalog (Go, data) ─┬─► Cloudflare half   cloudflare/*  (Pulumi): zones,
 ```
 
 One tag versions everything: the Go module `github.com/truvity/edge/v3` and
-all six charts are released together, at the same version (first v3.0.0).
+all the charts are released together, at the same version (first v3.0.0).
 The repository was formed from `truvity/cloudflare` and `truvity/gateway`
 (full history of both kept; see [docs/README.md](docs/README.md)).
 
@@ -38,6 +38,7 @@ The repository was formed from `truvity/cloudflare` and `truvity/gateway`
 | `charts/gateway-groups` | One ListenerSet per project group, a listener and a Certificate per domain, an optional BackendTLSPolicy, the ingress rules that let the gateway reach the group's workloads, the platform's own routes, and ReferenceGrants (from gateway v1.17.0) | shipped |
 | `charts/gateway-policies` | The policies that protect what the other two expose: a TLS floor on every Gateway of a namespace unless it opts out, stricter TLS per listener, an OIDC or JWT SecurityPolicy per protected route with an `authenticated` or `groups` posture and CSRF, BackendTLSPolicy for private-chain backends, and BackendTrafficPolicy rows (timeouts, body limits, local rate limits; from v1.17.0) | shipped |
 | `charts/gateway-projects` | `gateway-groups` and `gateway-policies` in one release, for every project on a cluster: `groups` and `policies` take those charts' values, so one Application is one chart | shipped |
+| `charts/static-site-infra` | The cloud identity of a static-site install on EKS: the ACK IAM Policy and Role, the Pod Identity association, then the ServiceAccount, installed (and healthy) before `static-site`, which checks in a hook that a pod admitted now has the identity ([docs/static-site.md](docs/static-site.md#ecr-on-eks-with-ack-two-charts)) | shipped |
 | `cmd/static-site`, `charts/static-site` | A generic static-site server and its chart: pulls one OCI artifact (a built site) by digest, serves it with CDN-friendly caching and allowlisted serve-time placeholders; one image and one chart for every site ([docs/static-site.md](docs/static-site.md)) | shipped |
 | `charts/gateway-routes` | A library chart for the application's side: one HTTPRoute whose rules are named, `app` for the gated surface and `static` for the public assets, so a policy can gate one of them | shipped |
 | `catalog` (Go, `github.com/truvity/edge/v3/catalog`) | The edge catalog as data: loader, validation, queries, the grants a ListenerSet admits by, and the per-project groups generated from a list of projects | shipped |
@@ -556,7 +557,7 @@ application including it. `charts/gateway-projects` is generated from
 
 
 Push a tag `vX.Y.Z`. The shared release workflow creates the GitHub
-Release and pushes all six charts at that version — a chart's own `version`
+Release and pushes all the charts at that version — a chart's own `version`
 field is a placeholder that never moves — and the same tag is the Go
 module's version.
 
