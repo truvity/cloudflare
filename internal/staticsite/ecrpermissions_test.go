@@ -182,6 +182,16 @@ func TestIdentityIsSplitAcrossTheTwoCharts(t *testing.T) {
 	assert.Less(t, waves["Role"], waves["PodIdentityAssociation"])
 	assert.Less(t, waves["PodIdentityAssociation"], waves["ServiceAccount"])
 	assert.Equal(t, "Prune=false,Delete=false", account.Metadata.Annotations["argocd.argoproj.io/sync-options"])
+	// The Policy is identified in AWS by its ARN, so adoption needs it spelled out;
+	// the Role (by name) and the association take no adoption-fields.
+	for _, o := range load("static-site-infra", "ack-pinned") {
+		fields, has := o.Metadata.Annotations["services.k8s.aws/adoption-fields"]
+		if o.Kind == "Policy" {
+			assert.JSONEq(t, `{"arn":"arn:aws:iam::123456789012:policy/example-static-www"}`, fields)
+		} else {
+			assert.False(t, has, "%s must not carry adoption-fields", o.Kind)
+		}
+	}
 	// The ACK objects carry the same guard: the old Application's prune must not delete the Role.
 	for _, o := range load("static-site-infra", "ack") {
 		assert.Equal(t, "Prune=false,Delete=false", o.Metadata.Annotations["argocd.argoproj.io/sync-options"],

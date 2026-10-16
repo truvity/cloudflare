@@ -26,7 +26,11 @@ one that already exists under it is safe. This recovers a create that was
 refused ("Resource already exists", ACK.Terminal) because an earlier attempt
 reached AWS before ACK could finish (for example while the ACK ceiling role was
 missing), and the Role and association that reference the Policy then stay
-blocked. PodIdentityAssociation is NOT adopted. WHY: an association is
+blocked. The Role is adopted by its name; an IAM managed policy is identified by
+its ARN, so the Policy also carries `services.k8s.aws/adoption-fields` with
+that ARN (built from registry.ack.accountId; without it only the Role is
+adopted and the Policy create still fails with EntityAlreadyExists).
+PodIdentityAssociation is NOT adopted. WHY: an association is
 identified in AWS by (EKS cluster, namespace, ServiceAccount), not by the
 object. With adoption a new object adopts the existing association of that
 triple; when the legacy object that also owns it is pruned, its controller
@@ -51,6 +55,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "-30"
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
     services.k8s.aws/adoption-policy: adopt-or-create
+    {{- if $ack.accountId }}
+    {{- /* ACK adopts by the resource's primary identifier. A Role's is its name,
+    which spec.name already gives; a Policy's is its ARN, so without this ACK
+    still calls CreatePolicy and gets EntityAlreadyExists. The Policy sets no
+    path, so the ARN path is "/". Needs registry.ack.accountId. */}}
+    services.k8s.aws/adoption-fields: {{ dict "arn" (printf "arn:aws:iam::%s:policy/%s" $ack.accountId $name) | toJson | squote }}
+    {{- end }}
 spec:
   name: {{ $name }}
   description: "static-site {{ .Release.Namespace }}/{{ include "static-site-infra.installName" . }}: ECR pull access"
