@@ -9,7 +9,7 @@
 //
 // The token comes from the environment variable named by -token-env
 // (CLOUDFLARE_API_TOKEN by default) or from the output of -token-cmd. Writing
-// needs Zone Settings Write: the zone settings of the preset kind `edge`.
+// needs Zone Settings Write: the zone settings of the preset kind `zone`.
 //
 //	edge-securitytxt -config cloudflare.yaml
 //	edge-securitytxt -config cloudflare.yaml -zone example.com -apply
@@ -24,9 +24,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/securitytxt"
-	"github.com/truvity/edge/v3/cmd/internal/token"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/securitytxt"
+	"github.com/truvity/edge/v4/cmd/internal/token"
 )
 
 func main() {

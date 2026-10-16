@@ -34,8 +34,8 @@ import (
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/edgespec"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/edgespec"
 )
 
 type (

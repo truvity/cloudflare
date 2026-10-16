@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truvity/edge/v3/cloudflare/zonespec"
+	"github.com/truvity/edge/v4/cloudflare/zonespec"
 )
 
 // CacheHosts is the zone's cacheable-hosts rule: the listed hosts (exact

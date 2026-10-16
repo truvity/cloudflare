@@ -37,7 +37,7 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/account"
 )
 
 // The Cloudflare permission-group names the children are granted, each

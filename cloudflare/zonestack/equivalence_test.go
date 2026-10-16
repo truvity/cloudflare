@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/catalog"
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/edge"
-	"github.com/truvity/edge/v3/cloudflare/internal/stacktest"
-	"github.com/truvity/edge/v3/cloudflare/rules"
-	"github.com/truvity/edge/v3/cloudflare/services"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
-	"github.com/truvity/edge/v3/cloudflare/zone"
-	"github.com/truvity/edge/v3/cloudflare/zonestack"
+	"github.com/truvity/edge/v4/catalog"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/edge"
+	"github.com/truvity/edge/v4/cloudflare/internal/stacktest"
+	"github.com/truvity/edge/v4/cloudflare/rules"
+	"github.com/truvity/edge/v4/cloudflare/services"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/zone"
+	"github.com/truvity/edge/v4/cloudflare/zonestack"
 )
 
 // The split of one stack into a zone stack and a services stack is
@@ -124,7 +124,7 @@ func assertSplitEquivalent(t *testing.T, cfg *config.Config, wantCosmetic []stri
 	}
 
 	// Two top-level resources of the single stack become children of the
-	// zone component, and move there by an alias (zone Compat.TopLevelAliases):
+	// zone component (until v4.0.0 they moved there by an alias, zone Compat.TopLevelAliases):
 	// the name, the type and the inputs stay.
 	for _, name := range []string{"tls-client-auth-example-com", "ssl-mode-example-com"} {
 		for _, typ := range []string{"cloudflare:index/zoneSetting:ZoneSetting", "cloudflare:index/ruleset:Ruleset"} {

@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/catalog"
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/rules"
+	"github.com/truvity/edge/v4/catalog"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/rules"
 )
 
 // loadWith loads the fixture with the given replacements applied to its

@@ -17,7 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/truvity/edge/v3/cloudflare/rulespec"
+	"github.com/truvity/edge/v4/cloudflare/rulespec"
 )
 
 // Shortest prefixes a trusted range may have: anything broader is close to
@@ -282,17 +282,6 @@ type (
 		// by hand. A phase listed here must be one the zone manages. Drop
 		// the entry once the import is applied.
 		ImportRulesets map[rulespec.Phase]string `json:"importRulesets,omitempty" yaml:"importRulesets,omitempty"`
-		// Compat keeps resources that predate this library at their URNs.
-		Compat Compat `json:"compat,omitempty" yaml:"compat,omitempty"`
-	}
-
-	// Compat is what a consumer sets to adopt this library without
-	// replacing resources it already has.
-	Compat struct {
-		// TopLevelAliases aliases the firewall-custom, tls-client-auth and
-		// ssl-mode children to the same name with no parent, the URN a
-		// resource at the stack root has.
-		TopLevelAliases bool `json:"topLevelAliases,omitempty" yaml:"topLevelAliases,omitempty"`
 	}
 
 	// Records is a set of DNS records the estate owns inside one zone.

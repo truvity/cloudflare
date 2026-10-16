@@ -30,8 +30,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/truvity/edge/v3/cloudflare/insights"
-	"github.com/truvity/edge/v3/cmd/internal/token"
+	"github.com/truvity/edge/v4/cloudflare/insights"
+	"github.com/truvity/edge/v4/cmd/internal/token"
 )
 
 func main() {

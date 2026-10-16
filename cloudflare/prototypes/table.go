@@ -6,8 +6,8 @@ import (
 	cf "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/presets"
-	"github.com/truvity/edge/v3/cloudflare/presettoken"
+	"github.com/truvity/edge/v4/cloudflare/presets"
+	"github.com/truvity/edge/v4/cloudflare/presettoken"
 )
 
 // Table is a prototypes stack over the table of cloudflare/presets: the stack

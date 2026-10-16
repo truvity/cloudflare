@@ -11,17 +11,15 @@
 //
 // KINDS. A kind names a set of rights, not a stack:
 //
-//	edge      DEPRECATED, kept one release: zone plus services' tunnel write in
-//	          one token; use the zone and services kinds. Tunnel write on the account; DNS, SSL, zone settings, cache
+//	zone      the per-company zone stack: DNS, SSL, zone settings, cache
 //	          settings and config settings write on each zone; then Zone WAF
-//	          Write on Row.WAFZones, Bot Management Write on Row.BotManagementZones, Cloud Connector Write on
-//	          Row.CloudConnectorZones, and DNS Write on Row.DNSOnlyZones. No R2.
-//	zone      the per-company zone stack: everything edge holds EXCEPT tunnel
-//	          write (DNS, SSL, zone settings, cache settings and config settings
-//	          write on each zone; then WAFZones, BotManagementZones,
-//	          CloudConnectorZones, DNSOnlyZones and the security.txt-only
-//	          zones' Zone Settings Write exactly as edge). No account-wide
-//	          grant at all.
+//	          Write on Row.WAFZones, Bot Management Write on
+//	          Row.BotManagementZones, Cloud Connector Write on
+//	          Row.CloudConnectorZones, DNS Write on Row.DNSOnlyZones and the
+//	          security.txt-only zones' Zone Settings Write. No account-wide
+//	          grant at all, no R2. (The `edge` kind, this plus the account's
+//	          tunnel write in one token, was removed in v4.0.0: use zone and
+//	          services.)
 //	services  the per-company services stack: tunnel write on the account;
 //	          DNS write on each zone. The same rights as status.
 //	status    tunnel write on the account; DNS write on each zone.
@@ -32,7 +30,8 @@
 //	insights-admin  Account Security Center Insights Write and Read on the
 //	          account; Zone Security Center Insights Write and Read on each
 //	          zone. The one kind that can dismiss insights; nothing else writable.
-//	r2-admin  DEPRECATED, kept one release. Workers R2 Storage Write on the account (every bucket).
+//	r2-admin  DEPRECATED, kept until a narrower replacement exists. Workers R2
+//	          Storage Write on the account (every bucket).
 //	bucket-rw     R2 object read and write on ONE bucket (an R2 credential).
 //	bucket-write  R2 object write on ONE bucket (an R2 credential).
 //
@@ -57,18 +56,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/presettoken"
-	"github.com/truvity/edge/v3/cloudflare/tokensplit"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/presettoken"
+	"github.com/truvity/edge/v4/cloudflare/tokensplit"
 )
 
 // The kinds.
 const (
-	// KindEdge is DEPRECATED (kept for one release): its groups are those of
-	// KindZone plus the tunnel write of KindServices. Use the two kinds.
-	KindEdge = "edge"
-	// KindZone is the zone stack's token: every group of KindEdge except
-	// Cloudflare Tunnel Write.
+	// KindZone is the zone stack's token: the zones' write groups, no
+	// account-wide grant.
 	KindZone = "zone"
 	// KindServices is the services stack's token: account Tunnel Write plus
 	// DNS Write on the managed zones, the rights of KindStatus.
@@ -79,7 +75,7 @@ const (
 	// KindInsightsAdmin is the write-capable counterpart of KindInsights: it
 	// can dismiss Security Center insights and reads nothing else.
 	KindInsightsAdmin = "insights-admin"
-	// KindR2Admin is DEPRECATED (kept for one release).
+	// KindR2Admin is DEPRECATED, kept until a narrower replacement exists.
 	KindR2Admin     = "r2-admin"
 	KindBucketRW    = "bucket-rw"
 	KindBucketWrite = "bucket-write"
@@ -122,7 +118,7 @@ const DefaultLifetime = time.Hour
 
 var (
 	// Kinds are the kinds this package builds.
-	Kinds = []string{KindEdge, KindZone, KindServices, KindStatus, KindDNS, KindInsights, KindInsightsAdmin, KindR2Admin, KindBucketRW, KindBucketWrite}
+	Kinds = []string{KindZone, KindServices, KindStatus, KindDNS, KindInsights, KindInsightsAdmin, KindR2Admin, KindBucketRW, KindBucketWrite}
 
 	// grantPattern is a policy group's name: the estate's own, a short label.
 	grantPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:._-]*$`)
@@ -228,8 +224,6 @@ func PresetName(accountName, kind string) string { return accountName + "-" + ki
 // none. An estate that wants its own wording sets Row.Description.
 func Description(accountName, kind string) string {
 	switch kind {
-	case KindEdge:
-		return "Pulumi: tunnels, DNS, SSL, zone settings and cache of the " + accountName + " account; no R2"
 	case KindZone:
 		return "Pulumi: zone settings, SSL, cache, WAF, bot management and zone records of the " + accountName + " account; no tunnels, no R2"
 	case KindServices:
@@ -253,39 +247,20 @@ func Description(accountName, kind string) string {
 	return ""
 }
 
-// StandardRows are the three rows an account has when it runs the edge, status
-// and r2-admin stacks, in that order, named <account>-<kind>, with Zone WAF
-// Write on wafZones. grants and the other fields of a row are the estate's:
-// set them on the returned rows.
-//
-// The edge and r2-admin kinds are DEPRECATED for one release. StandardRows
-// keeps its output byte-identical; [SplitRows] adds the zone and services rows.
-func StandardRows(accountName string, grants, wafZones []string) []Row {
+// StandardRows are the four rows an account has, in this order and named
+// <account>-<kind>: status, r2-admin, zone (Zone WAF Write on wafZones, Bot
+// Management Write on botZones) and services. grants and the other fields of
+// a row are the estate's: set them on the returned rows.
+func StandardRows(accountName string, grants, wafZones, botZones []string) []Row {
 	return []Row{
-		{Name: PresetName(accountName, KindEdge), Kind: KindEdge, Account: accountName, WAFZones: slices.Clone(wafZones), Grants: slices.Clone(grants)},
 		{Name: PresetName(accountName, KindStatus), Kind: KindStatus, Account: accountName, Grants: slices.Clone(grants)},
 		{Name: PresetName(accountName, KindR2Admin), Kind: KindR2Admin, Account: accountName, Grants: slices.Clone(grants)},
-	}
-}
-
-// SplitRows are the five rows an account has while it moves from one edge
-// stack to the per-company zone and services stacks: the rows of
-// [StandardRows] (edge, status and r2-admin; edge is given botZones as its
-// BotManagementZones), then <account>-zone (WAF on wafZones, Bot Management
-// on botZones) and <account>-services. StandardRows itself is unchanged so no
-// existing caller's output moves; drop edge and r2-admin once the stacks have
-// split (both are DEPRECATED for one release).
-func SplitRows(accountName string, grants, wafZones, botZones []string) []Row {
-	rows := StandardRows(accountName, grants, wafZones)
-	rows[0].BotManagementZones = slices.Clone(botZones)
-
-	return append(rows,
-		Row{
+		{
 			Name: PresetName(accountName, KindZone), Kind: KindZone, Account: accountName,
 			WAFZones: slices.Clone(wafZones), BotManagementZones: slices.Clone(botZones), Grants: slices.Clone(grants),
 		},
-		Row{Name: PresetName(accountName, KindServices), Kind: KindServices, Account: accountName, Grants: slices.Clone(grants)},
-	)
+		{Name: PresetName(accountName, KindServices), Kind: KindServices, Account: accountName, Grants: slices.Clone(grants)},
+	}
 }
 
 // PendingZone is an error naming a zone of the account that has no id yet, or
@@ -400,7 +375,7 @@ func validateRow(reg Registry, row *Row) []error {
 		return errs
 	}
 
-	zoned := slices.Contains([]string{KindEdge, KindZone, KindServices, KindStatus, KindDNS, KindInsights, KindInsightsAdmin}, row.Kind)
+	zoned := slices.Contains([]string{KindZone, KindServices, KindStatus, KindDNS, KindInsights, KindInsightsAdmin}, row.Kind)
 	bucketed := row.Kind == KindBucketRW || row.Kind == KindBucketWrite
 
 	inAccount := map[string]bool{}
@@ -460,13 +435,13 @@ func validateRow(reg Registry, row *Row) []error {
 		}
 	}
 
-	edgeLike := row.Kind == KindEdge || row.Kind == KindZone
+	zoneKind := row.Kind == KindZone
 
-	if !edgeLike && (len(row.WAFZones) > 0 || len(row.BotManagementZones) > 0 || len(row.CloudConnectorZones) > 0 || len(row.DNSOnlyZones) > 0) {
-		bad("WAFZones, BotManagementZones, CloudConnectorZones and DNSOnlyZones are for the edge kind (and the zone kind), not %s", row.Kind)
+	if !zoneKind && (len(row.WAFZones) > 0 || len(row.BotManagementZones) > 0 || len(row.CloudConnectorZones) > 0 || len(row.DNSOnlyZones) > 0) {
+		bad("WAFZones, BotManagementZones, CloudConnectorZones and DNSOnlyZones are for the zone kind, not %s", row.Kind)
 	}
 
-	if edgeLike {
+	if zoneKind {
 		covered := func(n string) bool { return len(row.Zones) == 0 || slices.Contains(row.Zones, n) }
 		notCovered := func(n string) bool { return !covered(n) }
 
@@ -674,23 +649,13 @@ func build(reg Registry, row *Row) (Preset, error) {
 	}
 
 	switch row.Kind {
-	case KindEdge, KindZone:
-		var waf []string
+	case KindZone:
+		p.Policies = account.ZonePolicies(managedIDs...)
+
 		for _, n := range row.WAFZones {
-			waf = append(waf, zoneNamed(reg, n).ID)
-		}
-
-		if row.Kind == KindEdge {
-			p.Policies = account.EdgePoliciesWithWAF(waf, managedIDs...)
-		} else {
-			// The zone kind is edge without the account-wide tunnel write.
-			p.Policies = account.ZonePolicies(managedIDs...)
-
-			for _, id := range waf {
-				p.Policies = append(p.Policies, account.ChildTokenPolicy{
-					PermissionGroups: []string{"Zone WAF Write"}, Scope: account.ZoneScope{ZoneID: id},
-				})
-			}
+			p.Policies = append(p.Policies, account.ChildTokenPolicy{
+				PermissionGroups: []string{"Zone WAF Write"}, Scope: account.ZoneScope{ZoneID: zoneNamed(reg, n).ID},
+			})
 		}
 
 		var bots []string

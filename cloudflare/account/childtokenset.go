@@ -200,11 +200,10 @@ func SecurityTxtPolicies(zoneIDs ...string) []ChildTokenPolicy {
 
 // R2AdminPolicies is the policy set for an account-wide R2 administrator
 // child: create, list and configure the lifecycle of every bucket on the
-// account (Workers R2 Storage Write, WholeAccountScope). Pair it with
-// cloudflare/r2's own New called with Config.Token.Enabled false — the bucket
-// stack then runs on this child, and a bucket's own object-level
-// credential comes from a separate R2BucketParentPolicies child instead
-// of cloudflare/r2's deprecated Config.Token. See docs/cloudflare/layout.md#recommended-layout.
+// account (Workers R2 Storage Write, WholeAccountScope). The bucket stack
+// (cloudflare/r2) runs on this child, and a bucket's own object-level
+// credential comes from a separate R2BucketParentPolicies child. See
+// docs/cloudflare/layout.md#recommended-layout.
 func R2AdminPolicies() []ChildTokenPolicy {
 	return []ChildTokenPolicy{
 		{PermissionGroups: []string{"Workers R2 Storage Write"}, Scope: WholeAccountScope{}},
@@ -213,12 +212,10 @@ func R2AdminPolicies() []ChildTokenPolicy {
 
 // R2BucketParentPolicies is the policy set for a bucket-scoped parent
 // credential: object read and write on exactly one bucket (Workers R2
-// Storage Bucket Item Write, R2BucketScope{Jurisdiction, Bucket}) — the
-// same grant cloudflare/r2's own Config.Token mints inline when Enabled is true.
-// Mint this from account.NewChildToken (or in a set, from
-// NewChildTokenSet) instead of cloudflare/r2's Token once a bucket's consumer
-// needs its own least-privilege credential kept apart from the bucket's
-// own admin token; see cloudflare/r2's package doc and docs/cloudflare/layout.md#recommended-layout.
+// Storage Bucket Item Write, R2BucketScope{Jurisdiction, Bucket}). Mint it
+// with account.NewChildToken (or in a set, with NewChildTokenSet) so a
+// bucket's consumer has its own least-privilege credential, apart from the
+// bucket's admin token; see docs/cloudflare/layout.md#recommended-layout.
 func R2BucketParentPolicies(jurisdiction, bucket string) []ChildTokenPolicy {
 	return []ChildTokenPolicy{
 		{

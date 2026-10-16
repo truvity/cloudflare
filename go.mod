@@ -1,4 +1,4 @@
-module github.com/truvity/edge/v3
+module github.com/truvity/edge/v4
 
 go 1.27.0
 

@@ -105,7 +105,6 @@ move).
 | `Contributions []rules.Contribution` | further rules, merged with the blocks above (code only, not read from YAML/JSON) |
 | `AuthenticatedOriginPulls *bool` | zone setting `tls_client_auth`, child `tls-client-auth-<name>`; nil leaves it alone |
 | `ImportRulesets map[rules.Phase]string` | adopt the phase's existing entry point ruleset by id (`pulumi.Import("zones/<zone>/<id>")`); the phase must be one the zone manages; drop the entry once applied |
-| `Compat.TopLevelAliases` | add `Alias{NoParent: true}` to `firewall-custom-<name>`, `tls-client-auth-<name>` and `ssl-mode-<name>`, for resources that live at the stack root today |
 
 Child names per phase: cache `cache-rules-<name>`, firewall custom
 `firewall-custom-<name>`, firewall managed `firewall-managed-<name>`, rate

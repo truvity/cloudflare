@@ -23,10 +23,10 @@ import (
 	cf "github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/edge"
-	"github.com/truvity/edge/v3/cloudflare/tunnel"
+	"github.com/truvity/edge/v4/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/edge"
+	"github.com/truvity/edge/v4/cloudflare/tunnel"
 )
 
 const dnsRecordType = "cloudflare:index/dnsRecord:DnsRecord"

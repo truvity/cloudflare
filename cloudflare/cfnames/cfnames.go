@@ -76,8 +76,7 @@ func ValidBucketName(name string) bool {
 	return true
 }
 
-// Permission levels an R2 token config accepts. cloudflare/r2 re-exports them as
-// r2.PermissionObjectReadWrite and r2.PermissionObjectReadOnly.
+// Permission levels an R2 token config accepts.
 const (
 	R2PermissionObjectReadWrite = "object-read-write"
 	R2PermissionObjectReadOnly  = "object-read-only"

@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/internal/stacktest"
-	"github.com/truvity/edge/v3/cloudflare/rules"
-	"github.com/truvity/edge/v3/cloudflare/zonestack"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/internal/stacktest"
+	"github.com/truvity/edge/v4/cloudflare/rules"
+	"github.com/truvity/edge/v4/cloudflare/zonestack"
 )
 
 func run(t *testing.T, args zonestack.Args) (*stacktest.Recorder, error) {

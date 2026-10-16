@@ -9,7 +9,7 @@ documents. Read the half you adopt.
   root/edge/r2(/status) split, one root token that only mints child tokens
 - [cloudflare/adoption.md](cloudflare/adoption.md): prerequisites, install
   order, the zero-diff gate, adopting existing objects, upgrading across
-  breaking releases, and the move of the Go module to `edge/v3`
+  breaking releases, and the moves of the Go module to `edge/v3` and `edge/v4`
 - [cloudflare/safety.md](cloudflare/safety.md): every refusal and the failure
   it prevents; the traps
 - [cloudflare/reference.md](cloudflare/reference.md): every chart value, every

@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/catalog"
-	"github.com/truvity/edge/v3/cloudflare/config"
-	"github.com/truvity/edge/v3/cloudflare/edgespec"
-	"github.com/truvity/edge/v3/cloudflare/rules"
+	"github.com/truvity/edge/v4/catalog"
+	"github.com/truvity/edge/v4/cloudflare/config"
+	"github.com/truvity/edge/v4/cloudflare/edgespec"
+	"github.com/truvity/edge/v4/cloudflare/rules"
 )
 
 // The fixture is shaped like an estate's real cloudflare.yaml and edge
@@ -46,19 +46,19 @@ func fixture(t *testing.T) *config.Config {
 // standard library is the YAML decoder or a package of this module that is
 // itself SDK-free.
 func TestNoSDKImports(t *testing.T) {
-	const pkg = "github.com/truvity/edge/v3/cloudflare/config"
+	const pkg = "github.com/truvity/edge/v4/cloudflare/config"
 
 	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	require.NoError(t, err, "go list -deps")
 
 	allowed := []string{
 		"go.yaml.in/yaml/v3",
-		"github.com/truvity/edge/v3/catalog",
-		"github.com/truvity/edge/v3/cloudflare/cfnames",
-		"github.com/truvity/edge/v3/cloudflare/edgespec",
-		"github.com/truvity/edge/v3/cloudflare/rules",
-		"github.com/truvity/edge/v3/cloudflare/rulespec",
-		"github.com/truvity/edge/v3/cloudflare/zonespec",
+		"github.com/truvity/edge/v4/catalog",
+		"github.com/truvity/edge/v4/cloudflare/cfnames",
+		"github.com/truvity/edge/v4/cloudflare/edgespec",
+		"github.com/truvity/edge/v4/cloudflare/rules",
+		"github.com/truvity/edge/v4/cloudflare/rulespec",
+		"github.com/truvity/edge/v4/cloudflare/zonespec",
 	}
 
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {

@@ -53,7 +53,7 @@ need a `status` child at all.
 | --- | --- | --- | --- |
 | **root** | the root token (never delivered to any other stack) | every child below, via `account.NewChildTokenSet` | `account.New`, `account.NewChildTokenSet`, the presets below |
 | **edge** | the `edge` child | zone settings and the tunnel | `cloudflare/zone`, `cloudflare/tunnel`, both with `acct.Use()` bound to the `edge` child's own provider |
-| **r2** | the `r2-admin` child | R2 buckets and their lifecycles (no tokens) | `cloudflare/r2`, called with `Config.Token.Enabled: false` |
+| **r2** | the `r2-admin` child | R2 buckets and their lifecycles (no tokens) | `cloudflare/r2` |
 | **status** (optional) | the `status` child | a backup tunnel, DNS only | `cloudflare/tunnel` (and `cloudflare/zone` only as far as DNS) |
 
 A bucket's own consumer — the thing that actually reads or writes
@@ -71,7 +71,7 @@ package main
 import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/account"
+	"github.com/truvity/edge/v4/cloudflare/account"
 )
 
 func main() {
@@ -172,8 +172,7 @@ if err != nil {
 
 if _, err := r2.New(ctx, "example-bucket", r2.Config{
 	AccountID: acct.AccountID,
-	Bucket:    "example-bucket",
-	Token:     r2.TokenConfig{Enabled: false}, // the parent token is r2-parent-example-bucket, minted by root
+	Bucket:    "example-bucket", // the parent token is r2-parent-example-bucket, minted by root
 }, acct.Use()); err != nil {
 	return err
 }

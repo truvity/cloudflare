@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/cfnames"
+	"github.com/truvity/edge/v4/cloudflare/cfnames"
 )
 
 // TestNoNonStdlibImports guards this package's whole reason to exist: a
@@ -19,7 +19,7 @@ import (
 // library's own packages, and this test binary's test-only synthetic
 // packages, never do).
 func TestNoNonStdlibImports(t *testing.T) {
-	const pkg = "github.com/truvity/edge/v3/cloudflare/cfnames"
+	const pkg = "github.com/truvity/edge/v4/cloudflare/cfnames"
 
 	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	require.NoError(t, err, "go list -deps")

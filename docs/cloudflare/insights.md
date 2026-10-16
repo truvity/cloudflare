@@ -8,7 +8,7 @@ read; the one write is dismissing an insight.
 
 The preset kind `insights` (see [presets](presets.md)): Account Security
 Center Insights Read on the account; Zone Security Center Insights Read,
-Analytics Read, Zone WAF Read and Bot Management Read on each zone. It is read only; the `edge` kind is not needed.
+Analytics Read, Zone WAF Read and Bot Management Read on each zone. It is read only; the `zone` kind is not needed.
 
 Dismissing needs the write-capable kind `insights-admin`: Account Security
 Center Insights Write and Read on the account, Zone Security Center Insights

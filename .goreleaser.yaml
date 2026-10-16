@@ -69,4 +69,4 @@ release:
     | static-site chart | `oci://ghcr.io/truvity/charts/static-site:{{ .Version }}` |
     | static-site-infra chart | `oci://ghcr.io/truvity/charts/static-site-infra:{{ .Version }}` |
     | static-site image | `ghcr.io/truvity/edge/static-site:{{ .Version }}` |
-    | Go | `go get github.com/truvity/edge/v3@{{ .Tag }}` |
+    | Go | `go get github.com/truvity/edge/v4@{{ .Tag }}` |

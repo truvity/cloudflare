@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/truvity/edge/v3/cloudflare/zonespec"
+	"github.com/truvity/edge/v4/cloudflare/zonespec"
 )
 
 // mocks records every registered resource so tests can assert on the exact

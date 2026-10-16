@@ -38,7 +38,7 @@ import (
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/edge/v3/cloudflare/zonespec"
+	"github.com/truvity/edge/v4/cloudflare/zonespec"
 )
 
 // Setting identifiers, as Cloudflare names them.
@@ -102,9 +102,6 @@ type (
 	// ManagedWAF deploys the Cloudflare Managed Ruleset on named hosts.
 	// See zonespec.ManagedWAF.
 	ManagedWAF = zonespec.ManagedWAF
-	// Compat keeps resources that predate this library at their URNs. See
-	// zonespec.Compat.
-	Compat = zonespec.Compat
 )
 
 // CloudflareManagedRulesetID is the ruleset ManagedWAF executes. See
@@ -234,7 +231,7 @@ func New(ctx *pulumi.Context, name string, args Args, opts ...pulumi.ResourceOpt
 			ZoneId:    zoneID,
 			SettingId: pulumi.String(settingTLSClientAuth),
 			Value:     pulumi.String(value),
-		}, withTopLevelAlias(child, args.Compat)...); err != nil {
+		}, child...); err != nil {
 			return nil, fmt.Errorf("zone %q: authenticatedOriginPulls: %w", name, err)
 		}
 	}

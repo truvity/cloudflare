@@ -1,6 +1,6 @@
 package edge
 
-import "github.com/truvity/edge/v3/cloudflare/edgespec"
+import "github.com/truvity/edge/v4/cloudflare/edgespec"
 
 // The derivation and routing rules live in cloudflare/edgespec, which links no
 // Pulumi or Cloudflare SDK; they are re-exported here so existing callers
